@@ -62,7 +62,7 @@ const sessionStorage = {
 
 let client: SupabaseClient | null = null
 
-function getClient(): SupabaseClient {
+export function getClient(): SupabaseClient {
   if (!isCloudConfigured()) {
     throw new Error(
       'The cloud is not set up yet. The launcher owner needs to fill in src/shared/cloudConfig.ts (see README).'
@@ -340,6 +340,15 @@ async function getLatestVersion(packId: string): Promise<VersionRow> {
   const row = (data as VersionRow[])[0]
   if (!row) throw new Error('This modpack has no published versions yet.')
   return row
+}
+
+/** Download a cloud pack's latest .mrpack to a temp file (used by the server-from-pack flow). */
+export async function downloadCloudPackToTemp(
+  packId: string,
+  onProgress?: (phase: string, progress: number) => void
+): Promise<string> {
+  const latest = await getLatestVersion(packId)
+  return downloadVersionToTemp(latest, onProgress)
 }
 
 export async function installCloudPack(packId: string): Promise<Instance> {

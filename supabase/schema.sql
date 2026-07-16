@@ -187,3 +187,90 @@ create policy "signed-in users can read sessions"
 create policy "users manage their own session"
   on public.sessions for all to authenticated
   using (host_id = auth.uid()) with check (host_id = auth.uid());
+
+-- ============================================================
+-- Remote server management: let trusted friends manage your local
+-- server from their launcher (added with the Server tab overhaul).
+-- Run this block on existing projects to enable the Access tab.
+-- ============================================================
+create table if not exists public.server_shares (
+  id uuid primary key default gen_random_uuid(),
+  owner_id uuid not null references public.profiles (id) on delete cascade,
+  server_id uuid not null,
+  server_name text not null default '',
+  grantee_id uuid not null references public.profiles (id) on delete cascade,
+  created_at timestamptz not null default now(),
+  unique (server_id, grantee_id)
+);
+
+create table if not exists public.server_status (
+  server_id uuid primary key,
+  owner_id uuid not null references public.profiles (id) on delete cascade,
+  name text not null default '',
+  state text not null default 'stopped',
+  players text[] not null default '{}',
+  address text,
+  console text not null default '',
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists public.server_commands (
+  id uuid primary key default gen_random_uuid(),
+  server_id uuid not null,
+  owner_id uuid not null references public.profiles (id) on delete cascade,
+  sender_id uuid not null references public.profiles (id) on delete cascade,
+  sender_name text not null default '',
+  action text not null, -- 'start' | 'stop' | 'command'
+  payload text not null default '',
+  executed boolean not null default false,
+  created_at timestamptz not null default now()
+);
+
+alter table public.server_shares enable row level security;
+alter table public.server_status enable row level security;
+alter table public.server_commands enable row level security;
+
+-- owners manage their grants; grantees can see grants aimed at them
+-- (drop-then-create keeps this block safe to re-run on existing projects)
+drop policy if exists "owners manage their shares" on public.server_shares;
+create policy "owners manage their shares"
+  on public.server_shares for all to authenticated
+  using (owner_id = auth.uid()) with check (owner_id = auth.uid());
+drop policy if exists "grantees see their shares" on public.server_shares;
+create policy "grantees see their shares"
+  on public.server_shares for select to authenticated using (grantee_id = auth.uid());
+
+-- owners publish status; grantees of that server can read it
+drop policy if exists "owners publish their server status" on public.server_status;
+create policy "owners publish their server status"
+  on public.server_status for all to authenticated
+  using (owner_id = auth.uid()) with check (owner_id = auth.uid());
+drop policy if exists "grantees read shared server status" on public.server_status;
+create policy "grantees read shared server status"
+  on public.server_status for select to authenticated
+  using (exists (
+    select 1 from public.server_shares s
+    where s.server_id = server_status.server_id and s.grantee_id = auth.uid()
+  ));
+
+-- grantees queue commands for servers shared with them; owners read + mark them executed
+drop policy if exists "grantees queue commands" on public.server_commands;
+create policy "grantees queue commands"
+  on public.server_commands for insert to authenticated
+  with check (
+    sender_id = auth.uid()
+    and exists (
+      select 1 from public.server_shares s
+      where s.server_id = server_commands.server_id and s.grantee_id = auth.uid()
+    )
+  );
+drop policy if exists "owners manage commands for their servers" on public.server_commands;
+create policy "owners manage commands for their servers"
+  on public.server_commands for all to authenticated
+  using (owner_id = auth.uid()) with check (owner_id = auth.uid());
+drop policy if exists "senders see their own commands" on public.server_commands;
+create policy "senders see their own commands"
+  on public.server_commands for select to authenticated using (sender_id = auth.uid());
+
+-- make PostgREST pick the new tables up immediately
+notify pgrst, 'reload schema';

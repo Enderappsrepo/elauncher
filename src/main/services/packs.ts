@@ -23,7 +23,7 @@ export function emitPackTask(taskId: string, phase: string, progress: number, do
   broadcast('packs:progress', { taskId, phase, progress, done } satisfies PackTaskEvent)
 }
 
-interface MrpackFile {
+export interface MrpackFile {
   path: string
   hashes: { sha1: string; sha512: string }
   downloads: string[]
@@ -31,7 +31,7 @@ interface MrpackFile {
   env?: { client: string; server: string }
 }
 
-interface MrpackIndex {
+export interface MrpackIndex {
   formatVersion: 1
   game: 'minecraft'
   versionId: string
@@ -82,7 +82,7 @@ interface ModrinthVersionFile {
 }
 
 /** Batch-identify local jars on Modrinth by sha1. Returns sha1 -> file info. */
-async function lookupModrinthByHash(sha1s: string[]): Promise<Map<string, ModrinthVersionFile>> {
+export async function lookupModrinthByHash(sha1s: string[]): Promise<Map<string, ModrinthVersionFile>> {
   const found = new Map<string, ModrinthVersionFile>()
   if (sha1s.length === 0) return found
   try {
@@ -223,13 +223,13 @@ function recordFromCdnUrl(file: MrpackFile): ModRecord | null {
   }
 }
 
-function parseIndex(zip: AdmZip): MrpackIndex {
+export function parseIndex(zip: AdmZip): MrpackIndex {
   const indexEntry = zip.getEntry('modrinth.index.json')
   if (!indexEntry) throw new Error('Not a valid .mrpack: missing modrinth.index.json')
   return JSON.parse(indexEntry.getData().toString('utf-8')) as MrpackIndex
 }
 
-function parseDependencies(index: MrpackIndex): {
+export function parseDependencies(index: MrpackIndex): {
   mcVersion: string
   loader: ModLoader
   loaderVersion?: string
@@ -259,7 +259,7 @@ function sha1Matches(path: string, expected: string): boolean {
   }
 }
 
-async function downloadWithRetries(url: string, dest: string, sha1?: string): Promise<void> {
+export async function downloadWithRetries(url: string, dest: string, sha1?: string): Promise<void> {
   let lastError: unknown
   for (let attempt = 1; attempt <= DOWNLOAD_RETRIES; attempt++) {
     try {
@@ -460,7 +460,7 @@ const CF_API = 'https://api.curseforge.com/v1'
 const CF_UA = 'ELauncher/0.1.0 (custom launcher)'
 
 /** Newest downloadable .mrpack URL for a Modrinth modpack project. */
-async function resolveModrinthModpackUrl(projectId: string): Promise<string> {
+export async function resolveModrinthModpackUrl(projectId: string): Promise<string> {
   const versions = (await modrinthFetch(`/project/${projectId}/version`)) as {
     files: { url: string; filename: string; primary: boolean }[]
   }[]
@@ -473,7 +473,7 @@ async function resolveModrinthModpackUrl(projectId: string): Promise<string> {
   throw new Error('This Modrinth project has no installable .mrpack file.')
 }
 
-interface CfManifest {
+export interface CfManifest {
   minecraft: { version: string; modLoaders: { id: string; primary?: boolean }[] }
   name: string
   version?: string
@@ -481,7 +481,7 @@ interface CfManifest {
   overrides?: string
 }
 
-interface CfFile {
+export interface CfFile {
   id: number
   modId: number
   fileName: string
@@ -489,7 +489,7 @@ interface CfFile {
 }
 
 /** CurseForge manifest loader id ("forge-47.2.0") → launcher loader + version. */
-function parseCfLoader(id: string): { loader: ModLoader; loaderVersion?: string } {
+export function parseCfLoader(id: string): { loader: ModLoader; loaderVersion?: string } {
   const idx = id.indexOf('-')
   const name = idx >= 0 ? id.slice(0, idx) : id
   const version = idx >= 0 ? id.slice(idx + 1) : undefined
@@ -501,13 +501,13 @@ function parseCfLoader(id: string): { loader: ModLoader; loaderVersion?: string 
 }
 
 /** edge.forgecdn.net fallback used when the API omits a file's downloadUrl. */
-function forgeCdnUrl(fileId: number, fileName: string): string {
+export function forgeCdnUrl(fileId: number, fileName: string): string {
   const s = String(fileId)
   return `https://edge.forgecdn.net/files/${Number(s.slice(0, 4))}/${Number(s.slice(4))}/${encodeURIComponent(fileName)}`
 }
 
 /** Resolve many CurseForge file ids to their download info in one (chunked) call. */
-async function curseforgeFilesBulk(fileIds: number[]): Promise<CfFile[]> {
+export async function curseforgeFilesBulk(fileIds: number[]): Promise<CfFile[]> {
   if (fileIds.length === 0) return []
   const key = getSettings().curseforgeApiKey?.trim()
   if (!key) throw new Error('A CurseForge API key is required to install CurseForge modpacks. Add one in Settings.')
@@ -525,7 +525,7 @@ async function curseforgeFilesBulk(fileIds: number[]): Promise<CfFile[]> {
 }
 
 /** Latest pack-file download URL for a CurseForge modpack project. */
-async function resolveCurseforgeModpackUrl(projectId: string): Promise<string> {
+export async function resolveCurseforgeModpackUrl(projectId: string): Promise<string> {
   const { data } = (await curseforgeFetch(`/mods/${projectId}`)) as {
     data: { mainFileId: number; latestFiles: CfFile[] }
   }

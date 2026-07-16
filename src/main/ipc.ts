@@ -1,5 +1,5 @@
 import { app, ipcMain, BrowserWindow } from 'electron'
-import type { ContentKind, CopySettingsRequest, CreateInstanceOptions, GraphicsPreset, Instance, MigrateRequest, ModInstallRequest, ModLoader, ModSearchQuery, ModSource, ModUpdateInfo, PublishNewsRequest, PublishPackRequest, PublishSessionRequest, ServerEntry, Settings } from '@shared/types'
+import type { ContentKind, CopySettingsRequest, CreateInstanceOptions, CreateServerOptions, GraphicsPreset, Instance, MigrateRequest, ModInstallRequest, ModLoader, ModSearchQuery, ModSource, ModUpdateInfo, PalworldModerationAction, PublishNewsRequest, PublishPackRequest, PublishSessionRequest, ServerAutomation, ServerEntry, Settings } from '@shared/types'
 import * as auth from './services/auth'
 import * as instances from './services/instances'
 import * as versions from './services/versions'
@@ -12,6 +12,10 @@ import * as migrate from './services/migrate'
 import * as gameOptions from './services/gameOptions'
 import * as optimize from './services/optimize'
 import * as hosting from './services/hosting'
+import * as upnp from './services/upnp'
+import * as server from './services/server'
+import * as serverBrowser from './services/serverBrowser'
+import * as remote from './services/remote'
 import * as worlds from './services/worlds'
 import * as servers from './services/servers'
 import * as skins from './services/skins'
@@ -19,6 +23,12 @@ import * as news from './services/news'
 import * as updater from './services/updater'
 
 export function registerIpc(): void {
+  // host side of remote server management: heartbeats + queued-command execution
+  remote.startRemoteHost()
+
+  // bring up servers flagged "start with the launcher"
+  server.autoStartConfiguredServers()
+
   // repaint the native caption buttons when the renderer switches theme (Windows overlay)
   ipcMain.handle('app:setTitleBarTheme', (e, overlay: { color: string; symbolColor: string }) => {
     const win = BrowserWindow.fromWebContents(e.sender)
@@ -53,9 +63,9 @@ export function registerIpc(): void {
     }
   })
 
-  ipcMain.handle('game:launch', async (_e, instanceId: string) => {
+  ipcMain.handle('game:launch', async (_e, instanceId: string, joinServer?: string) => {
     try {
-      await game.launchInstance(instanceId)
+      await game.launchInstance(instanceId, joinServer)
       return { ok: true }
     } catch (e) {
       return { ok: false, error: e instanceof Error ? e.message : String(e) }
@@ -187,6 +197,208 @@ export function registerIpc(): void {
     }
   })
   ipcMain.handle('host:stopTunnel', () => hosting.stopTunnel())
+
+  // ---- local dedicated servers ----
+  ipcMain.handle('server:list', () => server.listLocalServers())
+  ipcMain.handle('server:create', async (_e, opts: CreateServerOptions) => {
+    try {
+      const created = await server.createServer(opts)
+      return created ? { ok: true, server: created } : { ok: false, error: 'cancelled' }
+    } catch (e) {
+      return { ok: false, error: e instanceof Error ? e.message : String(e) }
+    }
+  })
+  ipcMain.handle('server:remove', (_e, id: string) => {
+    try {
+      const servers = server.removeServer(id)
+      void remote.forgetServer(id) // drop cloud status/shares so other devices lose the ghost
+      return { ok: true, servers }
+    } catch (e) {
+      return { ok: false, error: e instanceof Error ? e.message : String(e), servers: server.listLocalServers() }
+    }
+  })
+  ipcMain.handle('server:start', async (_e, id: string) => {
+    try {
+      await server.startServer(id)
+      return { ok: true }
+    } catch (e) {
+      return { ok: false, error: e instanceof Error ? e.message : String(e) }
+    }
+  })
+  ipcMain.handle('server:stop', (_e, id: string) => server.stopServer(id))
+  ipcMain.handle('server:command', (_e, id: string, command: string) => {
+    try {
+      server.sendServerCommand(id, command)
+      return { ok: true }
+    } catch (e) {
+      return { ok: false, error: e instanceof Error ? e.message : String(e) }
+    }
+  })
+  ipcMain.handle('server:getStates', () => server.getServerStates())
+  ipcMain.handle('server:getLogs', (_e, id: string) => server.getServerLogs(id))
+  ipcMain.handle('server:getProperties', (_e, id: string) => server.getServerProperties(id))
+  ipcMain.handle('server:setProperties', (_e, id: string, updates: Record<string, string>) =>
+    server.setServerProperties(id, updates)
+  )
+  ipcMain.handle('server:updateSettings', (_e, id: string, name: string, memoryMax: number) =>
+    server.updateServerSettings(id, name, memoryMax)
+  )
+  ipcMain.handle('server:openFolder', (_e, id: string) => server.openServerFolder(id))
+  ipcMain.handle('server:tunnelStart', async (_e, port: number) => {
+    try {
+      const record = server.listLocalServers().find((s) => s.port === port)
+      // UDP games can't ride the TCP bore relay — open the port on the router instead
+      if (record?.game === 'palworld') {
+        const mapping = await upnp.openPort(port, 'UDP', `ELauncher ${record.name}`)
+        server.announceServerByPort(port)
+        return { ok: true, address: `${mapping.externalIp}:${port}`, warning: mapping.warning }
+      }
+      const res = await hosting.startTunnel(port)
+      server.announceServerByPort(port)
+      return { ok: true, ...res }
+    } catch (e) {
+      return { ok: false, error: e instanceof Error ? e.message : String(e) }
+    }
+  })
+  ipcMain.handle('server:shareInfo', () => hosting.getShareInfo())
+  ipcMain.handle('server:setCommunity', (_e, id: string, enabled: boolean) => server.setCommunityServer(id, enabled))
+  ipcMain.handle('server:setAutomation', (_e, id: string, automation: ServerAutomation) =>
+    server.setServerAutomation(id, automation)
+  )
+  ipcMain.handle('server:pal:players', async (_e, id: string) => {
+    try {
+      return { ok: true, players: await server.getPalworldPlayerDetails(id) }
+    } catch (e) {
+      return { ok: false, error: e instanceof Error ? e.message : String(e), players: [] }
+    }
+  })
+  ipcMain.handle(
+    'server:pal:moderate',
+    async (_e, id: string, action: PalworldModerationAction, target: string, message?: string) => {
+      try {
+        await server.palworldModerate(id, action, target, message)
+        return { ok: true }
+      } catch (e) {
+        return { ok: false, error: e instanceof Error ? e.message : String(e) }
+      }
+    }
+  )
+  ipcMain.handle('server:tunnelStop', async (_e, port: number) => {
+    const record = server.listLocalServers().find((s) => s.port === port)
+    if (record?.game === 'palworld') {
+      await upnp.closePort(port, 'UDP')
+      server.announceServerByPort(port)
+      return
+    }
+    hosting.stopTunnel(port)
+  })
+  ipcMain.handle('server:mods:list', (_e, id: string) => server.listServerMods(id))
+  ipcMain.handle('server:mods:install', async (_e, id: string, projectId: string) => {
+    try {
+      await server.installServerMod(id, projectId)
+      return { ok: true }
+    } catch (e) {
+      return { ok: false, error: e instanceof Error ? e.message : String(e) }
+    }
+  })
+  ipcMain.handle('server:mods:remove', (_e, id: string, fileName: string) => server.removeServerMod(id, fileName))
+  ipcMain.handle('server:exportPack', async (_e, id: string) => {
+    try {
+      return await server.exportServerPack(id)
+    } catch (e) {
+      return { ok: false, error: e instanceof Error ? e.message : String(e) }
+    }
+  })
+
+  // ---- server file manager ----
+  ipcMain.handle('server:files:list', (_e, id: string, rel: string) => server.listServerFiles(id, rel))
+  ipcMain.handle('server:files:read', (_e, id: string, rel: string) => {
+    try {
+      return { ok: true, ...server.readServerFile(id, rel) }
+    } catch (e) {
+      return { ok: false, error: e instanceof Error ? e.message : String(e) }
+    }
+  })
+  ipcMain.handle('server:files:write', (_e, id: string, rel: string, content: string) => {
+    try {
+      server.writeServerFile(id, rel, content)
+      return { ok: true }
+    } catch (e) {
+      return { ok: false, error: e instanceof Error ? e.message : String(e) }
+    }
+  })
+  ipcMain.handle('server:files:delete', (_e, id: string, rel: string) => {
+    try {
+      server.deleteServerPath(id, rel)
+      return { ok: true }
+    } catch (e) {
+      return { ok: false, error: e instanceof Error ? e.message : String(e) }
+    }
+  })
+
+  // ---- server player lists ----
+  ipcMain.handle('server:players:list', (_e, id: string, kind: server.PlayerFileKind) =>
+    server.readPlayerList(id, kind)
+  )
+  ipcMain.handle('server:players:whitelistAdd', async (_e, id: string, name: string) => {
+    try {
+      return { ok: true, players: await server.whitelistAdd(id, name) }
+    } catch (e) {
+      return { ok: false, error: e instanceof Error ? e.message : String(e), players: server.readPlayerList(id, 'whitelist') }
+    }
+  })
+  ipcMain.handle('server:players:whitelistRemove', (_e, id: string, name: string) => server.whitelistRemove(id, name))
+
+  // ---- remote management (cloud relay) ----
+  ipcMain.handle('remote:listShares', async (_e, serverId: string) => {
+    try {
+      return await remote.listShares(serverId)
+    } catch {
+      return []
+    }
+  })
+  ipcMain.handle('remote:grant', async (_e, serverId: string, serverName: string, username: string) => {
+    try {
+      return { ok: true, shares: await remote.grantAccess(serverId, serverName, username) }
+    } catch (e) {
+      return { ok: false, error: e instanceof Error ? e.message : String(e), shares: [] }
+    }
+  })
+  ipcMain.handle('remote:revoke', async (_e, shareId: string) => {
+    try {
+      await remote.revokeAccess(shareId)
+      return { ok: true }
+    } catch (e) {
+      return { ok: false, error: e instanceof Error ? e.message : String(e) }
+    }
+  })
+  ipcMain.handle('remote:listManaged', async () => {
+    try {
+      return await remote.listManagedServers()
+    } catch {
+      return []
+    }
+  })
+  ipcMain.handle('remote:sendCommand', async (_e, serverId: string, action: 'start' | 'stop' | 'command', payload?: string) => {
+    try {
+      await remote.sendRemoteCommand(serverId, action, payload ?? '')
+      return { ok: true }
+    } catch (e) {
+      return { ok: false, error: e instanceof Error ? e.message : String(e) }
+    }
+  })
+
+  // ---- server browser (saved servers + live status pings) ----
+  ipcMain.handle('browser:list', () => serverBrowser.listSavedServers())
+  ipcMain.handle('browser:add', (_e, name: string, address: string) => {
+    try {
+      return { ok: true, servers: serverBrowser.addSavedServer(name, address) }
+    } catch (e) {
+      return { ok: false, error: e instanceof Error ? e.message : String(e), servers: serverBrowser.listSavedServers() }
+    }
+  })
+  ipcMain.handle('browser:remove', (_e, id: string) => serverBrowser.removeSavedServer(id))
+  ipcMain.handle('browser:ping', (_e, address: string) => serverBrowser.pingServer(address))
 
   ipcMain.handle('cloud:admin:listProfiles', () => cloud.listProfiles())
   ipcMain.handle('cloud:admin:setAdmin', async (_e, userId: string, isAdmin: boolean) => {

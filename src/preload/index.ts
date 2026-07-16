@@ -42,7 +42,23 @@ import type {
   PublishPackRequest,
   PublishSessionRequest,
   SavedSkin,
+  CreateServerOptions,
+  LocalServer,
+  LocalServerState,
+  ManagedServer,
+  PlayerListEntry,
+  PalworldModerationAction,
+  PalworldPlayerDetail,
+  SavedServerEntry,
+  ServerAutomation,
   ServerEntry,
+  ServerFileEntry,
+  ServerLogEvent,
+  ServerMod,
+  ServerPingResult,
+  ServerShare,
+  ServerStateEvent,
+  ServerTaskEvent,
   Settings,
   SkinInfo,
   SkinSearchResult,
@@ -85,8 +101,8 @@ const api = {
       ipcRenderer.invoke('instances:setIcon', id, icon)
   },
   game: {
-    launch: (instanceId: string): Promise<OperationResult> =>
-      ipcRenderer.invoke('game:launch', instanceId),
+    launch: (instanceId: string, joinServer?: string): Promise<OperationResult> =>
+      ipcRenderer.invoke('game:launch', instanceId, joinServer),
     kill: (instanceId: string): Promise<void> => ipcRenderer.invoke('game:kill', instanceId),
     getStates: (): Promise<Record<string, InstanceRunState>> => ipcRenderer.invoke('game:getStates'),
     getLogs: (instanceId: string): Promise<string[]> => ipcRenderer.invoke('game:getLogs', instanceId),
@@ -258,6 +274,90 @@ const api = {
     startTunnel: (): Promise<{ ok: boolean; error?: string; address?: string }> =>
       ipcRenderer.invoke('host:startTunnel'),
     stopTunnel: (): Promise<void> => ipcRenderer.invoke('host:stopTunnel')
+  },
+  server: {
+    list: (): Promise<LocalServer[]> => ipcRenderer.invoke('server:list'),
+    create: (opts: CreateServerOptions): Promise<{ ok: boolean; error?: string; server?: LocalServer }> =>
+      ipcRenderer.invoke('server:create', opts),
+    remove: (id: string): Promise<{ ok: boolean; error?: string; servers: LocalServer[] }> =>
+      ipcRenderer.invoke('server:remove', id),
+    start: (id: string): Promise<OperationResult> => ipcRenderer.invoke('server:start', id),
+    stop: (id: string): Promise<void> => ipcRenderer.invoke('server:stop', id),
+    command: (id: string, command: string): Promise<OperationResult> =>
+      ipcRenderer.invoke('server:command', id, command),
+    getStates: (): Promise<Record<string, { state: LocalServerState; players: string[]; tunnelAddress: string | null }>> =>
+      ipcRenderer.invoke('server:getStates'),
+    getLogs: (id: string): Promise<string[]> => ipcRenderer.invoke('server:getLogs', id),
+    getProperties: (id: string): Promise<Record<string, string>> => ipcRenderer.invoke('server:getProperties', id),
+    setProperties: (id: string, updates: Record<string, string>): Promise<Record<string, string>> =>
+      ipcRenderer.invoke('server:setProperties', id, updates),
+    updateSettings: (id: string, name: string, memoryMax: number): Promise<LocalServer[]> =>
+      ipcRenderer.invoke('server:updateSettings', id, name, memoryMax),
+    openFolder: (id: string): Promise<void> => ipcRenderer.invoke('server:openFolder', id),
+    tunnelStart: (port: number): Promise<{ ok: boolean; error?: string; address?: string; warning?: string }> =>
+      ipcRenderer.invoke('server:tunnelStart', port),
+    tunnelStop: (port: number): Promise<void> => ipcRenderer.invoke('server:tunnelStop', port),
+    shareInfo: (): Promise<{ publicIp: string | null; tailscaleIp: string | null }> =>
+      ipcRenderer.invoke('server:shareInfo'),
+    setCommunity: (id: string, enabled: boolean): Promise<LocalServer[]> =>
+      ipcRenderer.invoke('server:setCommunity', id, enabled),
+    setAutomation: (id: string, automation: ServerAutomation): Promise<LocalServer[]> =>
+      ipcRenderer.invoke('server:setAutomation', id, automation),
+    pal: {
+      players: (id: string): Promise<{ ok: boolean; error?: string; players: PalworldPlayerDetail[] }> =>
+        ipcRenderer.invoke('server:pal:players', id),
+      moderate: (
+        id: string,
+        action: PalworldModerationAction,
+        target: string,
+        message?: string
+      ): Promise<OperationResult> => ipcRenderer.invoke('server:pal:moderate', id, action, target, message)
+    },
+    listMods: (id: string): Promise<ServerMod[]> => ipcRenderer.invoke('server:mods:list', id),
+    installMod: (id: string, projectId: string): Promise<OperationResult> =>
+      ipcRenderer.invoke('server:mods:install', id, projectId),
+    removeMod: (id: string, fileName: string): Promise<ServerMod[]> =>
+      ipcRenderer.invoke('server:mods:remove', id, fileName),
+    exportPack: (id: string): Promise<OperationResult> => ipcRenderer.invoke('server:exportPack', id),
+    files: {
+      list: (id: string, rel: string): Promise<ServerFileEntry[]> => ipcRenderer.invoke('server:files:list', id, rel),
+      read: (id: string, rel: string): Promise<{ ok: boolean; error?: string; content?: string }> =>
+        ipcRenderer.invoke('server:files:read', id, rel),
+      write: (id: string, rel: string, content: string): Promise<OperationResult> =>
+        ipcRenderer.invoke('server:files:write', id, rel, content),
+      remove: (id: string, rel: string): Promise<OperationResult> => ipcRenderer.invoke('server:files:delete', id, rel)
+    },
+    players: {
+      list: (id: string, kind: 'whitelist' | 'ops' | 'banned-players'): Promise<PlayerListEntry[]> =>
+        ipcRenderer.invoke('server:players:list', id, kind),
+      whitelistAdd: (id: string, name: string): Promise<{ ok: boolean; error?: string; players: PlayerListEntry[] }> =>
+        ipcRenderer.invoke('server:players:whitelistAdd', id, name),
+      whitelistRemove: (id: string, name: string): Promise<PlayerListEntry[]> =>
+        ipcRenderer.invoke('server:players:whitelistRemove', id, name)
+    },
+    onLog: (cb: (e: ServerLogEvent) => void): (() => void) => on('server:log', cb),
+    onState: (cb: (e: ServerStateEvent) => void): (() => void) => on('server:state', cb),
+    onTask: (cb: (e: ServerTaskEvent) => void): (() => void) => on('server:task', cb)
+  },
+  remote: {
+    listShares: (serverId: string): Promise<ServerShare[]> => ipcRenderer.invoke('remote:listShares', serverId),
+    grant: (
+      serverId: string,
+      serverName: string,
+      username: string
+    ): Promise<{ ok: boolean; error?: string; shares: ServerShare[] }> =>
+      ipcRenderer.invoke('remote:grant', serverId, serverName, username),
+    revoke: (shareId: string): Promise<OperationResult> => ipcRenderer.invoke('remote:revoke', shareId),
+    listManaged: (): Promise<ManagedServer[]> => ipcRenderer.invoke('remote:listManaged'),
+    sendCommand: (serverId: string, action: 'start' | 'stop' | 'command', payload?: string): Promise<OperationResult> =>
+      ipcRenderer.invoke('remote:sendCommand', serverId, action, payload)
+  },
+  browser: {
+    list: (): Promise<SavedServerEntry[]> => ipcRenderer.invoke('browser:list'),
+    add: (name: string, address: string): Promise<{ ok: boolean; error?: string; servers: SavedServerEntry[] }> =>
+      ipcRenderer.invoke('browser:add', name, address),
+    remove: (id: string): Promise<SavedServerEntry[]> => ipcRenderer.invoke('browser:remove', id),
+    ping: (address: string): Promise<ServerPingResult> => ipcRenderer.invoke('browser:ping', address)
   }
 }
 

@@ -4,7 +4,7 @@ import { useAppState } from './state'
 import { useToast } from './toast'
 import { tileGradient } from './fmt'
 import { setTheme, useTheme } from './theme'
-import { IconBox, IconCloud, IconGrid, IconHome, IconImport, IconLogout, IconMoon, IconSearch, IconSettings, IconShield, IconSun, IconUser, IconWifi } from './icons'
+import { IconBox, IconCloud, IconGrid, IconHome, IconImport, IconLogout, IconMoon, IconSearch, IconServer, IconSettings, IconShield, IconSun, IconUser, IconWifi } from './icons'
 import logoUrl from './assets/icon.png'
 import { UpdateCard, useAppVersion } from './updates'
 import ImportPackModal from './components/ImportPackModal'
@@ -19,6 +19,7 @@ import ModpacksPage from './pages/ModpacksPage'
 import SettingsPage from './pages/SettingsPage'
 import SkinsPage from './pages/SkinsPage'
 import PlayPage from './pages/PlayPage'
+import ServerPage from './pages/ServerPage'
 import AdminPage from './pages/AdminPage'
 import NewsArticlePage from './pages/NewsArticlePage'
 
@@ -255,6 +256,9 @@ export default function App(): React.JSX.Element {
         <NavLink to="/play" className={({ isActive }) => `nav-link${isActive ? ' active' : ''}`}>
           <IconWifi /> Play Together
         </NavLink>
+        <NavLink to="/server" className={({ isActive }) => `nav-link${isActive ? ' active' : ''}`}>
+          <IconServer /> Server
+        </NavLink>
         <div className="section-label">App</div>
         <NavLink to="/settings" className={({ isActive }) => `nav-link${isActive ? ' active' : ''}`}>
           <IconSettings /> Settings
@@ -290,6 +294,7 @@ export default function App(): React.JSX.Element {
             <Route path="/mods" element={<ModBrowserPage />} />
             <Route path="/skins" element={<SkinsPage />} />
             <Route path="/play" element={<PlayPage />} />
+            <Route path="/server" element={<ServerPage />} />
             <Route path="/settings" element={<SettingsPage />} />
             <Route path="/admin" element={<AdminPage />} />
           </Routes>

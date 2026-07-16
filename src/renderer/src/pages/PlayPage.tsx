@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import type { GameSession, Instance } from '@shared/types'
+import type { GameSession, Instance, SavedServerEntry, ServerPingResult } from '@shared/types'
 import { useAppState } from '../state'
 import { useToast } from '../toast'
-import { IconCheck, IconCloud, IconCopy, IconGlobe, IconPlay, IconServer, IconStop, IconUsers, IconWifi, IconZap } from '../icons'
+import { IconCheck, IconCloud, IconCopy, IconGlobe, IconPlay, IconPlus, IconRefresh, IconServer, IconStop, IconTrash, IconUsers, IconWifi, IconZap } from '../icons'
 import Select from '../components/Select'
 
 const E4MC_RE = /\b(?:[a-z0-9-]+\.)+e4mc\.link\b/i
@@ -59,6 +59,22 @@ function JoinModal({
     }
   }
 
+  const joinNow = async (): Promise<void> => {
+    if (!target) return
+    setBusy(true)
+    try {
+      await addServer(target, serverName, session.address)
+      const res = await window.elauncher.game.launch(target, session.address)
+      if (!res.ok) throw new Error(res.error ?? 'Could not launch the game')
+      toast.success(`Launching — connecting to ${session.hostName}'s world…`)
+      onJoined(target)
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : String(e))
+    } finally {
+      setBusy(false)
+    }
+  }
+
   const installAndJoin = async (): Promise<void> => {
     if (!session.cloudPackId) return
     setBusy(true)
@@ -78,7 +94,7 @@ function JoinModal({
   return (
     <div className="modal-backdrop" onClick={onClose}>
       <div className="modal" style={{ width: 460 }} onClick={(e) => e.stopPropagation()}>
-        <h2>Join {session.hostName}'s session</h2>
+        <h2>Join {session.hostName ? `${session.hostName}'s session` : session.name}</h2>
         <p className="muted small" style={{ margin: '2px 0 4px' }}>
           {session.name} · {session.minecraftVersion ?? '?'} {session.loader ?? ''}
         </p>
@@ -101,7 +117,10 @@ function JoinModal({
         ) : (
           <div className="hint">You have no instances yet — install the pack below to create one.</div>
         )}
-        <div className="row" style={{ justifyContent: 'flex-end', marginTop: 4 }}>
+        <div className="hint">
+          <b>Join now</b> launches the game and connects automatically. <b>Add to list</b> just saves it for later.
+        </div>
+        <div className="row" style={{ justifyContent: 'flex-end', marginTop: 4, flexWrap: 'wrap' }}>
           <button className="ghost" onClick={onClose}>
             Cancel
           </button>
@@ -110,8 +129,11 @@ function JoinModal({
               <IconCloud size={14} /> Install pack & join
             </button>
           )}
-          <button className="primary" disabled={busy || !target} onClick={() => void addToInstance()}>
-            <IconCheck size={14} /> Add to server list
+          <button className="ghost" disabled={busy || !target} onClick={() => void addToInstance()}>
+            <IconCheck size={14} /> Add to list
+          </button>
+          <button className="primary" disabled={busy || !target} onClick={() => void joinNow()}>
+            <IconPlay size={14} /> Join now
           </button>
         </div>
       </div>
@@ -414,6 +436,8 @@ export default function PlayPage(): React.JSX.Element {
         </div>
       </div>
 
+      <ServerBrowser onJoin={setJoinTarget} />
+
       {joinTarget && (
         <JoinModal
           session={joinTarget}
@@ -424,6 +448,160 @@ export default function PlayPage(): React.JSX.Element {
             navigate(`/instances/${id}`)
           }}
         />
+      )}
+    </div>
+  )
+}
+
+/** Saved-server address book with live status pings — the server browser list. */
+function ServerBrowser({ onJoin }: { onJoin: (session: GameSession) => void }): React.JSX.Element {
+  const toast = useToast()
+  const [entries, setEntries] = useState<SavedServerEntry[] | null>(null)
+  const [pings, setPings] = useState<Record<string, ServerPingResult>>({})
+  const [name, setName] = useState('')
+  const [address, setAddress] = useState('')
+  const [pinging, setPinging] = useState(false)
+
+  const pingAll = useCallback((list: SavedServerEntry[]) => {
+    setPinging(true)
+    setPings({})
+    void Promise.all(
+      list.map((entry) =>
+        window.elauncher.browser
+          .ping(entry.address)
+          .then((r) => setPings((p) => ({ ...p, [entry.id]: r })))
+          .catch(() => {})
+      )
+    ).finally(() => setPinging(false))
+  }, [])
+
+  useEffect(() => {
+    window.elauncher.browser
+      .list()
+      .then((list) => {
+        setEntries(list)
+        pingAll(list)
+      })
+      .catch(console.error)
+  }, [pingAll])
+
+  const add = async (): Promise<void> => {
+    if (!address.trim()) return
+    const res = await window.elauncher.browser.add(name, address)
+    if (!res.ok) {
+      toast.error(res.error ?? 'Could not save the server')
+      return
+    }
+    setEntries(res.servers)
+    setName('')
+    setAddress('')
+    const added = res.servers.find((s) => s.address === address.trim())
+    if (added) {
+      void window.elauncher.browser.ping(added.address).then((r) => setPings((p) => ({ ...p, [added.id]: r })))
+    }
+  }
+
+  const remove = async (id: string): Promise<void> => {
+    setEntries(await window.elauncher.browser.remove(id))
+  }
+
+  const joinEntry = (entry: SavedServerEntry): void =>
+    onJoin({
+      id: entry.id,
+      hostId: '',
+      hostName: '',
+      name: entry.name,
+      address: entry.address,
+      createdAt: '',
+      isMine: false
+    })
+
+  return (
+    <div style={{ marginTop: 28 }}>
+      <div className="home-section" style={{ margin: '0 0 14px' }}>
+        <h2>
+          <IconGlobe size={16} /> Server browser
+        </h2>
+        <button
+          className="icon-btn"
+          title="Refresh statuses"
+          disabled={pinging || !entries?.length}
+          onClick={() => entries && pingAll(entries)}
+        >
+          <IconRefresh size={14} />
+        </button>
+      </div>
+
+      <form
+        className="row"
+        style={{ marginBottom: 14, flexWrap: 'wrap' }}
+        onSubmit={(e) => {
+          e.preventDefault()
+          void add()
+        }}
+      >
+        <input placeholder="Name (optional)" style={{ width: 180 }} value={name} onChange={(e) => setName(e.target.value)} />
+        <input
+          placeholder="Server address, e.g. play.example.com"
+          style={{ flex: 1, minWidth: 220 }}
+          value={address}
+          onChange={(e) => setAddress(e.target.value)}
+        />
+        <button className="ghost" type="submit" disabled={!address.trim()}>
+          <IconPlus size={14} /> Add server
+        </button>
+      </form>
+
+      {entries === null ? (
+        <div className="skeleton" style={{ height: 140 }} />
+      ) : entries.length === 0 ? (
+        <div className="hint">Add a server address above to track its status and join it in one click.</div>
+      ) : (
+        <div className="mod-list">
+          {entries.map((entry) => {
+            const ping = pings[entry.id]
+            return (
+              <div className="server-row" key={entry.id}>
+                <div className="server-icon-placeholder">
+                  <IconServer size={19} />
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <h4 style={{ fontSize: 14, fontWeight: 650, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {entry.name}
+                  </h4>
+                  <div className="row" style={{ gap: 8, marginTop: 3, flexWrap: 'wrap' }}>
+                    <span className="server-addr">{entry.address}</span>
+                    {!ping ? (
+                      <span className="small faint">pinging…</span>
+                    ) : ping.online ? (
+                      <>
+                        <span className="chip running">
+                          <span className="dot" /> {ping.players?.online ?? 0}/{ping.players?.max ?? 0} online
+                        </span>
+                        {ping.latencyMs != null && <span className="small faint">{ping.latencyMs} ms</span>}
+                        {ping.motd && (
+                          <span className="small faint browser-motd" title={ping.motd}>
+                            {ping.motd}
+                          </span>
+                        )}
+                      </>
+                    ) : (
+                      <span className="small" style={{ color: 'var(--red)' }}>
+                        offline
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <button className="icon-btn" title="Remove" onClick={() => void remove(entry.id)}>
+                  <IconTrash size={14} />
+                </button>
+                <button className="primary" style={{ minWidth: 92 }} onClick={() => joinEntry(entry)}>
+                  <IconPlay size={13} /> Join
+                </button>
+              </div>
+            )
+          })}
+        </div>
       )}
     </div>
   )

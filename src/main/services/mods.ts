@@ -100,19 +100,24 @@ const CF_LOADER_TYPES: Record<Exclude<ModLoader, 'vanilla'>, number> = {
 // ---------- search ----------
 
 /** CurseForge class ids per content type. */
-const CF_CLASS_IDS: Record<'mod' | 'shader' | 'resourcepack' | 'modpack', string> = {
+const CF_CLASS_IDS: Record<'mod' | 'shader' | 'resourcepack' | 'modpack' | 'plugin', string> = {
   mod: '6',
   shader: '6552',
   resourcepack: '12',
-  modpack: '4471'
+  modpack: '4471',
+  plugin: '5' // bukkit-plugins
 }
 
-const MODRINTH_PROJECT_TYPES: Record<'mod' | 'shader' | 'resourcepack' | 'modpack', string> = {
+const MODRINTH_PROJECT_TYPES: Record<'mod' | 'shader' | 'resourcepack' | 'modpack' | 'plugin', string> = {
   mod: 'mod',
   shader: 'shader',
   resourcepack: 'resourcepack',
-  modpack: 'modpack'
+  modpack: 'modpack',
+  plugin: 'plugin'
 }
+
+/** Paper runs the whole Bukkit plugin family. */
+const PAPER_PLUGIN_LOADERS = ['paper', 'spigot', 'bukkit', 'purpur']
 
 export async function searchMods(query: ModSearchQuery): Promise<ModSearchResult> {
   const limit = query.limit ?? 20
@@ -124,6 +129,10 @@ export async function searchMods(query: ModSearchQuery): Promise<ModSearchResult
     // loader facet only applies to mods; shaders/resource packs use their own "loaders"
     if (projectType === 'mod' && query.loader && query.loader !== 'vanilla') {
       facets.push([`categories:${query.loader}`])
+    }
+    // plugins: any of the Paper-compatible loaders (inner array = OR)
+    if (projectType === 'plugin') {
+      facets.push(PAPER_PLUGIN_LOADERS.map((l) => `categories:${l}`))
     }
     const params = new URLSearchParams({
       query: query.query,

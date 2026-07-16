@@ -113,7 +113,23 @@ function runInstallWorker(instance: Instance): Promise<{ versionId: string; java
   })
 }
 
-export async function launchInstance(instanceId: string): Promise<void> {
+/**
+ * Direct-connect launch args. Minecraft 1.20+ uses --quickPlayMultiplayer to jump
+ * straight into a server; older versions use --server/--port. Non-release version
+ * strings (snapshots) are treated as modern.
+ */
+function quickPlayOption(
+  mcVersion: string,
+  address: string
+): { quickPlayMultiplayer: string } | { server: { ip: string; port?: number } } {
+  const m = mcVersion.match(/^1\.(\d+)/)
+  const modern = !m || Number(m[1]) >= 20
+  if (modern) return { quickPlayMultiplayer: address }
+  const [ip, port] = address.split(':')
+  return { server: { ip, port: port ? Number(port) : undefined } }
+}
+
+export async function launchInstance(instanceId: string, joinServer?: string): Promise<void> {
   if (states.get(instanceId) === 'installing' || states.get(instanceId) === 'running') {
     throw new Error('This instance is already running or installing.')
   }
@@ -161,12 +177,14 @@ export async function launchInstance(instanceId: string): Promise<void> {
 
     emitProgress(instanceId, 'Starting game', -1)
     pushLog(instanceId, `[ELauncher] Launching ${resolved.id}`)
+    if (joinServer) pushLog(instanceId, `[ELauncher] Auto-connecting to ${joinServer}`)
 
     const proc = await launch({
       gamePath: instanceDir(instance.id),
       resourcePath: sharedDir,
       javaPath: javaOverride || javaPath,
       version: resolved,
+      ...(joinServer ? quickPlayOption(instance.minecraftVersion, joinServer) : {}),
       accessToken: session.accessToken,
       gameProfile: { name: session.name, id: session.uuid },
       maxMemory: memory,

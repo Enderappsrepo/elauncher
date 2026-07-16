@@ -123,7 +123,7 @@ export interface ModSearchQuery {
   offset?: number
   limit?: number
   /** what kind of content to search. Defaults to 'mod' */
-  projectType?: 'mod' | 'shader' | 'resourcepack' | 'modpack'
+  projectType?: 'mod' | 'shader' | 'resourcepack' | 'modpack' | 'plugin'
 }
 
 export interface InstalledMod {
@@ -406,6 +406,198 @@ export interface ServerEntry {
   ip: string
   /** base64 png favicon, preserved on save */
   icon?: string
+}
+
+// ---------- local dedicated server hosting ----------
+
+export type ServerKind = 'vanilla' | 'paper' | 'fabric' | 'neoforge' | 'forge'
+
+/** Which game a local dedicated server runs. Absent on old records = minecraft. */
+export type ServerGame = 'minecraft' | 'palworld'
+
+export type LocalServerState = 'stopped' | 'starting' | 'running' | 'stopping'
+
+/** A dedicated game server managed by the launcher, running on this PC. */
+export interface LocalServer {
+  id: string
+  name: string
+  /** undefined = minecraft (records predate multi-game support) */
+  game?: ServerGame
+  /** minecraft only; palworld records carry a placeholder */
+  kind: ServerKind
+  /** minecraft only; empty for other games */
+  minecraftVersion: string
+  /** loader version for fabric/neoforge/forge servers */
+  loaderVersion?: string
+  /** set when the server was created from a modpack or an instance */
+  packName?: string
+  /** main game port (TCP for minecraft, UDP for palworld) */
+  port: number
+  /** max heap in MiB (minecraft only; 0 for games that size themselves) */
+  memoryMax: number
+  /** Mojang java runtime component the server runs on. Empty for non-java games */
+  javaComponent: string
+  /** the game's server terms (Minecraft EULA / Palworld server terms) */
+  eulaAccepted: boolean
+  /** palworld: list in the official community server browser (-publiclobby) */
+  communityServer?: boolean
+  /** scheduled saves/restarts/backups + lifecycle switches */
+  automation?: ServerAutomation
+  createdAt: number
+}
+
+/** Per-server automation. Everything is off unless set; timers run while the server is online. */
+export interface ServerAutomation {
+  /** save the world every N minutes (0/undefined = off) */
+  saveIntervalMin?: number
+  restartMode?: 'off' | 'interval' | 'daily'
+  /** used when restartMode is 'interval' */
+  restartEveryHours?: number
+  /** "HH:MM" local time, used when restartMode is 'daily' */
+  restartDailyAt?: string
+  /** minutes of in-game warning before an automated restart (default 5) */
+  restartWarningMin?: number
+  /** bring the server back up after a crash (guarded against crash loops) */
+  restartOnCrash?: boolean
+  /** start this server when the launcher starts */
+  autoStart?: boolean
+  /** copy the world/save folders every N hours (0 = off) */
+  backupIntervalHours?: number
+  /** how many backups to keep (default 5) */
+  backupKeep?: number
+}
+
+/** Where a new server's content comes from. */
+export type ServerSource =
+  | { type: 'fresh'; kind: ServerKind; minecraftVersion: string }
+  /** Palworld dedicated server, installed via SteamCMD */
+  | { type: 'palworld'; serverPassword?: string; maxPlayers?: number; communityServer?: boolean }
+  /** picks a local .mrpack via a file dialog */
+  | { type: 'mrpack' }
+  /** installs a pack from the cloud modpack library */
+  | { type: 'cloudPack'; packId: string }
+  /** installs a modpack straight from the Modrinth browser */
+  | { type: 'modrinthPack'; projectId: string }
+  /** installs a modpack straight from the CurseForge browser (needs the CF API key) */
+  | { type: 'curseforgePack'; projectId: string }
+  /** mirrors one of your instances (server-safe mods + configs) */
+  | { type: 'instance'; instanceId: string }
+
+/** A mod jar living in a local server's mods folder. */
+export interface ServerMod {
+  fileName: string
+  sizeBytes: number
+  /** metadata when installed through the launcher's server mod browser */
+  projectId?: string
+  title?: string
+  versionNumber?: string
+  iconUrl?: string
+}
+
+/** One entry in a server-folder listing (file manager). */
+export interface ServerFileEntry {
+  name: string
+  isDir: boolean
+  sizeBytes: number
+  modifiedAt: number
+}
+
+/** whitelist.json / ops.json / banned-players.json entry */
+export interface PlayerListEntry {
+  name: string
+  uuid?: string
+}
+
+/** Live player row from a Palworld server's REST API. */
+export interface PalworldPlayerDetail {
+  name: string
+  accountName?: string
+  playerId?: string
+  /** platform id (steam_xxx) — the handle kick/ban act on */
+  userId?: string
+  level?: number
+  ping?: number
+}
+
+export type PalworldModerationAction = 'kick' | 'ban' | 'unban' | 'announce'
+
+// ---------- remote server management (cloud relay) ----------
+
+/** A grant letting another launcher user manage one of your servers. */
+export interface ServerShare {
+  id: string
+  serverId: string
+  serverName: string
+  granteeName: string
+}
+
+/** Live snapshot of a remote server: shared with you, or your own on another device. */
+export interface ManagedServer {
+  serverId: string
+  ownerName: string
+  /** true when this is your own server, hosted by your launcher on another PC */
+  isMine?: boolean
+  name: string
+  state: LocalServerState
+  players: string[]
+  address?: string
+  /** last console lines, newline-joined */
+  console: string
+  updatedAt: string
+}
+
+// ---------- server browser (saved servers + live status) ----------
+
+export interface SavedServerEntry {
+  id: string
+  name: string
+  address: string
+  addedAt: number
+}
+
+/** Result of a native Server List Ping against a Minecraft server. */
+export interface ServerPingResult {
+  online: boolean
+  /** flattened MOTD text */
+  motd?: string
+  players?: { online: number; max: number }
+  version?: string
+  latencyMs?: number
+  error?: string
+}
+
+export interface CreateServerOptions {
+  name: string
+  memoryMax?: number
+  /** must be true — writes eula.txt */
+  acceptEula: boolean
+  source: ServerSource
+}
+
+export interface ServerStatus {
+  state: LocalServerState
+  /** online player names, parsed from the server log */
+  players: string[]
+  /** public bore address when a tunnel is up for this server */
+  tunnelAddress?: string | null
+}
+
+export interface ServerStateEvent extends ServerStatus {
+  serverId: string
+  error?: string
+}
+
+export interface ServerLogEvent {
+  serverId: string
+  line: string
+}
+
+/** Progress of a long server task (creating, downloading java), for the Server tab. */
+export interface ServerTaskEvent {
+  phase: string
+  /** 0..1, or -1 when indeterminate */
+  progress: number
+  done?: boolean
 }
 
 // ---------- skins ----------

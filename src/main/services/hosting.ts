@@ -1,11 +1,11 @@
 import dgram from 'dgram'
-import { spawn, type ChildProcess } from 'child_process'
-import { existsSync, mkdirSync, rmSync, writeFileSync } from 'fs'
+import net from 'net'
+import os from 'os'
+import { rmSync } from 'fs'
 import { join } from 'path'
 import { app } from 'electron'
-import AdmZip from 'adm-zip'
 import { getInstance } from './instances'
-import { downloadToFile, installMod, modrinthFetch, readModsMeta } from './mods'
+import { installMod, modrinthFetch, readModsMeta } from './mods'
 
 const E4MC_SLUG = 'e4mc'
 
@@ -28,7 +28,48 @@ export async function enableE4mc(instanceId: string): Promise<{ alreadyInstalled
   return { alreadyInstalled: already }
 }
 
-// ---------- vanilla tunnel (bore) ----------
+// ---------- alternative share paths (manual forward / tailscale) ----------
+
+let publicIpCache: { ip: string | null; at: number } = { ip: null, at: 0 }
+
+/**
+ * Addresses for sharing a server that the launcher can't provide itself:
+ * the WAN IP (useful once the user forwards the port manually) and a
+ * Tailscale IP when the machine is on a tailnet (zero router setup).
+ */
+export async function getShareInfo(): Promise<{ publicIp: string | null; tailscaleIp: string | null }> {
+  let publicIp = publicIpCache.at > Date.now() - 600_000 ? publicIpCache.ip : null
+  if (!publicIp) {
+    try {
+      const res = await fetch('https://api.ipify.org', { signal: AbortSignal.timeout(5000) })
+      publicIp = res.ok ? (await res.text()).trim() : null
+    } catch {
+      publicIp = null
+    }
+    if (publicIp) publicIpCache = { ip: publicIp, at: Date.now() }
+  }
+
+  // Tailscale assigns addresses from the CGNAT range 100.64.0.0/10
+  let tailscaleIp: string | null = null
+  for (const infos of Object.values(os.networkInterfaces())) {
+    for (const info of infos ?? []) {
+      if (info.family !== 'IPv4' || info.internal) continue
+      const [a, b] = info.address.split('.').map(Number)
+      if (a === 100 && b >= 64 && b <= 127) tailscaleIp = info.address
+    }
+  }
+  return { publicIp, tailscaleIp }
+}
+
+// ---------- vanilla tunnel: native bore.pub client ----------
+//
+// The bore protocol (github.com/ekzhang/bore) is spoken directly over TCP:
+// null-delimited JSON frames on the control port. Earlier builds downloaded
+// the bore.exe helper instead, but unsigned tunnel binaries trip Defender's
+// ML signatures (Trojan:Win32/KepavII!rfn false positive) — the exe got
+// quarantined with a scary "Severe threat" popup and the feature broke.
+// Native sockets mean no download, nothing for AV to flag, and no
+// Windows-only restriction.
 
 const LAN_MULTICAST = '224.0.2.60'
 const LAN_PORT = 4445
@@ -75,82 +116,166 @@ export function detectLanPort(timeoutMs = 120_000): Promise<number> {
   })
 }
 
-const boreDir = join(app.getPath('userData'), 'bin')
-const borePath = join(boreDir, 'bore.exe')
-
-/** Download the open-source `bore` tunnel client once (official GitHub release) into the app data dir. */
-async function ensureBore(): Promise<string> {
-  if (process.platform !== 'win32') {
-    throw new Error('The built-in tunnel is currently Windows-only. On other systems, use the e4mc (modded) option.')
-  }
-  if (existsSync(borePath)) return borePath
-  mkdirSync(boreDir, { recursive: true })
-  const rel = (await (
-    await fetch('https://api.github.com/repos/ekzhang/bore/releases/latest', {
-      headers: { 'User-Agent': 'ELauncher', Accept: 'application/vnd.github+json' }
-    })
-  ).json()) as { assets: { name: string; browser_download_url: string }[] }
-  const asset = rel.assets.find((a) => a.name.includes('x86_64-pc-windows-msvc') && a.name.endsWith('.zip'))
-  if (!asset) throw new Error('Could not find a Windows build of the tunnel helper.')
-  const dl = join(boreDir, asset.name)
-  await downloadToFile(asset.browser_download_url, dl)
-  const entry = new AdmZip(dl).getEntries().find((e) => /bore\.exe$/i.test(e.entryName))
-  if (!entry) throw new Error('Tunnel helper archive did not contain bore.exe.')
-  writeFileSync(borePath, entry.getData())
-  rmSync(dl, { force: true })
-  return borePath
+// Sweep the helper exe off installs that downloaded it, so it stops tripping scans.
+try {
+  rmSync(join(app.getPath('userData'), 'bin'), { recursive: true, force: true })
+} catch {
+  // locked or already quarantined — nothing to clean
 }
 
-let tunnel: { proc: ChildProcess; address: string } | null = null
+const BORE_HOST = 'bore.pub'
+const BORE_CONTROL_PORT = 7835
+const HELLO_TIMEOUT_MS = 20_000
+/** The relay heartbeats twice a second; a long silence means the link is dead. */
+const CONTROL_IDLE_TIMEOUT_MS = 30_000
 
-export function getTunnelAddress(): string | null {
-  return tunnel?.address ?? null
+interface Tunnel {
+  control: net.Socket
+  conns: Set<net.Socket>
+  address: string
+}
+
+/** Live tunnels keyed by the local port they expose (LAN world or dedicated server). */
+const tunnels = new Map<number, Tunnel>()
+
+/** Callbacks fired when a tunnel goes away — stopped on purpose or dropped by the relay. */
+const tunnelClosedListeners: ((port: number) => void)[] = []
+
+export function onTunnelClosed(listener: (port: number) => void): void {
+  tunnelClosedListeners.push(listener)
+}
+
+/** Forget a tunnel, tear its sockets down, and notify listeners exactly once. */
+function dropTunnel(port: number, tunnel: Tunnel): void {
+  if (tunnels.get(port) === tunnel) {
+    tunnels.delete(port)
+    for (const listener of tunnelClosedListeners) listener(port)
+  }
+  tunnel.control.destroy()
+  for (const conn of tunnel.conns) conn.destroy()
+}
+
+type BoreServerMessage =
+  | 'Heartbeat'
+  | { Hello: number }
+  | { Connection: string }
+  | { Challenge: string }
+  | { Error: string }
+
+function sendFrame(sock: net.Socket, msg: unknown): void {
+  sock.write(JSON.stringify(msg) + '\0')
+}
+
+function onFrames(sock: net.Socket, handler: (msg: BoreServerMessage) => void): void {
+  let buf = Buffer.alloc(0)
+  sock.on('data', (chunk: Buffer) => {
+    buf = Buffer.concat([buf, chunk])
+    let end: number
+    while ((end = buf.indexOf(0)) !== -1) {
+      const frame = buf.subarray(0, end).toString('utf8')
+      buf = buf.subarray(end + 1)
+      if (!frame) continue
+      try {
+        handler(JSON.parse(frame) as BoreServerMessage)
+      } catch {
+        // malformed frame — skip it
+      }
+    }
+  })
+}
+
+/** Answer a Connection(uuid) offer: claim the visitor on a data socket and pipe raw bytes. */
+function acceptVisitor(uuid: string, localPort: number, conns: Set<net.Socket>): void {
+  const remote = net.connect(BORE_CONTROL_PORT, BORE_HOST)
+  const local = net.connect(localPort, '127.0.0.1')
+  conns.add(remote)
+  conns.add(local)
+  const drop = (): void => {
+    conns.delete(remote)
+    conns.delete(local)
+    remote.destroy()
+    local.destroy()
+  }
+  remote.on('error', drop)
+  local.on('error', drop)
+  remote.on('close', drop)
+  local.on('close', drop)
+  remote.setKeepAlive(true, 15_000)
+  remote.on('connect', () => {
+    sendFrame(remote, { Accept: uuid })
+    // everything after the Accept frame is the player's raw traffic, both ways
+    remote.pipe(local)
+    local.pipe(remote)
+  })
+}
+
+export function getTunnelAddress(port?: number): string | null {
+  if (port !== undefined) return tunnels.get(port)?.address ?? null
+  const first = tunnels.values().next()
+  return first.done ? null : first.value.address
 }
 
 /**
- * Detect the open LAN world, then expose it publicly through the free bore.pub
- * relay and return the shareable `bore.pub:<port>` address.
+ * Expose a local port publicly through the free bore.pub relay and return the
+ * shareable `bore.pub:<port>` address. When no port is given, the open LAN
+ * world is auto-detected from Minecraft's multicast broadcast.
  */
-export async function startTunnel(): Promise<{ address: string }> {
-  if (tunnel) return { address: tunnel.address }
-  const port = await detectLanPort()
-  const bore = await ensureBore()
-  const proc = spawn(bore, ['local', String(port), '--to', 'bore.pub'], { windowsHide: true })
+export async function startTunnel(port?: number): Promise<{ address: string }> {
+  const local = port ?? (await detectLanPort())
+  const existing = tunnels.get(local)
+  if (existing) return { address: existing.address }
+
+  const control = net.connect(BORE_CONTROL_PORT, BORE_HOST)
+  control.setKeepAlive(true, 15_000)
+  control.setTimeout(CONTROL_IDLE_TIMEOUT_MS)
+  control.on('timeout', () => control.destroy())
+  const conns = new Set<net.Socket>()
 
   const address = await new Promise<string>((resolve, reject) => {
-    let buf = ''
+    let up = false
     const timer = setTimeout(() => {
-      proc.kill()
+      control.destroy()
       reject(new Error('The tunnel did not come up in time. The bore.pub relay may be busy — try again.'))
-    }, 25_000)
-    const onData = (chunk: Buffer): void => {
-      buf += chunk.toString()
-      const m = buf.match(/bore\.pub:(\d{2,5})/) ?? buf.match(/remote_port\D*(\d{2,5})/)
-      if (m) {
+    }, HELLO_TIMEOUT_MS)
+
+    control.on('connect', () => sendFrame(control, { Hello: 0 }))
+    onFrames(control, (msg) => {
+      if (typeof msg !== 'object' || msg === null) return // heartbeat keepalive
+      if ('Hello' in msg) {
+        up = true
         clearTimeout(timer)
-        resolve(m[0].startsWith('bore.pub') ? m[0] : `bore.pub:${m[1]}`)
+        resolve(`${BORE_HOST}:${msg.Hello}`)
+      } else if ('Connection' in msg) {
+        acceptVisitor(msg.Connection, local, conns)
+      } else if (!up) {
+        clearTimeout(timer)
+        control.destroy()
+        const detail = 'Error' in msg ? msg.Error : 'it requires authentication'
+        reject(new Error(`The bore.pub relay refused the tunnel: ${detail}`))
       }
-    }
-    proc.stdout?.on('data', onData)
-    proc.stderr?.on('data', onData)
-    proc.on('error', (e) => {
-      clearTimeout(timer)
-      reject(e)
     })
-    proc.on('exit', (code) => {
+    control.on('error', (e) => {
       clearTimeout(timer)
-      reject(new Error(`Tunnel process exited (code ${code}).`))
+      reject(new Error(`Could not reach the tunnel relay: ${e.message}`))
+    })
+    control.on('close', () => {
+      clearTimeout(timer)
+      reject(new Error('The tunnel relay closed the connection.'))
     })
   })
 
-  tunnel = { proc, address }
-  proc.on('exit', () => {
-    if (tunnel?.proc === proc) tunnel = null
-  })
+  const tunnel: Tunnel = { control, conns, address }
+  tunnels.set(local, tunnel)
+  control.on('close', () => dropTunnel(local, tunnel))
   return { address }
 }
 
-export function stopTunnel(): void {
-  tunnel?.proc.kill()
-  tunnel = null
+/** Stop one tunnel by local port, or every tunnel when no port is given. */
+export function stopTunnel(port?: number): void {
+  if (port !== undefined) {
+    const tunnel = tunnels.get(port)
+    if (tunnel) dropTunnel(port, tunnel)
+    return
+  }
+  for (const [p, tunnel] of [...tunnels]) dropTunnel(p, tunnel)
 }
