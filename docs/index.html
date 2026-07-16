@@ -1,0 +1,616 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>ELauncher — a Minecraft launcher for you and your friends</title>
+  <meta name="description" content="A free, open-source Minecraft launcher for Windows: Microsoft login, Fabric/Forge/NeoForge, a Modrinth + CurseForge mod browser, shareable modpacks, and one-click cloud packs for your friend group." />
+  <meta property="og:title" content="ELauncher" />
+  <meta property="og:description" content="A free Minecraft launcher built for friend groups — mod loaders, mod browser, shareable modpacks, automatic updates." />
+  <meta property="og:image" content="https://enderappsrepo.github.io/elauncher/icon.png" />
+  <link rel="icon" type="image/png" href="icon.png" />
+  <style>
+    /* ELauncher "obsidian aurora" — same tokens as the app */
+    :root {
+      --bg: #0a0a0f;
+      --bg-card: #121218;
+      --bg-elevated: #16161d;
+      --border: rgba(255, 255, 255, 0.08);
+      --border-strong: rgba(255, 255, 255, 0.15);
+      --text: #f4f5fa;
+      --text-dim: #a0a3b6;
+      --text-faint: #64677a;
+      --accent: #7c6cff;
+      --accent-2: #22d3ee;
+      --accent-3: #d946ef;
+      --accent-soft: rgba(124, 108, 255, 0.14);
+      --accent-glow: rgba(124, 108, 255, 0.34);
+      --green: #34d399;
+      --radius-lg: 24px;
+      --radius: 18px;
+      --radius-sm: 11px;
+      --glass: linear-gradient(180deg, rgba(255, 255, 255, 0.045), rgba(255, 255, 255, 0.012) 55%);
+      --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, -apple-system, sans-serif;
+      font-size: 16px;
+      line-height: 1.6;
+      -webkit-font-smoothing: antialiased;
+      overflow-x: hidden;
+    }
+
+    h1, h2, h3 { letter-spacing: -0.02em; line-height: 1.15; }
+    a { color: var(--accent-2); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    /* ---- ambient aurora ---- */
+    .aurora {
+      position: fixed;
+      inset: 0;
+      z-index: -1;
+      pointer-events: none;
+      background:
+        radial-gradient(620px 620px at 6% -8%, rgba(124, 108, 255, 0.18), transparent 70%),
+        radial-gradient(540px 540px at 98% 8%, rgba(34, 211, 238, 0.11), transparent 70%),
+        radial-gradient(600px 600px at 62% 58%, rgba(217, 70, 239, 0.08), transparent 70%);
+    }
+
+    .wrap { max-width: 1080px; margin: 0 auto; padding: 0 24px; }
+
+    /* ---- header ---- */
+    header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 22px 0;
+    }
+    header img { width: 34px; height: 34px; border-radius: 9px; }
+    .brand {
+      font-weight: 800;
+      font-size: 19px;
+      letter-spacing: -0.03em;
+    }
+    .brand b {
+      background: linear-gradient(90deg, var(--accent), var(--accent-2));
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+    }
+    header nav { margin-left: auto; display: flex; gap: 22px; align-items: center; }
+    header nav a { color: var(--text-dim); font-size: 14.5px; font-weight: 600; }
+    header nav a:hover { color: var(--text); text-decoration: none; }
+
+    /* ---- hero ---- */
+    .hero {
+      padding: 72px 0 40px;
+      text-align: center;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    .hero .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-dim);
+      border: 1px solid var(--border);
+      background: var(--glass);
+      padding: 6px 14px;
+      border-radius: 99px;
+      margin-bottom: 26px;
+    }
+    .hero .pill .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--green); box-shadow: 0 0 10px var(--green); }
+    .hero h1 {
+      font-size: clamp(38px, 6.5vw, 62px);
+      font-weight: 850;
+      max-width: 760px;
+    }
+    .hero h1 em {
+      font-style: normal;
+      background: linear-gradient(90deg, var(--accent), var(--accent-2) 60%, var(--accent-3));
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+    }
+    .hero p.sub {
+      margin: 20px auto 0;
+      max-width: 620px;
+      color: var(--text-dim);
+      font-size: 18px;
+    }
+
+    .cta-row {
+      margin-top: 36px;
+      display: flex;
+      gap: 14px;
+      flex-wrap: wrap;
+      justify-content: center;
+      align-items: center;
+    }
+    .btn-primary {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      padding: 15px 28px;
+      border-radius: 14px;
+      font-size: 17px;
+      font-weight: 750;
+      color: #fff;
+      background: linear-gradient(135deg, var(--accent), #635adf 55%, var(--accent-2) 130%);
+      box-shadow: 0 8px 32px var(--accent-glow), inset 0 1px 0 rgba(255, 255, 255, 0.25);
+      transition: transform 0.18s var(--ease-out), filter 0.18s ease;
+    }
+    .btn-primary:hover { transform: translateY(-2px); filter: brightness(1.08); text-decoration: none; }
+    .btn-ghost {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 14px 22px;
+      border-radius: 14px;
+      font-size: 15px;
+      font-weight: 650;
+      color: var(--text);
+      border: 1px solid var(--border-strong);
+      background: var(--glass);
+    }
+    .btn-ghost:hover { border-color: var(--accent); text-decoration: none; }
+    .cta-meta {
+      width: 100%;
+      margin-top: 14px;
+      color: var(--text-faint);
+      font-size: 13.5px;
+    }
+    .cta-meta b { color: var(--text-dim); font-weight: 650; }
+
+    /* ---- app mockup ---- */
+    .shot {
+      margin: 64px auto 0;
+      max-width: 920px;
+      border-radius: var(--radius-lg);
+      border: 1px solid var(--border-strong);
+      background: #0b0b11;
+      box-shadow: 0 40px 120px rgba(0, 0, 0, 0.6), 0 0 80px rgba(124, 108, 255, 0.12);
+      overflow: hidden;
+      text-align: left;
+      user-select: none;
+    }
+    .shot .bar {
+      height: 34px;
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      padding: 0 14px;
+      border-bottom: 1px solid var(--border);
+      background: #0b0b0e;
+    }
+    .shot .bar i { width: 11px; height: 11px; border-radius: 50%; background: rgba(255, 255, 255, 0.12); }
+    .shot-body { display: flex; min-height: 380px; }
+    .shot-side {
+      width: 200px;
+      flex-shrink: 0;
+      padding: 16px 12px;
+      border-right: 1px solid var(--border);
+      background: linear-gradient(180deg, rgba(124, 108, 255, 0.07), transparent 240px), rgba(11, 11, 17, 0.82);
+      display: flex;
+      flex-direction: column;
+      gap: 7px;
+      font-size: 12.5px;
+      font-weight: 600;
+      color: var(--text-dim);
+    }
+    .shot-side .s-brand { display: flex; align-items: center; gap: 8px; font-weight: 800; color: var(--text); margin-bottom: 10px; }
+    .shot-side .s-brand img { width: 20px; height: 20px; border-radius: 5px; }
+    .shot-side .s-item { display: flex; align-items: center; gap: 9px; padding: 7px 10px; border-radius: 9px; }
+    .shot-side .s-item.on { background: var(--accent-soft); color: var(--text); box-shadow: inset 0 0 0 1px rgba(124, 108, 255, 0.2); }
+    .shot-side .s-item i { width: 13px; height: 13px; border-radius: 4px; background: currentColor; opacity: 0.55; }
+    .shot-side .s-play {
+      margin-top: auto;
+      text-align: center;
+      padding: 9px;
+      border-radius: 9px;
+      color: #fff;
+      font-weight: 750;
+      background: linear-gradient(135deg, var(--accent), var(--accent-2));
+      box-shadow: 0 4px 18px var(--accent-glow);
+    }
+    .shot-main { flex: 1; padding: 20px; }
+    .shot-main .m-title { font-weight: 800; font-size: 17px; margin-bottom: 4px; }
+    .shot-main .m-sub { color: var(--text-faint); font-size: 12px; margin-bottom: 16px; }
+    .shot-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+    .shot-card {
+      border-radius: 13px;
+      border: 1px solid var(--border);
+      background: var(--bg-card);
+      overflow: hidden;
+    }
+    .shot-card .cover { height: 74px; }
+    .shot-card .meta { padding: 10px 12px; }
+    .shot-card .meta b { display: block; font-size: 12.5px; }
+    .shot-card .meta span { font-size: 11px; color: var(--text-faint); }
+    .c1 { background: linear-gradient(135deg, #7c6cff, #22d3ee); }
+    .c2 { background: linear-gradient(135deg, #d946ef, #7c6cff); }
+    .c3 { background: linear-gradient(135deg, #059669, #22d3ee); }
+    .c4 { background: linear-gradient(135deg, #f59e0b, #d946ef); }
+    .c5 { background: linear-gradient(135deg, #22d3ee, #34d399); }
+    .c6 { background: linear-gradient(135deg, #635adf, #fb7185); }
+
+    /* ---- sections ---- */
+    section { padding: 88px 0 0; }
+    .kicker {
+      font-size: 13px;
+      font-weight: 750;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--accent-2);
+      margin-bottom: 10px;
+    }
+    section > .wrap > h2, .sec-h2 {
+      font-size: clamp(26px, 4vw, 36px);
+      font-weight: 820;
+      max-width: 640px;
+    }
+    .sec-sub { color: var(--text-dim); max-width: 620px; margin-top: 12px; }
+
+    .grid {
+      margin-top: 40px;
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 16px;
+    }
+    .card {
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      background: var(--glass), var(--bg-card);
+      padding: 22px;
+      transition: border-color 0.2s ease, transform 0.2s var(--ease-out);
+    }
+    .card:hover { border-color: rgba(124, 108, 255, 0.4); transform: translateY(-3px); }
+    .card .ic {
+      width: 40px;
+      height: 40px;
+      border-radius: 11px;
+      display: grid;
+      place-items: center;
+      background: var(--accent-soft);
+      color: var(--accent);
+      margin-bottom: 14px;
+    }
+    .card h3 { font-size: 16.5px; margin-bottom: 6px; }
+    .card p { color: var(--text-dim); font-size: 14.5px; }
+
+    /* ---- steps ---- */
+    .steps {
+      margin-top: 40px;
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 16px;
+      counter-reset: step;
+    }
+    .step {
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      background: var(--glass), var(--bg-card);
+      padding: 24px 22px;
+      position: relative;
+    }
+    .step::before {
+      counter-increment: step;
+      content: counter(step, decimal-leading-zero);
+      font-size: 13px;
+      font-weight: 800;
+      color: var(--accent);
+      display: block;
+      margin-bottom: 10px;
+    }
+    .step h3 { font-size: 16px; margin-bottom: 6px; }
+    .step p { color: var(--text-dim); font-size: 14.5px; }
+
+    /* ---- download / smartscreen ---- */
+    .dl-panel {
+      margin-top: 40px;
+      border: 1px solid rgba(124, 108, 255, 0.3);
+      border-radius: var(--radius-lg);
+      background:
+        radial-gradient(600px 200px at 20% 0%, rgba(124, 108, 255, 0.12), transparent),
+        radial-gradient(600px 200px at 80% 100%, rgba(34, 211, 238, 0.08), transparent),
+        var(--bg-card);
+      padding: 44px 36px;
+      text-align: center;
+    }
+    .dl-panel h2 { font-size: 28px; }
+    .dl-panel .cta-row { margin-top: 26px; }
+    .note {
+      margin: 26px auto 0;
+      max-width: 640px;
+      text-align: left;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      background: rgba(251, 191, 36, 0.06);
+      padding: 14px 18px;
+      font-size: 14px;
+      color: var(--text-dim);
+    }
+    .note b { color: var(--text); }
+
+    /* ---- faq ---- */
+    .faq { max-width: 760px; margin-top: 36px; }
+    details {
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      background: var(--glass), var(--bg-card);
+      padding: 16px 20px;
+      margin-bottom: 10px;
+    }
+    summary {
+      cursor: pointer;
+      font-weight: 700;
+      font-size: 15.5px;
+      list-style: none;
+      display: flex;
+      align-items: center;
+    }
+    summary::-webkit-details-marker { display: none; }
+    summary::after { content: '+'; margin-left: auto; color: var(--accent); font-size: 20px; font-weight: 600; }
+    details[open] summary::after { content: '–'; }
+    details p { margin-top: 10px; color: var(--text-dim); font-size: 14.5px; }
+
+    footer {
+      margin-top: 96px;
+      border-top: 1px solid var(--border);
+      padding: 34px 0 44px;
+      color: var(--text-faint);
+      font-size: 13.5px;
+    }
+    footer .wrap { display: flex; flex-wrap: wrap; gap: 10px 26px; align-items: center; }
+    footer .disclaimer { width: 100%; margin-top: 8px; }
+
+    svg.i { width: 20px; height: 20px; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; fill: none; }
+
+    @media (max-width: 720px) {
+      .shot-side { display: none; }
+      .shot-grid { grid-template-columns: repeat(2, 1fr); }
+      header nav a:not(.gh) { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <div class="aurora" aria-hidden="true"></div>
+
+  <div class="wrap">
+    <header>
+      <img src="icon.png" alt="" />
+      <span class="brand">E<b>Launcher</b></span>
+      <nav>
+        <a href="#features">Features</a>
+        <a href="#friends">For friend groups</a>
+        <a href="#faq">FAQ</a>
+        <a class="gh" href="https://github.com/Enderappsrepo/elauncher" target="_blank" rel="noopener">GitHub</a>
+      </nav>
+    </header>
+  </div>
+
+  <main>
+    <div class="wrap">
+      <section class="hero" style="padding-top: 56px">
+        <span class="pill"><span class="dot"></span> Free &amp; open source · Windows 10/11</span>
+        <h1>Minecraft, modded, <em>minus the hassle.</em></h1>
+        <p class="sub">
+          ELauncher is a clean, fast Minecraft launcher built for friend groups — Microsoft login,
+          Fabric / Forge / NeoForge, a built-in mod browser, and modpacks your friends install with one click.
+        </p>
+        <div class="cta-row">
+          <a class="btn-primary" data-dl="setup" href="https://github.com/Enderappsrepo/elauncher/releases/latest">
+            <svg class="i" viewBox="0 0 24 24"><path d="M12 3v12m0 0l-4.5-4.5M12 15l4.5-4.5M4 19h16"/></svg>
+            Download for Windows
+          </a>
+          <a class="btn-ghost" data-dl="portable" href="https://github.com/Enderappsrepo/elauncher/releases/latest">Portable version</a>
+        </div>
+        <div class="cta-meta">
+          <span data-rel="version"><b>Latest release</b></span><span data-rel="size"></span> · installs in seconds · updates itself automatically
+        </div>
+
+        <div class="shot" aria-hidden="true">
+          <div class="bar"><i></i><i></i><i></i></div>
+          <div class="shot-body">
+            <div class="shot-side">
+              <div class="s-brand"><img src="icon.png" alt="" /> E<span style="color:var(--accent)">Launcher</span></div>
+              <div class="s-item on"><i></i> Home</div>
+              <div class="s-item"><i></i> Instances</div>
+              <div class="s-item"><i></i> Modpacks</div>
+              <div class="s-item"><i></i> Browse</div>
+              <div class="s-item"><i></i> Skins</div>
+              <div class="s-item"><i></i> Settings</div>
+              <div class="s-play">▶ Play</div>
+            </div>
+            <div class="shot-main">
+              <div class="m-title">Instances</div>
+              <div class="m-sub">6 instances · 2 shared with friends</div>
+              <div class="shot-grid">
+                <div class="shot-card"><div class="cover c1"></div><div class="meta"><b>Create SMP</b><span>NeoForge 1.21.1</span></div></div>
+                <div class="shot-card"><div class="cover c2"></div><div class="meta"><b>Fabulously Optimized</b><span>Fabric 1.21.4</span></div></div>
+                <div class="shot-card"><div class="cover c3"></div><div class="meta"><b>Vanilla+</b><span>Fabric 1.21.4</span></div></div>
+                <div class="shot-card"><div class="cover c4"></div><div class="meta"><b>RLCraft</b><span>Forge 1.12.2</span></div></div>
+                <div class="shot-card"><div class="cover c5"></div><div class="meta"><b>Friends Pack S3</b><span>NeoForge 1.21.1</span></div></div>
+                <div class="shot-card"><div class="cover c6"></div><div class="meta"><b>Hardcore UHC</b><span>Vanilla 1.21.4</span></div></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="features">
+        <div class="kicker">Everything built in</div>
+        <h2 class="sec-h2">One launcher instead of five tools</h2>
+        <p class="sec-sub">No juggling separate installers, mod sites, and config folders — ELauncher handles the whole modded workflow.</p>
+        <div class="grid">
+          <div class="card">
+            <div class="ic"><svg class="i" viewBox="0 0 24 24"><path d="M12 12a4 4 0 100-8 4 4 0 000 8zM4 21c0-4 3.5-6 8-6s8 2 8 6"/></svg></div>
+            <h3>Real Microsoft login</h3>
+            <p>Sign in with your Microsoft account — multiple accounts supported, tokens stored locally on your PC.</p>
+          </div>
+          <div class="card">
+            <div class="ic"><svg class="i" viewBox="0 0 24 24"><path d="M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z"/></svg></div>
+            <h3>Instances done right</h3>
+            <p>Every setup lives in its own instance with its own mods, worlds, and settings. Duplicate, tweak, break things safely.</p>
+          </div>
+          <div class="card">
+            <div class="ic"><svg class="i" viewBox="0 0 24 24"><path d="M12 2l9 5v10l-9 5-9-5V7l9-5zM12 12l9-5M12 12v10M12 12L3 7"/></svg></div>
+            <h3>Fabric, Forge &amp; NeoForge</h3>
+            <p>Pick a Minecraft version and loader — ELauncher installs the right Java and loader files for you.</p>
+          </div>
+          <div class="card">
+            <div class="ic"><svg class="i" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg></div>
+            <h3>Modrinth + CurseForge browser</h3>
+            <p>Search, install, and update mods, resource packs, and shaders from both platforms without leaving the launcher.</p>
+          </div>
+          <div class="card">
+            <div class="ic"><svg class="i" viewBox="0 0 24 24"><path d="M17 8a5 5 0 00-9.8 1.2A4 4 0 008 17h9a4 4 0 100-8h0z"/></svg></div>
+            <h3>Shareable modpacks</h3>
+            <p>Export any instance as a pack file or publish it to your group's cloud library — friends install and update it with one click.</p>
+          </div>
+          <div class="card">
+            <div class="ic"><svg class="i" viewBox="0 0 24 24"><path d="M13 2L4 14h6l-1 8 9-12h-6l1-8z"/></svg></div>
+            <h3>Performance tuned</h3>
+            <p>Optimized JVM flags, automatic memory sizing, and one-click performance mod setups that stop the stutter.</p>
+          </div>
+          <div class="card">
+            <div class="ic"><svg class="i" viewBox="0 0 24 24"><path d="M12 12a4 4 0 100-8 4 4 0 000 8z"/><path d="M20 21a8 8 0 00-16 0M12 12v3"/></svg></div>
+            <h3>Skin manager</h3>
+            <p>Preview skins in 3D, keep a wardrobe of favorites, grab any player's skin by name, and apply in one click.</p>
+          </div>
+          <div class="card">
+            <div class="ic"><svg class="i" viewBox="0 0 24 24"><path d="M21 12a9 9 0 11-2.6-6.4M21 3v6h-6"/></svg></div>
+            <h3>Updates itself</h3>
+            <p>The launcher checks GitHub for new versions, downloads them in the background, and installs on restart. You never reinstall.</p>
+          </div>
+          <div class="card">
+            <div class="ic"><svg class="i" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h10"/></svg></div>
+            <h3>Bring your setups with you</h3>
+            <p>Migrate instances from other launchers — worlds, mods, and settings come along automatically.</p>
+          </div>
+        </div>
+      </section>
+
+      <section id="friends">
+        <div class="kicker">The good part</div>
+        <h2 class="sec-h2">Made for playing with friends</h2>
+        <p class="sec-sub">The whole point of ELauncher: one person curates the pack, everyone else just presses play.</p>
+        <div class="steps">
+          <div class="step">
+            <h3>Build your pack</h3>
+            <p>Set up an instance with the mods, settings, and performance tweaks you want your group to run.</p>
+          </div>
+          <div class="step">
+            <h3>Publish to your cloud</h3>
+            <p>Push it to your group's own free cloud library (powered by Supabase) straight from the launcher.</p>
+          </div>
+          <div class="step">
+            <h3>Friends click install</h3>
+            <p>Everyone sees the pack on their Modpacks page. One click installs it; when you update it, they get a badge and update in one click too.</p>
+          </div>
+        </div>
+      </section>
+
+      <section id="download">
+        <div class="dl-panel">
+          <h2>Get ELauncher</h2>
+          <div class="cta-row">
+            <a class="btn-primary" data-dl="setup" href="https://github.com/Enderappsrepo/elauncher/releases/latest">
+              <svg class="i" viewBox="0 0 24 24"><path d="M12 3v12m0 0l-4.5-4.5M12 15l4.5-4.5M4 19h16"/></svg>
+              Download the installer
+            </a>
+            <a class="btn-ghost" data-dl="portable" href="https://github.com/Enderappsrepo/elauncher/releases/latest">Portable .exe</a>
+            <a class="btn-ghost" href="https://github.com/Enderappsrepo/elauncher/releases" target="_blank" rel="noopener">All releases</a>
+          </div>
+          <div class="cta-meta"><span data-rel="version"><b>Latest release</b></span><span data-rel="size"></span></div>
+          <div class="note">
+            <b>Windows may show a SmartScreen warning</b> the first time you run the installer — that's normal for
+            small open-source apps that aren't code-signed (certificates cost hundreds of dollars a year).
+            Click <b>More info → Run anyway</b>. The installer is built publicly by GitHub Actions from the
+            source in this repository, so you can see exactly what's in it.
+          </div>
+        </div>
+      </section>
+
+      <section id="faq">
+        <div class="kicker">Questions</div>
+        <h2 class="sec-h2">FAQ</h2>
+        <div class="faq">
+          <details>
+            <summary>Is it free?</summary>
+            <p>Yes — free and open source under the MIT license. No ads, no accounts required beyond your normal Microsoft login, no telemetry.</p>
+          </details>
+          <details>
+            <summary>Do I need to own Minecraft?</summary>
+            <p>Yes. ELauncher signs you in with your real Microsoft account and launches the game you already own — it's a launcher, not a pirated client.</p>
+          </details>
+          <details>
+            <summary>Is my Microsoft account safe?</summary>
+            <p>Sign-in happens through Microsoft's official login window (OAuth). ELauncher never sees your password; game tokens are stored locally on your machine only.</p>
+          </details>
+          <details>
+            <summary>How do updates work?</summary>
+            <p>The launcher checks this site's GitHub releases when it starts, downloads new versions in the background, and installs them when you restart. The portable build tells you when a new version is out and links you here instead.</p>
+          </details>
+          <details>
+            <summary>What about the "cloud" — whose servers are those?</summary>
+            <p>Your own. The modpack cloud is a free Supabase project that one person in your group sets up in about five minutes (instructions in the README). Nobody else's server is involved.</p>
+          </details>
+          <details>
+            <summary>Mac or Linux?</summary>
+            <p>Windows only right now. The code is open source, so a Mac/Linux build is mostly a packaging task — open an issue if you want it.</p>
+          </details>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <footer>
+    <div class="wrap">
+      <span>MIT licensed</span>
+      <a href="https://github.com/Enderappsrepo/elauncher" target="_blank" rel="noopener">Source on GitHub</a>
+      <a href="https://github.com/Enderappsrepo/elauncher/issues" target="_blank" rel="noopener">Report an issue</a>
+      <span class="disclaimer">ELauncher is a community project, not affiliated with Mojang, Microsoft, Modrinth, or Overwolf/CurseForge. Minecraft is a trademark of Mojang Synergies AB.</span>
+    </div>
+  </footer>
+
+  <script>
+    // Point the download buttons at the actual latest-release assets.
+    // Buttons fall back to the releases page if the API is unreachable.
+    (async () => {
+      try {
+        const r = await fetch('https://api.github.com/repos/Enderappsrepo/elauncher/releases/latest');
+        if (!r.ok) return;
+        const rel = await r.json();
+        const assets = rel.assets || [];
+        const setup = assets.find((a) => /Setup.*\.exe$/i.test(a.name));
+        const portable = assets.find((a) => /Portable.*\.exe$/i.test(a.name));
+        const mb = (b) => `${(b / 1048576).toFixed(0)} MB`;
+
+        if (setup) {
+          document.querySelectorAll('[data-dl="setup"]').forEach((el) => (el.href = setup.browser_download_url));
+          document.querySelectorAll('[data-rel="size"]').forEach((el) => (el.textContent = ` · ${mb(setup.size)}`));
+        }
+        if (portable) {
+          document.querySelectorAll('[data-dl="portable"]').forEach((el) => (el.href = portable.browser_download_url));
+        }
+        if (rel.tag_name) {
+          document.querySelectorAll('[data-rel="version"]').forEach((el) => (el.innerHTML = `<b>${rel.tag_name.replace(/^v/, 'v')}</b>`));
+        }
+      } catch {
+        /* keep fallback links */
+      }
+    })();
+  </script>
+</body>
+</html>

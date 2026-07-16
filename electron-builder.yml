@@ -1,0 +1,32 @@
+appId: com.elauncher.app
+productName: ELauncher
+# where installed apps look for updates (electron-updater) and where releases get uploaded
+publish:
+  provider: github
+  owner: Enderappsrepo
+  repo: elauncher
+  releaseType: release
+directories:
+  buildResources: build
+  output: release
+files:
+  - out/**
+  - package.json
+asarUnpack:
+  - node_modules/@xmcl/**
+win:
+  icon: build/icon.ico
+  target:
+    - nsis
+    - portable
+nsis:
+  artifactName: ${productName}-Setup-${version}.${ext}
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: always
+  shortcutName: ELauncher
+portable:
+  artifactName: ${productName}-Portable-${version}.${ext}
+electronDownload:
+  cache: .electron-cache
+npmRebuild: false
