@@ -155,6 +155,7 @@ export async function getHostReport(): Promise<HostReport> {
 
 /** Publish the report so the phone dashboard can show the same card. */
 export function startHostReportPublisher(): void {
+  let published = false
   const publish = async (): Promise<void> => {
     try {
       if (!isCloudConfigured()) return
@@ -162,13 +163,19 @@ export function startHostReportPublisher(): void {
       const me = (await supabase.auth.getSession()).data.session?.user.id
       if (!me) return
       const report = await getHostReport()
-      await supabase
+      const { error } = await supabase
         .from('host_specs')
         .upsert({ owner_id: me, specs: report.specs, report, updated_at: new Date().toISOString() })
+      if (!error) published = true
     } catch {
-      // table missing or offline — the in-launcher card still works
+      // offline — retried below
     }
   }
   setTimeout(() => void publish(), 8_000)
+  // until the first success (e.g. the table's migration lands mid-flight), retry
+  // every 10 minutes; afterwards a 12h cadence keeps the report fresh
+  setInterval(() => {
+    if (!published) void publish()
+  }, 10 * 60_000)
   setInterval(() => void publish(), 12 * 3_600_000)
 }

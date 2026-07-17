@@ -207,6 +207,7 @@ export async function sendRemoteCommand(
 let loopTimer: NodeJS.Timeout | null = null
 /** false once the cloud rejects the stats columns (migration not run yet) */
 let statusHasStatsColumns = true
+let statsRetryAt = 0
 let sharedServerIds: Set<string> = new Set()
 let sharesDirty = true
 let lastShareRefresh = 0
@@ -265,12 +266,19 @@ async function hostTick(): Promise<void> {
       }
       return row
     }
+    // re-probe hourly so a stats migration run mid-flight starts working without a restart
+    if (!statusHasStatsColumns && Date.now() > statsRetryAt) {
+      statusHasStatsColumns = true
+    }
     if (statusHasStatsColumns) {
       const { error } = await supabase
         .from('server_status')
         .upsert(local.map((s) => snapshot(s.id, s.name, true)))
       // clouds that haven't run the stats migration yet fall back to the legacy shape
-      if (error && /column|schema cache/i.test(error.message ?? '')) statusHasStatsColumns = false
+      if (error && /column|schema cache/i.test(error.message ?? '')) {
+        statusHasStatsColumns = false
+        statsRetryAt = Date.now() + 3_600_000
+      }
     }
     if (!statusHasStatsColumns) {
       await supabase.from('server_status').upsert(local.map((s) => snapshot(s.id, s.name, false)))
