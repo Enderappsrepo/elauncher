@@ -221,6 +221,37 @@ alter table public.server_status add column if not exists cpu_percent integer;
 alter table public.server_status add column if not exists started_at timestamptz;
 alter table public.server_status add column if not exists version text;
 
+-- phone notifications (web push). The launcher generates a per-account VAPID
+-- keypair; the dashboard registers each phone's push subscription.
+create table if not exists public.push_config (
+  owner_id uuid primary key references public.profiles (id) on delete cascade,
+  public_key text not null,
+  private_key text not null,
+  created_at timestamptz not null default now()
+);
+
+create table if not exists public.push_subscriptions (
+  id uuid primary key default gen_random_uuid(),
+  owner_id uuid not null references public.profiles (id) on delete cascade,
+  endpoint text not null unique,
+  subscription jsonb not null,
+  label text not null default '',
+  created_at timestamptz not null default now()
+);
+
+alter table public.push_config enable row level security;
+alter table public.push_subscriptions enable row level security;
+
+drop policy if exists "owners manage their push config" on public.push_config;
+create policy "owners manage their push config"
+  on public.push_config for all to authenticated
+  using (owner_id = auth.uid()) with check (owner_id = auth.uid());
+
+drop policy if exists "owners manage their push subscriptions" on public.push_subscriptions;
+create policy "owners manage their push subscriptions"
+  on public.push_subscriptions for all to authenticated
+  using (owner_id = auth.uid()) with check (owner_id = auth.uid());
+
 create table if not exists public.server_commands (
   id uuid primary key default gen_random_uuid(),
   server_id uuid not null,

@@ -60,6 +60,7 @@ import {
   type PalworldHandle
 } from './palworld'
 import { closePort, getMappedAddress } from './upnp'
+import { notifyPhones } from './notifications'
 
 const MANIFEST_URL = 'https://piston-meta.mojang.com/mc/game/version_manifest_v2.json'
 /** PaperMC "Fill" API — the old api.papermc.io/v2 endpoint was retired (410). */
@@ -807,6 +808,7 @@ async function runScheduledRestart(id: string, reason: string): Promise<void> {
   if (!server || (states.get(id) ?? 'stopped') !== 'running') return
   const warn = Math.max(1, server.automation?.restartWarningMin ?? 5)
   pushLog(id, `[ELauncher] ${reason} — restarting in ${warn} minute${warn === 1 ? '' : 's'}`)
+  notifyPhones(server.name, `${reason} — restarting in ${warn} min`, `${id}:auto`)
   tryCommand(id, `say Server restart in ${warn} minute${warn === 1 ? '' : 's'}`)
   if (warn > 1) {
     await sleep((warn - 1) * 60_000)
@@ -1090,6 +1092,7 @@ export async function startServer(id: string): Promise<void> {
         pushLog(id, `[ELauncher] Server is ready — friends on your network can join localhost:${server.port}`)
         setState(id, 'running')
         startAutomation(id)
+        notifyPhones(server.name, 'Server is online', `${id}:state`)
       }
       if (BIND_RE.test(line)) {
         pushLog(id, `[ELauncher] Port ${server.port} is taken — edit server-port in Settings or stop the other app.`)
@@ -1098,6 +1101,7 @@ export async function startServer(id: string): Promise<void> {
       if (join_) {
         players.get(id)?.add(join_[1])
         setState(id, states.get(id) ?? 'running')
+        notifyPhones(server.name, `${join_[1]} joined the game`, `${id}:join`)
       }
       const leave = line.match(LEAVE_RE)
       if (leave) {
@@ -1125,6 +1129,7 @@ export async function startServer(id: string): Promise<void> {
       stopAutomation(id)
       const crashed = !wasStopping && code !== 0
       setState(id, 'stopped', crashed ? `The server crashed (exit code ${code}). Check the console.` : undefined)
+      notifyPhones(server.name, crashed ? `Crashed (exit code ${code}) — check the console` : 'Server stopped', `${id}:state`)
       if (crashed) handleCrashRestart(id)
     })
     proc.on('error', (err) => {
@@ -1172,11 +1177,17 @@ async function startPalworldServer(server: LocalServer): Promise<void> {
         pushLog(id, `[ELauncher] Friends on your network join via this PC's IP, port ${server.port}`)
         setState(id, 'running')
         startAutomation(id)
+        notifyPhones(server.name, `Palworld server is online${version ? ` (${version})` : ''}`, `${id}:state`)
       },
       onPlayers: (names) => {
         const before = players.get(id) ?? new Set<string>()
         const now = new Set(names)
-        for (const n of now) if (!before.has(n)) pushLog(id, `[ELauncher] ${n} joined the game`)
+        for (const n of now) {
+          if (!before.has(n)) {
+            pushLog(id, `[ELauncher] ${n} joined the game`)
+            notifyPhones(server.name, `${n} joined the game`, `${id}:join`)
+          }
+        }
         for (const n of before) if (!now.has(n)) pushLog(id, `[ELauncher] ${n} left the game`)
         players.set(id, now)
         setState(id, states.get(id) ?? 'running')
@@ -1191,7 +1202,13 @@ async function startPalworldServer(server: LocalServer): Promise<void> {
         pushLog(id, `[ELauncher] Server exited${code != null ? ` (code ${code})` : ''}`)
         void closePort(server.port, 'UDP')
         stopAutomation(id)
-        if (!wasStopping && code !== 0 && code !== null) handleCrashRestart(id)
+        const palCrashed = !wasStopping && code !== 0 && code !== null
+        notifyPhones(
+          server.name,
+          palCrashed ? `Crashed (exit code ${code}) — check the console` : 'Server stopped',
+          `${id}:state`
+        )
+        if (palCrashed) handleCrashRestart(id)
         setState(
           id,
           'stopped',

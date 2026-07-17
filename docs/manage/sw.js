@@ -1,7 +1,7 @@
 // ELauncher Remote — app shell service worker.
 // Network-first so updates land instantly; cached shell keeps the app opening
 // offline. API traffic (Supabase) is never cached — live data only.
-const SHELL = 'elauncher-remote-v2'
+const SHELL = 'elauncher-remote-v3'
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
@@ -18,6 +18,35 @@ self.addEventListener('activate', (event) => {
       .keys()
       .then((keys) => Promise.all(keys.filter((key) => key !== SHELL).map((key) => caches.delete(key))))
       .then(() => self.clients.claim())
+  )
+})
+
+// server alerts pushed by the launcher at home
+self.addEventListener('push', (event) => {
+  let data = {}
+  try {
+    data = event.data ? event.data.json() : {}
+  } catch {
+    data = { title: 'ELauncher', body: event.data ? event.data.text() : '' }
+  }
+  event.waitUntil(
+    self.registration.showNotification(data.title || 'ELauncher', {
+      body: data.body || '',
+      tag: data.tag || undefined,
+      icon: './icon-192.png',
+      badge: './icon-192.png',
+      data: { url: './' }
+    })
+  )
+})
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close()
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((list) => {
+      const client = list.find((c) => 'focus' in c)
+      return client ? client.focus() : self.clients.openWindow('./')
+    })
   )
 })
 
