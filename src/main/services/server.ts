@@ -2,7 +2,7 @@ import { spawn, type ChildProcess } from 'child_process'
 import { copyFileSync, cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'fs'
 import { cp } from 'fs/promises'
 import { basename, dirname, join, relative, resolve, sep } from 'path'
-import { tmpdir } from 'os'
+import { cpus, tmpdir } from 'os'
 import { createHash, randomUUID } from 'crypto'
 import { app, dialog, shell } from 'electron'
 import AdmZip from 'adm-zip'
@@ -133,6 +133,10 @@ function emitTask(phase: string, progress: number, done?: boolean): void {
   broadcast('server:task', { phase, progress, done } satisfies ServerTaskEvent)
 }
 
+/** Live per-run info: sampled process stats + the version the server reported. */
+const resourceStats = new Map<string, { memoryMB: number; cpuPercent: number | null }>()
+const serverVersions = new Map<string, string>()
+
 function setState(id: string, state: LocalServerState, error?: string): void {
   states.set(id, state)
   const server = loadServers().find((s) => s.id === id)
@@ -141,6 +145,10 @@ function setState(id: string, state: LocalServerState, error?: string): void {
     state,
     players: [...(players.get(id) ?? [])],
     tunnelAddress: server ? publicAddress(server) : null,
+    memoryMB: resourceStats.get(id)?.memoryMB ?? null,
+    cpuPercent: resourceStats.get(id)?.cpuPercent ?? null,
+    startedAt: procs.has(id) ? (lastStartAt.get(id) ?? null) : null,
+    version: serverVersions.get(id) ?? null,
     error
   } satisfies ServerStateEvent)
 }
@@ -154,13 +162,27 @@ export function announceServerByPort(port: number): void {
 // keep the visible address in sync when a tunnel stops or the relay drops it
 onTunnelClosed((port) => announceServerByPort(port))
 
-export function getServerStates(): Record<string, { state: LocalServerState; players: string[]; tunnelAddress: string | null }> {
-  const out: Record<string, { state: LocalServerState; players: string[]; tunnelAddress: string | null }> = {}
+export interface ServerStateSnapshot {
+  state: LocalServerState
+  players: string[]
+  tunnelAddress: string | null
+  memoryMB: number | null
+  cpuPercent: number | null
+  startedAt: number | null
+  version: string | null
+}
+
+export function getServerStates(): Record<string, ServerStateSnapshot> {
+  const out: Record<string, ServerStateSnapshot> = {}
   for (const server of loadServers()) {
     out[server.id] = {
       state: states.get(server.id) ?? 'stopped',
       players: [...(players.get(server.id) ?? [])],
-      tunnelAddress: publicAddress(server)
+      tunnelAddress: publicAddress(server),
+      memoryMB: resourceStats.get(server.id)?.memoryMB ?? null,
+      cpuPercent: resourceStats.get(server.id)?.cpuPercent ?? null,
+      startedAt: procs.has(server.id) ? (lastStartAt.get(server.id) ?? null) : null,
+      version: serverVersions.get(server.id) ?? null
     }
   }
   return out
@@ -766,8 +788,21 @@ function waitForState(id: string, wanted: LocalServerState, timeoutMs: number): 
   })
 }
 
+/** Guards against overlapping restart sequences (timer + memory guard can both fire). */
+const restartInFlight = new Set<string>()
+
 /** Warn players, save, stop, wait, start again. Bails out if someone stops the server manually. */
 async function scheduledRestart(id: string, reason: string): Promise<void> {
+  if (restartInFlight.has(id)) return
+  restartInFlight.add(id)
+  try {
+    await runScheduledRestart(id, reason)
+  } finally {
+    restartInFlight.delete(id)
+  }
+}
+
+async function runScheduledRestart(id: string, reason: string): Promise<void> {
   const server = loadServers().find((s) => s.id === id)
   if (!server || (states.get(id) ?? 'stopped') !== 'running') return
   const warn = Math.max(1, server.automation?.restartWarningMin ?? 5)
@@ -918,6 +953,85 @@ export function setServerAutomation(id: string, automation: ServerAutomation): L
   return listLocalServers()
 }
 
+// ---------- live process stats: memory/cpu sampling + memory guard ----------
+
+const cpuSecondsPrev = new Map<number, { seconds: number; at: number }>()
+let sampling = false
+
+/** One PowerShell call samples every running server's working set + CPU time. */
+async function sampleProcessStats(): Promise<void> {
+  if (sampling || process.platform !== 'win32') return
+  const entries = [...procs.entries()].filter(([, proc]) => proc.pid !== undefined)
+  if (entries.length === 0) {
+    resourceStats.clear()
+    return
+  }
+  sampling = true
+  try {
+    const pids = entries.map(([, proc]) => proc.pid as number)
+    const json = await new Promise<string>((resolve, reject) => {
+      const ps = spawn(
+        'powershell',
+        [
+          '-NoProfile',
+          '-Command',
+          `Get-Process -Id ${pids.join(',')} -ErrorAction SilentlyContinue | Select-Object Id,WorkingSet64,@{n='CpuSeconds';e={$_.TotalProcessorTime.TotalSeconds}} | ConvertTo-Json -Compress`
+        ],
+        { windowsHide: true }
+      )
+      let out = ''
+      ps.stdout?.on('data', (chunk: Buffer) => (out += chunk.toString()))
+      ps.on('error', reject)
+      ps.on('exit', () => resolve(out.trim()))
+    })
+    if (!json) return
+    const parsed = JSON.parse(json) as
+      | { Id: number; WorkingSet64: number; CpuSeconds: number }
+      | { Id: number; WorkingSet64: number; CpuSeconds: number }[]
+    const rows = Array.isArray(parsed) ? parsed : [parsed]
+    const byPid = new Map(rows.map((row) => [row.Id, row]))
+    const cores = cpus().length || 1
+    const now = Date.now()
+
+    for (const [id, proc] of entries) {
+      const row = byPid.get(proc.pid as number)
+      if (!row) {
+        resourceStats.delete(id)
+        continue
+      }
+      const prev = cpuSecondsPrev.get(row.Id)
+      let cpuPercent: number | null = null
+      if (prev && now > prev.at) {
+        cpuPercent = Math.round(
+          Math.max(0, Math.min(100, (((row.CpuSeconds - prev.seconds) * 1000) / (now - prev.at) / cores) * 100))
+        )
+      }
+      cpuSecondsPrev.set(row.Id, { seconds: row.CpuSeconds, at: now })
+      const memoryMB = Math.round(row.WorkingSet64 / 1048576)
+      resourceStats.set(id, { memoryMB, cpuPercent })
+      // push fresh stats to the UI (and the phone, via the next heartbeat)
+      setState(id, states.get(id) ?? 'running')
+
+      // memory guard: warned restart when the process crosses the configured limit
+      const record = loadServers().find((s) => s.id === id)
+      const limit = record?.automation?.restartAboveMemoryMB ?? 0
+      if (limit > 0 && memoryMB >= limit && (states.get(id) ?? 'stopped') === 'running' && !restartInFlight.has(id)) {
+        pushLog(
+          id,
+          `[ELauncher] Memory ${(memoryMB / 1024).toFixed(1)} GB crossed the ${(limit / 1024).toFixed(1)} GB limit — restarting to reclaim it`
+        )
+        void scheduledRestart(id, 'Memory limit reached')
+      }
+    }
+  } catch {
+    // sampling is best-effort; the next tick tries again
+  } finally {
+    sampling = false
+  }
+}
+
+setInterval(() => void sampleProcessStats(), 10_000)
+
 /** Start servers flagged autoStart shortly after the launcher boots. */
 export function autoStartConfiguredServers(): void {
   setTimeout(() => {
@@ -1002,6 +1116,8 @@ export async function startServer(id: string): Promise<void> {
 
     proc.on('exit', (code) => {
       procs.delete(id)
+      resourceStats.delete(id)
+      serverVersions.delete(id)
       players.set(id, new Set())
       const wasStopping = states.get(id) === 'stopping'
       pushLog(id, `[ELauncher] Server exited${code != null ? ` (code ${code})` : ''}`)
@@ -1051,7 +1167,8 @@ async function startPalworldServer(server: LocalServer): Promise<void> {
   try {
     const handle = startPalworld(dir, server.port, { publicLobby: community, publicIp }, {
       onLog: (line) => pushLog(id, line),
-      onReady: () => {
+      onReady: (version) => {
+        if (version) serverVersions.set(id, version)
         pushLog(id, `[ELauncher] Friends on your network join via this PC's IP, port ${server.port}`)
         setState(id, 'running')
         startAutomation(id)
@@ -1067,6 +1184,8 @@ async function startPalworldServer(server: LocalServer): Promise<void> {
       onExit: (code) => {
         procs.delete(id)
         palworldHandles.delete(id)
+        resourceStats.delete(id)
+        serverVersions.delete(id)
         players.set(id, new Set())
         const wasStopping = states.get(id) === 'stopping'
         pushLog(id, `[ELauncher] Server exited${code != null ? ` (code ${code})` : ''}`)
@@ -1197,13 +1316,33 @@ export function setServerProperties(id: string, updates: Record<string, string>)
   return getServerProperties(id)
 }
 
-export function updateServerSettings(id: string, name: string, memoryMax: number): LocalServer[] {
+export function updateServerSettings(id: string, name: string, memoryMax: number, syncGameName = true): LocalServer[] {
   const servers = loadServers()
   const record = servers.find((s) => s.id === id)
   if (record) {
-    record.name = name.trim() || record.name
+    const newName = name.trim()
+    const oldName = record.name
+    record.name = newName || record.name
     if (memoryMax >= 1024) record.memoryMax = memoryMax
     saveServers(servers)
+
+    // keep player-facing names in step — but only when asked, and only while they
+    // still match the old launcher name, so a customized motd/ServerName survives
+    if (syncGameName && newName && newName !== oldName) {
+      try {
+        if (gameOf(record) === 'palworld') {
+          const entries = getPalworldSettings(serverDir(id))
+          if (!entries['ServerName'] || entries['ServerName'] === oldName) {
+            setPalworldSettings(serverDir(id), { ServerName: newName })
+          }
+        } else {
+          const props = getServerProperties(id)
+          if (props['motd'] === oldName) setServerProperties(id, { motd: newName })
+        }
+      } catch {
+        // cosmetic sync only — the rename itself already succeeded
+      }
+    }
   }
   return listLocalServers()
 }
@@ -1558,14 +1697,29 @@ export function whitelistRemove(id: string, name: string): PlayerListEntry[] {
   return readPlayerList(id, 'whitelist')
 }
 
-// best-effort: don't leave orphan java processes when the launcher quits
-app.on('before-quit', () => {
-  for (const proc of procs.values()) {
+// graceful shutdown: ask every server to save + stop, give it a few seconds, then quit
+let quitting = false
+app.on('before-quit', (event) => {
+  if (quitting || procs.size === 0) return
+  quitting = true
+  event.preventDefault()
+  for (const [id, proc] of procs) {
     try {
-      proc.stdin?.write('stop\n')
-      proc.kill()
+      const handle = palworldHandles.get(id)
+      if (handle) handle.stop() // REST save + shutdown
+      else proc.stdin?.write('stop\n') // minecraft saves the world on `stop`
     } catch {
       // already dead
     }
   }
+  setTimeout(() => {
+    for (const proc of procs.values()) {
+      try {
+        proc.kill()
+      } catch {
+        // gone
+      }
+    }
+    app.quit()
+  }, 4_000)
 })

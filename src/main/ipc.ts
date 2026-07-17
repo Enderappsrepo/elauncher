@@ -240,8 +240,8 @@ export function registerIpc(): void {
   ipcMain.handle('server:setProperties', (_e, id: string, updates: Record<string, string>) =>
     server.setServerProperties(id, updates)
   )
-  ipcMain.handle('server:updateSettings', (_e, id: string, name: string, memoryMax: number) =>
-    server.updateServerSettings(id, name, memoryMax)
+  ipcMain.handle('server:updateSettings', (_e, id: string, name: string, memoryMax: number, syncGameName?: boolean) =>
+    server.updateServerSettings(id, name, memoryMax, syncGameName)
   )
   ipcMain.handle('server:openFolder', (_e, id: string) => server.openServerFolder(id))
   ipcMain.handle('server:tunnelStart', async (_e, port: number) => {

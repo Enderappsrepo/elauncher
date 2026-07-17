@@ -125,6 +125,18 @@ export default function AutomationCard({ server }: { server: LocalServer }): Rea
             />
           </div>
         )}
+        <div className="field">
+          <label>Restart above memory</label>
+          <Select
+            value={String(auto.restartAboveMemoryMB ?? 0)}
+            onChange={(v) => patch({ restartAboveMemoryMB: Number(v) })}
+            options={[0, 4096, 6144, 8192, 10240, 12288, 16384].map((mb) => ({
+              value: String(mb),
+              label: mb === 0 ? 'Off' : `${mb / 1024} GB`
+            }))}
+          />
+          <div className="hint">Warned restart when the server process crosses this — tames Palworld's slow memory creep.</div>
+        </div>
       </div>
       <label className="checkbox-row">
         <input

@@ -285,14 +285,27 @@ const api = {
     stop: (id: string): Promise<void> => ipcRenderer.invoke('server:stop', id),
     command: (id: string, command: string): Promise<OperationResult> =>
       ipcRenderer.invoke('server:command', id, command),
-    getStates: (): Promise<Record<string, { state: LocalServerState; players: string[]; tunnelAddress: string | null }>> =>
+    getStates: (): Promise<
+      Record<
+        string,
+        {
+          state: LocalServerState
+          players: string[]
+          tunnelAddress: string | null
+          memoryMB: number | null
+          cpuPercent: number | null
+          startedAt: number | null
+          version: string | null
+        }
+      >
+    > =>
       ipcRenderer.invoke('server:getStates'),
     getLogs: (id: string): Promise<string[]> => ipcRenderer.invoke('server:getLogs', id),
     getProperties: (id: string): Promise<Record<string, string>> => ipcRenderer.invoke('server:getProperties', id),
     setProperties: (id: string, updates: Record<string, string>): Promise<Record<string, string>> =>
       ipcRenderer.invoke('server:setProperties', id, updates),
-    updateSettings: (id: string, name: string, memoryMax: number): Promise<LocalServer[]> =>
-      ipcRenderer.invoke('server:updateSettings', id, name, memoryMax),
+    updateSettings: (id: string, name: string, memoryMax: number, syncGameName?: boolean): Promise<LocalServer[]> =>
+      ipcRenderer.invoke('server:updateSettings', id, name, memoryMax, syncGameName),
     openFolder: (id: string): Promise<void> => ipcRenderer.invoke('server:openFolder', id),
     tunnelStart: (port: number): Promise<{ ok: boolean; error?: string; address?: string; warning?: string }> =>
       ipcRenderer.invoke('server:tunnelStart', port),

@@ -465,6 +465,8 @@ export interface ServerAutomation {
   backupIntervalHours?: number
   /** how many backups to keep (default 5) */
   backupKeep?: number
+  /** warned restart when the server process exceeds this much memory, MiB (0 = off) */
+  restartAboveMemoryMB?: number
 }
 
 /** Where a new server's content comes from. */
@@ -580,6 +582,14 @@ export interface ServerStatus {
   players: string[]
   /** public bore address when a tunnel is up for this server */
   tunnelAddress?: string | null
+  /** live process working set in MiB (null when not running or not yet sampled) */
+  memoryMB?: number | null
+  /** live process CPU load as % of the whole machine (null when unknown) */
+  cpuPercent?: number | null
+  /** epoch ms when the current run started (null when stopped) */
+  startedAt?: number | null
+  /** game server version, when the server reports one */
+  version?: string | null
 }
 
 export interface ServerStateEvent extends ServerStatus {

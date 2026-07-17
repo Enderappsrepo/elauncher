@@ -19,8 +19,10 @@ import {
   IconAlert,
   IconBox,
   IconCheck,
+  IconClock,
   IconCopy,
   IconDownload,
+  IconEdit,
   IconExport,
   IconFolder,
   IconGauge,
@@ -54,10 +56,21 @@ interface Status {
   state: LocalServerState
   players: string[]
   tunnelAddress: string | null
+  memoryMB?: number | null
+  cpuPercent?: number | null
+  startedAt?: number | null
+  version?: string | null
   error?: string
 }
 
 const IDLE: Status = { state: 'stopped', players: [], tunnelAddress: null }
+
+function fmtUptime(ms: number): string {
+  const m = Math.floor(ms / 60_000)
+  const h = Math.floor(m / 60)
+  const d = Math.floor(h / 24)
+  return d > 0 ? `${d}d ${h % 24}h` : h > 0 ? `${h}h ${m % 60}m` : `${Math.max(0, m)}m`
+}
 
 const STATE_LABEL: Record<LocalServerState, string> = {
   stopped: 'Stopped',
@@ -1126,8 +1139,12 @@ export default function ServerPage(): React.JSX.Element {
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [showCreate, setShowCreate] = useState(false)
   const [tab, setTab] = useState<ServerTab>('overview')
+  const [renameDraft, setRenameDraft] = useState<string | null>(null)
 
-  useEffect(() => setTab('overview'), [selectedId])
+  useEffect(() => {
+    setTab('overview')
+    setRenameDraft(null)
+  }, [selectedId])
 
   const refresh = useCallback(async () => {
     const [list, states] = await Promise.all([window.elauncher.server.list(), window.elauncher.server.getStates()])
@@ -1141,7 +1158,16 @@ export default function ServerPage(): React.JSX.Element {
     return window.elauncher.server.onState((e) => {
       setStatuses((s) => ({
         ...s,
-        [e.serverId]: { state: e.state, players: e.players, tunnelAddress: e.tunnelAddress ?? null, error: e.error }
+        [e.serverId]: {
+          state: e.state,
+          players: e.players,
+          tunnelAddress: e.tunnelAddress ?? null,
+          memoryMB: e.memoryMB ?? null,
+          cpuPercent: e.cpuPercent ?? null,
+          startedAt: e.startedAt ?? null,
+          version: e.version ?? null,
+          error: e.error
+        }
       }))
       if (e.error) toast.error(e.error)
     })
@@ -1163,6 +1189,20 @@ export default function ServerPage(): React.JSX.Element {
     } else if (res.error !== 'cancelled') {
       toast.error(res.error ?? 'Export failed')
     }
+  }
+
+  const commitRename = async (server: LocalServer): Promise<void> => {
+    const name = (renameDraft ?? '').trim()
+    setRenameDraft(null)
+    if (!name || name === server.name) return
+    // palworld: the launcher/phone name and the in-game join-screen name can differ — ask
+    const syncGameName =
+      server.game === 'palworld'
+        ? confirm('Also show the new name on the Palworld join screen and community listing?\n\nCancel renames it in the launcher and phone dashboard only.')
+        : true
+    const servers = await window.elauncher.server.updateSettings(server.id, name, server.memoryMax, syncGameName)
+    setServers(servers)
+    toast.success(syncGameName ? 'Renamed — the in-game name follows on the next start' : 'Renamed in the launcher only')
   }
 
   const remove = async (server: LocalServer): Promise<void> => {
@@ -1288,13 +1328,38 @@ export default function ServerPage(): React.JSX.Element {
                   </div>
                   <div className="server-hero-info">
                     <div className="row" style={{ gap: 10, flexWrap: 'wrap' }}>
-                      <h2>{selected.name}</h2>
+                      {renameDraft === null ? (
+                        <h2>{selected.name}</h2>
+                      ) : (
+                        <input
+                          autoFocus
+                          value={renameDraft}
+                          onChange={(e) => setRenameDraft(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') void commitRename(selected)
+                            if (e.key === 'Escape') setRenameDraft(null)
+                          }}
+                          onBlur={() => setRenameDraft(null)}
+                          style={{
+                            font: 'inherit',
+                            fontSize: 17,
+                            fontWeight: 750,
+                            color: 'inherit',
+                            background: 'rgba(0,0,0,.3)',
+                            border: '1px solid rgba(255,255,255,.25)',
+                            borderRadius: 8,
+                            padding: '3px 10px',
+                            maxWidth: 280
+                          }}
+                        />
+                      )}
                       <StateChip state={selStatus.state} />
                     </div>
                     <div className="row" style={{ gap: 6, marginTop: 8, flexWrap: 'wrap' }}>
                       {selected.game === 'palworld' ? (
                         <>
                           <span className="chip on-banner">Palworld</span>
+                          {selStatus.version && <span className="chip on-banner">{selStatus.version}</span>}
                           <span className="chip on-banner">UDP port {selected.port}</span>
                           {selected.communityServer && (
                             <span className="chip update" title="Listed in Palworld's community server browser">
@@ -1331,6 +1396,9 @@ export default function ServerPage(): React.JSX.Element {
                   </div>
                   <div className="server-hero-actions">
                     <div className="row" style={{ gap: 4 }}>
+                      <button className="icon-btn on-hero" title="Rename server" onClick={() => setRenameDraft(selected.name)}>
+                        <IconEdit size={15} />
+                      </button>
                       <button
                         className="icon-btn on-hero"
                         title="Open folder"
@@ -1415,14 +1483,39 @@ export default function ServerPage(): React.JSX.Element {
                       address={selStatus.tunnelAddress ?? `localhost:${selected.port}`}
                       isPublic={Boolean(selStatus.tunnelAddress)}
                     />
-                    {selected.game !== 'palworld' && (
+                    {selStatus.memoryMB != null ? (
                       <div className="stat-tile">
                         <div className="stat-icon">
                           <IconGauge size={18} />
                         </div>
                         <div>
-                          <div className="stat-value stat-value-sm">{selected.memoryMax / 1024} GB</div>
-                          <div className="stat-label">Dedicated memory</div>
+                          <div className="stat-value stat-value-sm">{(selStatus.memoryMB / 1024).toFixed(1)} GB</div>
+                          <div className="stat-label">
+                            Memory in use{selStatus.cpuPercent != null ? ` · ${selStatus.cpuPercent}% CPU` : ''}
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      selected.game !== 'palworld' && (
+                        <div className="stat-tile">
+                          <div className="stat-icon">
+                            <IconGauge size={18} />
+                          </div>
+                          <div>
+                            <div className="stat-value stat-value-sm">{selected.memoryMax / 1024} GB</div>
+                            <div className="stat-label">Dedicated memory</div>
+                          </div>
+                        </div>
+                      )
+                    )}
+                    {selStatus.startedAt != null && (
+                      <div className="stat-tile">
+                        <div className="stat-icon">
+                          <IconClock size={18} />
+                        </div>
+                        <div>
+                          <div className="stat-value stat-value-sm">{fmtUptime(Date.now() - selStatus.startedAt)}</div>
+                          <div className="stat-label">Uptime</div>
                         </div>
                       </div>
                     )}

@@ -256,7 +256,7 @@ export interface PalworldHandle {
 
 export interface PalworldRunCallbacks {
   onLog: (line: string) => void
-  onReady: () => void
+  onReady: (version?: string) => void
   onPlayers: (names: string[]) => void
   onExit: (code: number | null) => void
 }
@@ -324,15 +324,29 @@ export function startPalworld(
         clearInterval(readyTimer)
         const info = (await res.json().catch(() => null)) as { version?: string } | null
         cb.onLog(`[ELauncher] Palworld server is up${info?.version ? ` (${info.version})` : ''}`)
-        cb.onReady()
+        cb.onReady(info?.version)
+        // the player poll doubles as a health check: a hung UE server stops
+        // answering REST while the process lives — kill it so crash-restart applies
+        let pollFailures = 0
+        const unresponsive = (): void => {
+          pollFailures = Number.MIN_SAFE_INTEGER // fire once
+          cb.onLog(
+            '[ELauncher] The server has not responded for 90 seconds — force-stopping it (crash auto-restart applies if enabled).'
+          )
+          forceKill(proc)
+        }
         const playersTimer = setInterval(async () => {
           try {
             const r = await restCall(dir, port, 'GET', '/players')
-            if (!r.ok) return
+            if (!r.ok) {
+              if (++pollFailures === 9) unresponsive()
+              return
+            }
+            pollFailures = 0
             const data = (await r.json()) as { players?: PalworldPlayer[] }
             cb.onPlayers((data.players ?? []).map((p) => p.name).filter(Boolean))
           } catch {
-            // transient — the exit handler owns terminal states
+            if (++pollFailures === 9) unresponsive()
           }
         }, 10_000)
         timers.push(playersTimer)
