@@ -49,6 +49,7 @@ import FilesTab from '../components/server/FilesTab'
 import PlayersTab from '../components/server/PlayersTab'
 import AccessTab from '../components/server/AccessTab'
 import RemoteServers from '../components/server/RemoteServers'
+import HostReadiness from '../components/server/HostReadiness'
 
 const MODDABLE_KINDS: ReadonlySet<ServerKind> = new Set(['fabric', 'neoforge', 'forge'])
 
@@ -1545,6 +1546,7 @@ export default function ServerPage(): React.JSX.Element {
       )}
 
       <RemoteServers />
+      <HostReadiness />
 
       {showCreate && (
         <CreateServerModal

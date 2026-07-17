@@ -12,6 +12,7 @@ import * as migrate from './services/migrate'
 import * as gameOptions from './services/gameOptions'
 import * as optimize from './services/optimize'
 import * as hosting from './services/hosting'
+import * as specs from './services/specs'
 import * as upnp from './services/upnp'
 import * as server from './services/server'
 import * as serverBrowser from './services/serverBrowser'
@@ -28,6 +29,11 @@ export function registerIpc(): void {
 
   // bring up servers flagged "start with the launcher"
   server.autoStartConfiguredServers()
+
+  // publish host specs/report so the phone dashboard can show them
+  specs.startHostReportPublisher()
+
+  ipcMain.handle('host:report', () => specs.getHostReport())
 
   // repaint the native caption buttons when the renderer switches theme (Windows overlay)
   ipcMain.handle('app:setTitleBarTheme', (e, overlay: { color: string; symbolColor: string }) => {

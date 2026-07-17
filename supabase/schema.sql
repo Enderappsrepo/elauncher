@@ -252,6 +252,22 @@ create policy "owners manage their push subscriptions"
   on public.push_subscriptions for all to authenticated
   using (owner_id = auth.uid()) with check (owner_id = auth.uid());
 
+-- host performance estimator: the launcher publishes its specs + per-game
+-- report so the phone dashboard can show the same "PC as a host" card.
+create table if not exists public.host_specs (
+  owner_id uuid primary key references public.profiles (id) on delete cascade,
+  specs jsonb not null,
+  report jsonb not null,
+  updated_at timestamptz not null default now()
+);
+
+alter table public.host_specs enable row level security;
+
+drop policy if exists "owners manage their host specs" on public.host_specs;
+create policy "owners manage their host specs"
+  on public.host_specs for all to authenticated
+  using (owner_id = auth.uid()) with check (owner_id = auth.uid());
+
 create table if not exists public.server_commands (
   id uuid primary key default gen_random_uuid(),
   server_id uuid not null,

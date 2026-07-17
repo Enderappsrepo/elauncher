@@ -691,6 +691,36 @@ export interface PublishNewsRequest {
   linkedPackIds?: string[]
 }
 
+// ---------- host performance estimator ----------
+
+export interface HostSpecs {
+  cpuModel: string
+  threads: number
+  speedGHz: number
+  ramGB: number
+  /** free at scan time — a mood, not a constant */
+  freeRamGB: number
+  diskType: 'SSD' | 'HDD' | 'Unknown'
+}
+
+export type HostVerdict = 'great' | 'good' | 'tight' | 'no'
+
+export interface HostGameEstimate {
+  game: string
+  verdict: HostVerdict
+  /** rough comfortable player band, e.g. "~12–20" */
+  players: string
+  note: string
+}
+
+/** Honest, heuristic estimate of how well this PC hosts game servers. */
+export interface HostReport {
+  specs: HostSpecs
+  games: HostGameEstimate[]
+  limitations: string[]
+  generatedAt: number
+}
+
 /* ---- launcher self-update ---- */
 
 export type UpdaterState =

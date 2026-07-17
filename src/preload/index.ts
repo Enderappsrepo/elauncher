@@ -43,6 +43,7 @@ import type {
   PublishSessionRequest,
   SavedSkin,
   CreateServerOptions,
+  HostReport,
   LocalServer,
   LocalServerState,
   ManagedServer,
@@ -273,7 +274,8 @@ const api = {
       ipcRenderer.invoke('host:enableE4mc', instanceId),
     startTunnel: (): Promise<{ ok: boolean; error?: string; address?: string }> =>
       ipcRenderer.invoke('host:startTunnel'),
-    stopTunnel: (): Promise<void> => ipcRenderer.invoke('host:stopTunnel')
+    stopTunnel: (): Promise<void> => ipcRenderer.invoke('host:stopTunnel'),
+    report: (): Promise<HostReport> => ipcRenderer.invoke('host:report')
   },
   server: {
     list: (): Promise<LocalServer[]> => ipcRenderer.invoke('server:list'),
