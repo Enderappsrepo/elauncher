@@ -214,6 +214,13 @@ create table if not exists public.server_status (
   updated_at timestamptz not null default now()
 );
 
+-- live stats for the remote dashboard (2026-07-17). Existing clouds: run these
+-- once in the SQL editor — the launcher publishes them automatically after.
+alter table public.server_status add column if not exists memory_mb integer;
+alter table public.server_status add column if not exists cpu_percent integer;
+alter table public.server_status add column if not exists started_at timestamptz;
+alter table public.server_status add column if not exists version text;
+
 create table if not exists public.server_commands (
   id uuid primary key default gen_random_uuid(),
   server_id uuid not null,

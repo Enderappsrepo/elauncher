@@ -205,6 +205,8 @@ export async function sendRemoteCommand(
 // ---------- host: heartbeat + command execution loop ----------
 
 let loopTimer: NodeJS.Timeout | null = null
+/** false once the cloud rejects the stats columns (migration not run yet) */
+let statusHasStatsColumns = true
 let sharedServerIds: Set<string> = new Set()
 let sharesDirty = true
 let lastShareRefresh = 0
@@ -242,22 +244,37 @@ async function hostTick(): Promise<void> {
     const localIds = new Set(local.map((s) => s.id))
     const states = getServerStates()
 
-    // 1. publish status snapshots
-    await supabase.from('server_status').upsert(
-      local.map((server) => {
-        const status = states[server.id]
-        return {
-          server_id: server.id,
-          owner_id: me,
-          name: server.name,
-          state: status?.state ?? 'stopped',
-          players: status?.players ?? [],
-          address: status?.tunnelAddress ?? null,
-          console: getServerLogs(server.id).slice(-CONSOLE_TAIL_LINES).join('\n'),
-          updated_at: new Date().toISOString()
-        }
-      })
-    )
+    // 1. publish status snapshots — live stats ride along once the columns exist
+    const snapshot = (serverId: string, name: string, withStats: boolean): Record<string, unknown> => {
+      const status = states[serverId]
+      const row: Record<string, unknown> = {
+        server_id: serverId,
+        owner_id: me,
+        name,
+        state: status?.state ?? 'stopped',
+        players: status?.players ?? [],
+        address: status?.tunnelAddress ?? null,
+        console: getServerLogs(serverId).slice(-CONSOLE_TAIL_LINES).join('\n'),
+        updated_at: new Date().toISOString()
+      }
+      if (withStats) {
+        row.memory_mb = status?.memoryMB ?? null
+        row.cpu_percent = status?.cpuPercent ?? null
+        row.started_at = status?.startedAt ? new Date(status.startedAt).toISOString() : null
+        row.version = status?.version ?? null
+      }
+      return row
+    }
+    if (statusHasStatsColumns) {
+      const { error } = await supabase
+        .from('server_status')
+        .upsert(local.map((s) => snapshot(s.id, s.name, true)))
+      // clouds that haven't run the stats migration yet fall back to the legacy shape
+      if (error && /column|schema cache/i.test(error.message ?? '')) statusHasStatsColumns = false
+    }
+    if (!statusHasStatsColumns) {
+      await supabase.from('server_status').upsert(local.map((s) => snapshot(s.id, s.name, false)))
+    }
 
     // 2. execute queued commands
     const { data: commands } = await supabase

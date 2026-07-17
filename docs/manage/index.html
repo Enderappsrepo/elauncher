@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <meta name="theme-color" content="#0b0d12" />
+  <meta name="theme-color" content="#0a0a0f" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <title>ELauncher — Remote</title>
@@ -11,80 +11,255 @@
   <link rel="manifest" href="manifest.webmanifest" />
   <link rel="apple-touch-icon" href="icon-192.png" />
   <style>
-    * { box-sizing: border-box; margin: 0; }
+    * { box-sizing: border-box; margin: 0; -webkit-tap-highlight-color: transparent; }
+    [hidden] { display: none !important; }
     :root {
-      --bg: #0b0d12; --card: #12151d; --card2: #171b25; --line: #232837;
-      --text: #e8ebf4; --faint: #8b93a7; --accent: #7c5cff; --green: #3ddc84; --red: #ff5c6c;
+      --bg: #0a0a0f;
+      --card: #121218;
+      --card-2: #16161d;
+      --line: rgba(255, 255, 255, 0.07);
+      --line-strong: rgba(255, 255, 255, 0.12);
+      --text: #f4f5fa;
+      --dim: #a0a3b6;
+      --faint: #64677a;
+      --accent: #7c6cff;
+      --accent-2: #22d3ee;
+      --accent-soft: rgba(124, 108, 255, 0.14);
+      --green: #34d399;
+      --green-soft: rgba(52, 211, 153, 0.11);
+      --red: #fb7185;
+      --red-soft: rgba(251, 113, 133, 0.12);
+      --amber: #fbbf24;
+      --amber-soft: rgba(251, 191, 36, 0.12);
+      --radius: 18px;
     }
+    html { background: var(--bg); }
     body {
-      background: var(--bg); color: var(--text); min-height: 100vh;
-      font: 15px/1.45 -apple-system, 'Segoe UI', Roboto, sans-serif;
-      padding: max(14px, env(safe-area-inset-top)) 14px calc(24px + env(safe-area-inset-bottom));
-      max-width: 560px; margin: 0 auto;
+      background:
+        radial-gradient(52% 34% at 18% -6%, rgba(124, 108, 255, 0.16), transparent 70%),
+        radial-gradient(44% 30% at 88% -4%, rgba(34, 211, 238, 0.1), transparent 70%),
+        radial-gradient(38% 26% at 55% -8%, rgba(217, 70, 239, 0.07), transparent 70%),
+        var(--bg);
+      background-attachment: fixed;
+      color: var(--text);
+      min-height: 100dvh;
+      font: 15px/1.5 'Inter', -apple-system, 'Segoe UI', Roboto, sans-serif;
+      -webkit-font-smoothing: antialiased;
     }
-    h1 { font-size: 19px; display: flex; align-items: center; gap: 10px; margin-bottom: 16px; }
-    h1 img { width: 26px; height: 26px; border-radius: 7px; }
-    h1 .sub { color: var(--faint); font-size: 12px; font-weight: 400; margin-left: auto; }
-    .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 14px; margin-bottom: 12px; }
-    label { display: block; font-size: 12px; color: var(--faint); margin: 10px 0 5px; }
-    input, button { font: inherit; }
-    input {
-      width: 100%; padding: 11px 12px; border-radius: 10px; border: 1px solid var(--line);
-      background: var(--card2); color: var(--text); outline: none;
+    button { font: inherit; cursor: pointer; border: 0; background: none; color: inherit; }
+    input { font: inherit; }
+    .shell { max-width: 540px; margin: 0 auto; padding: 0 16px calc(40px + env(safe-area-inset-bottom)); }
+
+    /* ---------- header ---------- */
+    .top {
+      position: sticky; top: 0; z-index: 20;
+      display: flex; align-items: center; gap: 11px;
+      padding: calc(12px + env(safe-area-inset-top)) 2px 12px;
+      margin: 0 -16px 18px; padding-left: 18px; padding-right: 14px;
+      background: rgba(10, 10, 15, 0.72);
+      backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px);
+      border-bottom: 1px solid var(--line);
     }
-    input:focus { border-color: var(--accent); }
-    button {
-      padding: 11px 16px; border-radius: 10px; border: 1px solid var(--line);
-      background: var(--card2); color: var(--text); cursor: pointer; font-weight: 600;
+    .top img { width: 30px; height: 30px; border-radius: 9px; }
+    .wordmark { font-weight: 800; font-size: 16.5px; letter-spacing: -0.02em; white-space: nowrap; }
+    @media (max-width: 360px) { .live { display: none; } }
+    .wordmark span {
+      background: linear-gradient(90deg, var(--accent), var(--accent-2));
+      -webkit-background-clip: text; background-clip: text; color: transparent;
     }
-    button:disabled { opacity: 0.45 }
-    button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
-    button.danger { background: rgba(255, 92, 108, .12); border-color: rgba(255, 92, 108, .4); color: var(--red); }
-    button.go { background: rgba(61, 220, 132, .12); border-color: rgba(61, 220, 132, .4); color: var(--green); }
-    .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
-    .grow { flex: 1 }
-    .chip { font-size: 11.5px; padding: 3px 9px; border-radius: 99px; border: 1px solid var(--line); color: var(--faint); }
-    .chip.on { color: var(--green); border-color: rgba(61,220,132,.4); background: rgba(61,220,132,.08); }
-    .chip.off { color: var(--faint); }
-    .chip.dead { color: var(--red); border-color: rgba(255,92,108,.35); }
-    .name { font-weight: 700; font-size: 16px; }
-    .faint { color: var(--faint); font-size: 12.5px; }
+    .live { margin-left: auto; display: flex; align-items: center; gap: 7px; font-size: 11.5px; color: var(--faint); }
+    .live .dot { width: 6px; height: 6px; border-radius: 99px; background: var(--green); animation: pulse 2s infinite; }
+    .iconbtn {
+      display: grid; place-items: center; width: 38px; height: 38px; border-radius: 12px;
+      color: var(--dim); border: 1px solid transparent; transition: 0.15s;
+    }
+    .iconbtn:active { background: var(--card-2); border-color: var(--line); transform: scale(0.94); }
+
+    /* ---------- login ---------- */
+    .login { padding-top: 9dvh; display: flex; flex-direction: column; align-items: center; text-align: center; }
+    .halo { position: relative; width: 92px; height: 92px; margin-bottom: 22px; }
+    .halo::before {
+      content: ''; position: absolute; inset: -26px;
+      background: radial-gradient(closest-side, rgba(124, 108, 255, 0.4), rgba(34, 211, 238, 0.12), transparent);
+      filter: blur(14px); border-radius: 50%;
+    }
+    .halo img { position: relative; width: 92px; height: 92px; border-radius: 24px; }
+    .login h1 { font-size: 27px; font-weight: 800; letter-spacing: -0.03em; }
+    .login h1 span {
+      background: linear-gradient(90deg, var(--accent), var(--accent-2));
+      -webkit-background-clip: text; background-clip: text; color: transparent;
+    }
+    .login p { color: var(--dim); font-size: 13.5px; margin: 8px 0 26px; max-width: 300px; }
+    .panel {
+      width: 100%; background: var(--card); border: 1px solid var(--line);
+      border-radius: var(--radius); padding: 20px; text-align: left;
+      box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45);
+    }
+    .field { margin-bottom: 14px; }
+    .field label { display: block; font-size: 11.5px; font-weight: 650; color: var(--faint); letter-spacing: 0.04em; text-transform: uppercase; margin-bottom: 7px; }
+    .field input {
+      width: 100%; padding: 13px 14px; border-radius: 13px;
+      background: var(--card-2); border: 1px solid var(--line); color: var(--text); outline: none;
+      transition: border-color 0.15s, box-shadow 0.15s;
+    }
+    .field input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+    .cta {
+      width: 100%; padding: 14px; border-radius: 13px; font-weight: 700; color: #fff;
+      background: linear-gradient(135deg, var(--accent), #5f8bff 55%, var(--accent-2));
+      box-shadow: 0 10px 26px rgba(124, 108, 255, 0.35);
+      transition: 0.15s;
+    }
+    .cta:active { transform: translateY(1px) scale(0.99); }
+    .cta:disabled { opacity: 0.55; }
+    .err { color: var(--red); font-size: 13px; min-height: 18px; margin: 10px 2px 2px; }
+
+    /* ---------- server cards ---------- */
+    .card {
+      background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);
+      padding: 16px; margin-bottom: 14px; box-shadow: 0 14px 40px rgba(0, 0, 0, 0.35);
+    }
+    .card.offline { opacity: 0.78; }
+    .head { display: flex; align-items: center; gap: 13px; }
+    .tile {
+      position: relative; width: 46px; height: 46px; border-radius: 14px; flex: none;
+      display: grid; place-items: center; font-weight: 800; font-size: 19px; color: #fff;
+      text-shadow: 0 1px 6px rgba(0, 0, 0, 0.4);
+    }
+    .tile .st {
+      position: absolute; right: -3px; bottom: -3px; width: 13px; height: 13px; border-radius: 99px;
+      border: 3px solid var(--card); background: var(--faint);
+    }
+    .tile .st.on { background: var(--green); animation: pulse 2s infinite; }
+    .tile .st.warm { background: var(--amber); }
+    .tile .st.dead { background: var(--red); }
+    .who { min-width: 0; flex: 1; }
+    .who .nm { font-weight: 750; font-size: 16.5px; letter-spacing: -0.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .who .ln { font-size: 12.5px; color: var(--dim); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .chip {
+      flex: none; font-size: 11px; font-weight: 700; letter-spacing: 0.03em;
+      padding: 5px 10px; border-radius: 99px; border: 1px solid var(--line-strong); color: var(--dim);
+    }
+    .chip.on { color: var(--green); border-color: rgba(52, 211, 153, 0.35); background: var(--green-soft); }
+    .chip.warm { color: var(--amber); border-color: rgba(251, 191, 36, 0.35); background: var(--amber-soft); }
+    .chip.dead { color: var(--red); border-color: rgba(251, 113, 133, 0.3); background: var(--red-soft); }
+
+    .pills { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 13px; }
+    .pill {
+      display: inline-flex; align-items: center; gap: 6px;
+      font-size: 12px; color: var(--dim); padding: 6px 11px;
+      background: var(--card-2); border: 1px solid var(--line); border-radius: 99px;
+    }
+    .pill svg { width: 12px; height: 12px; color: var(--faint); }
+    .pill b { color: var(--text); font-weight: 650; }
+
+    .addr {
+      display: flex; align-items: center; gap: 9px; width: 100%;
+      margin-top: 12px; padding: 11px 13px; border-radius: 13px;
+      background: rgba(124, 108, 255, 0.07); border: 1px dashed rgba(124, 108, 255, 0.35);
+      color: var(--text); font: 12.5px ui-monospace, Menlo, Consolas, monospace;
+    }
+    .addr svg { width: 14px; height: 14px; color: var(--accent); flex: none; }
+    .addr .a { flex: 1; min-width: 0; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .addr .c { color: var(--faint); font-size: 11px; font-family: 'Inter', -apple-system, sans-serif; }
+
+    .acts { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; margin-top: 13px; }
+    .acts.single { grid-template-columns: 1fr; }
+    .btn {
+      display: flex; align-items: center; justify-content: center; gap: 8px;
+      padding: 13px; border-radius: 13px; font-weight: 700; font-size: 14px;
+      border: 1px solid var(--line-strong); background: var(--card-2); color: var(--text);
+      transition: 0.15s;
+    }
+    .btn:active { transform: scale(0.98); }
+    .btn:disabled { opacity: 0.5; }
+    .btn svg { width: 15px; height: 15px; }
+    .btn.start { background: var(--green-soft); border-color: rgba(52, 211, 153, 0.4); color: var(--green); }
+    .btn.stop { background: var(--red-soft); border-color: rgba(251, 113, 133, 0.35); color: var(--red); }
+
+    .conbtn {
+      width: 100%; display: flex; align-items: center; gap: 8px; margin-top: 12px;
+      color: var(--faint); font-size: 12.5px; font-weight: 650; padding: 4px 2px;
+    }
+    .conbtn svg { width: 13px; height: 13px; transition: transform 0.2s; }
+    .conbtn.open svg { transform: rotate(90deg); }
     .console {
-      background: #0a0c10; border: 1px solid var(--line); border-radius: 10px; padding: 10px;
-      font: 11px/1.5 ui-monospace, Menlo, Consolas, monospace; white-space: pre-wrap; word-break: break-word;
-      max-height: 240px; overflow-y: auto; margin-top: 10px; color: #b7c0d4;
+      display: none; margin-top: 10px; padding: 12px; border-radius: 13px;
+      background: #0a0a10; border: 1px solid var(--line);
+      font: 11px/1.55 ui-monospace, Menlo, Consolas, monospace; color: #b9c0d4;
+      max-height: 250px; overflow-y: auto; white-space: pre-wrap; word-break: break-word;
     }
-    .err { color: var(--red); font-size: 13px; margin-top: 10px; min-height: 18px; }
-    .addr { font: 12px ui-monospace, Menlo, Consolas, monospace; color: var(--text); background: var(--card2);
-      border: 1px solid var(--line); border-radius: 8px; padding: 7px 10px; }
-    .topbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
-    .pulse { display: inline-block; width: 7px; height: 7px; border-radius: 99px; background: var(--green); margin-right: 5px;
-      animation: pulse 1.6s infinite; }
-    @keyframes pulse { 50% { opacity: .35 } }
-    #servers:empty::after { content: 'No servers published yet — open ELauncher on your PC.'; color: var(--faint); }
+    .console.open { display: block; }
+    .cmdrow { display: none; gap: 8px; margin-top: 9px; }
+    .cmdrow.open { display: flex; }
+    .cmdrow input {
+      flex: 1; min-width: 0; padding: 11px 13px; border-radius: 12px;
+      background: var(--card-2); border: 1px solid var(--line); color: var(--text); outline: none;
+      font: 12.5px ui-monospace, Menlo, Consolas, monospace;
+    }
+    .cmdrow input:focus { border-color: var(--accent); }
+    .cmdrow button {
+      display: grid; place-items: center; width: 44px; border-radius: 12px;
+      background: var(--accent-soft); border: 1px solid rgba(124, 108, 255, 0.35); color: var(--accent);
+    }
+    .cmdrow button svg { width: 15px; height: 15px; }
+
+    .hintline { margin-top: 11px; font-size: 12px; color: var(--faint); }
+
+    /* ---------- skeletons / empty / toasts ---------- */
+    .skel { height: 132px; border-radius: var(--radius); margin-bottom: 14px; border: 1px solid var(--line);
+      background: linear-gradient(100deg, var(--card) 40%, var(--card-2) 50%, var(--card) 60%);
+      background-size: 200% 100%; animation: shimmer 1.4s infinite linear; }
+    @keyframes shimmer { to { background-position: -200% 0; } }
+    .empty { text-align: center; padding: 60px 20px; color: var(--faint); }
+    .empty .halo { margin: 0 auto 18px; width: 64px; height: 64px; }
+    .empty .halo img { width: 64px; height: 64px; border-radius: 18px; }
+    .empty b { display: block; color: var(--dim); font-size: 15px; margin-bottom: 6px; }
+    #toasts { position: fixed; left: 0; right: 0; bottom: calc(18px + env(safe-area-inset-bottom)); z-index: 50;
+      display: flex; flex-direction: column; align-items: center; gap: 8px; pointer-events: none; }
+    .toast {
+      max-width: 86vw; padding: 11px 18px; border-radius: 99px; font-size: 13px; font-weight: 600;
+      background: #1b1b24; color: var(--text); border: 1px solid var(--line-strong);
+      box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5); animation: rise 0.22s ease-out;
+    }
+    .toast.bad { border-color: rgba(251, 113, 133, 0.4); color: var(--red); }
+    @keyframes rise { from { opacity: 0; transform: translateY(10px); } }
+    @keyframes pulse { 50% { opacity: 0.35; } }
   </style>
 </head>
 <body>
-  <h1><img src="../icon.png" alt="" /> ELauncher Remote <span class="sub" id="who"></span></h1>
-
-  <div class="card" id="login" hidden>
-    <div class="name" style="margin-bottom:4px">Sign in</div>
-    <div class="faint">Same account as the launcher. Your PC's launcher must be running to receive commands.</div>
-    <label>Email</label>
-    <input id="email" type="email" autocomplete="email" inputmode="email" />
-    <label>Password</label>
-    <input id="password" type="password" autocomplete="current-password" />
-    <div class="err" id="loginErr"></div>
-    <button class="primary" id="loginBtn" style="width:100%;margin-top:6px">Sign in</button>
-  </div>
-
-  <div id="app" hidden>
-    <div class="topbar">
-      <span class="faint"><span class="pulse"></span>updates every 8s</span>
-      <button id="signout" style="padding:7px 12px;font-size:12.5px">Sign out</button>
+  <div class="shell">
+    <div class="top" id="topbar" hidden>
+      <img src="../icon.png" alt="" />
+      <div class="wordmark">ELauncher <span>Remote</span></div>
+      <div class="live"><span class="dot"></span>live</div>
+      <button class="iconbtn" id="signout" title="Sign out" aria-label="Sign out">
+        <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+      </button>
     </div>
-    <div id="servers"></div>
+
+    <div class="login" id="login" hidden>
+      <div class="halo"><img src="../icon.png" alt="ELauncher" /></div>
+      <h1>ELauncher <span>Remote</span></h1>
+      <p>Your servers in your pocket — live status, console, and controls through the cloud relay.</p>
+      <div class="panel">
+        <div class="field">
+          <label>Email</label>
+          <input id="email" type="email" autocomplete="email" inputmode="email" placeholder="you@example.com" />
+        </div>
+        <div class="field">
+          <label>Password</label>
+          <input id="password" type="password" autocomplete="current-password" placeholder="••••••••" />
+        </div>
+        <button class="cta" id="loginBtn">Sign in</button>
+        <div class="err" id="loginErr"></div>
+      </div>
+    </div>
+
+    <div id="app" hidden>
+      <div id="servers"></div>
+    </div>
   </div>
+  <div id="toasts"></div>
 
   <script type="module">
     import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm'
@@ -98,10 +273,43 @@
     let me = null
     let myName = 'Phone'
     let timer = null
-    let restarting = new Set()
+    const restarting = new Set()
+    const openConsoles = new Set()
 
-    function esc(s) {
-      return String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]))
+    const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]))
+
+    const icons = {
+      play: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>',
+      stop: '<svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>',
+      redo: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3-6.7"/><polyline points="21 3 21 9 15 9"/></svg>',
+      send: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>',
+      chev: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>',
+      globe: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>',
+      users: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>',
+      clock: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>',
+      chipIc: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><line x1="9" y1="1" x2="9" y2="4"/><line x1="15" y1="1" x2="15" y2="4"/><line x1="9" y1="20" x2="9" y2="23"/><line x1="15" y1="20" x2="15" y2="23"/><line x1="20" y1="9" x2="23" y2="9"/><line x1="20" y1="14" x2="23" y2="14"/><line x1="1" y1="9" x2="4" y2="9"/><line x1="1" y1="14" x2="4" y2="14"/></svg>',
+      tag: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>'
+    }
+
+    function toast(message, bad = false) {
+      const el = document.createElement('div')
+      el.className = `toast${bad ? ' bad' : ''}`
+      el.textContent = message
+      $('toasts').appendChild(el)
+      setTimeout(() => el.remove(), 2600)
+    }
+
+    const hueOf = (id) => [...String(id)].reduce((a, c) => (a * 31 + c.charCodeAt(0)) >>> 0, 7) % 360
+    const gradOf = (id) => {
+      const h = hueOf(id)
+      return `linear-gradient(135deg, hsl(${h} 68% 55%), hsl(${(h + 46) % 360} 74% 45%))`
+    }
+
+    function fmtUptime(ms) {
+      const m = Math.floor(ms / 60_000)
+      const h = Math.floor(m / 60)
+      const d = Math.floor(h / 24)
+      return d > 0 ? `${d}d ${h % 24}h` : h > 0 ? `${h}h ${m % 60}m` : `${Math.max(0, m)}m`
     }
 
     async function queue(serverId, action, payload = '') {
@@ -129,20 +337,26 @@
     }
 
     window.act = async (serverId, action) => {
+      if ((action === 'stop' || action === 'restart') && !confirm(`${action === 'stop' ? 'Stop' : 'Restart'} this server?`)) return
       try {
         if (action === 'restart') {
           restarting.add(serverId)
-          render(await fetchServers())
+          render(await fetchServers().catch(() => []))
+          toast('Restarting — saving and stopping first…')
           await queue(serverId, 'stop')
-          if (await waitForState(serverId, 'stopped', 120_000)) await queue(serverId, 'start')
+          if (await waitForState(serverId, 'stopped', 120_000)) {
+            await queue(serverId, 'start')
+            toast('Starting back up')
+          } else toast('The server did not stop in time', true)
           restarting.delete(serverId)
         } else {
           await queue(serverId, action)
+          toast(action === 'start' ? 'Start request sent' : 'Stop request sent')
         }
         void refresh()
       } catch (e) {
         restarting.delete(serverId)
-        alert(e.message ?? 'Command failed')
+        toast(e.message ?? 'Command failed', true)
       }
     }
 
@@ -153,49 +367,121 @@
       try {
         await queue(serverId, 'command', value)
         input.value = ''
+        toast('Command sent')
       } catch (e) {
-        alert(e.message ?? 'Command failed')
+        toast(e.message ?? 'Command failed', true)
       }
+    }
+
+    window.copyAddr = (address) => {
+      navigator.clipboard?.writeText(address).then(
+        () => toast('Address copied'),
+        () => toast('Could not copy', true)
+      )
+    }
+
+    window.toggleConsole = (serverId) => {
+      if (openConsoles.has(serverId)) openConsoles.delete(serverId)
+      else openConsoles.add(serverId)
+      const con = $(`con-${serverId}`)
+      const row = $(`cmdw-${serverId}`)
+      const btn = $(`conbtn-${serverId}`)
+      const open = openConsoles.has(serverId)
+      con?.classList.toggle('open', open)
+      row?.classList.toggle('open', open)
+      btn?.classList.toggle('open', open)
+      if (open && con) con.scrollTop = con.scrollHeight
+    }
+
+    function pill(icon, html) {
+      return `<span class="pill">${icon}<span>${html}</span></span>`
     }
 
     function render(rows) {
       const wrap = $('servers')
-      const open = new Set([...wrap.querySelectorAll('details[open]')].map((d) => d.dataset.id))
+      if (!rows.length) {
+        wrap.innerHTML = `<div class="empty">
+          <div class="halo"><img src="../icon.png" alt="" /></div>
+          <b>No servers yet</b>
+          Open ELauncher on your PC — its servers appear here automatically.
+        </div>`
+        return
+      }
       wrap.innerHTML = rows.map((row) => {
         const fresh = Date.now() - new Date(row.updated_at).getTime() < HEARTBEAT_MS * 4
         const state = fresh ? row.state : 'offline'
-        const chip = state === 'running'
-          ? '<span class="chip on">online</span>'
-          : state === 'offline'
-            ? '<span class="chip dead">launcher offline</span>'
-            : `<span class="chip off">${esc(state)}</span>`
-        const players = fresh && row.players?.length ? `<div class="faint" style="margin-top:4px">${esc(row.players.join(', '))}</div>` : ''
-        const addr = fresh && row.address ? `<div class="addr" style="margin-top:8px">${esc(row.address)}</div>` : ''
         const busy = restarting.has(row.server_id)
-        const running = state === 'running' || state === 'starting'
-        const buttons = state === 'offline'
-          ? '<div class="faint" style="margin-top:8px">Open ELauncher on your PC to control this server.</div>'
-          : `<div class="row" style="margin-top:10px">
-              ${running
-                ? `<button class="danger" onclick="act('${row.server_id}','stop')" ${busy ? 'disabled' : ''}>Stop</button>
-                   <button onclick="act('${row.server_id}','restart')" ${busy ? 'disabled' : ''}>${busy ? 'Restarting…' : 'Restart'}</button>`
-                : `<button class="go" onclick="act('${row.server_id}','start')" ${busy ? 'disabled' : ''}>Start</button>`}
-             </div>`
+        const running = state === 'running'
+        const transit = state === 'starting' || state === 'stopping'
+        const stClass = running ? 'on' : transit ? 'warm' : state === 'offline' ? 'dead' : ''
+        const chipText = running ? 'Online' : state === 'starting' ? 'Starting…' : state === 'stopping' ? 'Stopping…' : state === 'offline' ? 'PC offline' : 'Stopped'
+        const players = fresh ? (row.players ?? []) : []
+        const line = state === 'offline'
+          ? 'Open ELauncher on your PC to reconnect'
+          : running
+            ? (players.length ? `${players.length} playing — ${players.join(', ')}` : 'Online — nobody on yet')
+            : state === 'stopped' ? 'Ready when you are' : 'Working on it…'
+
+        const pills = []
+        if (fresh && row.started_at && running) pills.push(pill(icons.clock, `<b>${fmtUptime(Date.now() - new Date(row.started_at).getTime())}</b>`))
+        if (fresh && row.memory_mb != null && running) pills.push(pill(icons.chipIc, `<b>${(row.memory_mb / 1024).toFixed(1)} GB</b>${row.cpu_percent != null ? ` · ${row.cpu_percent}%` : ''}`))
+        if (fresh && running) pills.push(pill(icons.users, `<b>${players.length}</b> online`))
+        if (row.version) pills.push(pill(icons.tag, esc(row.version)))
+
+        const addr = fresh && row.address
+          ? `<button class="addr" onclick="copyAddr('${esc(row.address)}')">${icons.globe}<span class="a">${esc(row.address)}</span><span class="c">tap to copy</span></button>`
+          : ''
+
+        const acts = state === 'offline'
+          ? ''
+          : running || transit
+            ? `<div class="acts">
+                <button class="btn stop" onclick="act('${row.server_id}','stop')" ${busy || transit ? 'disabled' : ''}>${icons.stop} Stop</button>
+                <button class="btn" onclick="act('${row.server_id}','restart')" ${busy || transit ? 'disabled' : ''}>${icons.redo} ${busy ? 'Restarting…' : 'Restart'}</button>
+              </div>`
+            : `<div class="acts single">
+                <button class="btn start" onclick="act('${row.server_id}','start')" ${busy ? 'disabled' : ''}>${icons.play} Start server</button>
+              </div>`
+
+        const conOpen = openConsoles.has(row.server_id)
         const cmdId = `cmd-${row.server_id}`
-        const consoleBlock = `
-          <details data-id="${row.server_id}" ${open.has(row.server_id) ? 'open' : ''}>
-            <summary class="faint" style="margin-top:10px;cursor:pointer">console</summary>
-            <div class="console">${esc(row.console || 'No output yet.')}</div>
-            ${running ? `<div class="row" style="margin-top:8px">
-              <input id="${cmdId}" class="grow" placeholder="say hi · save · kick <id>" style="font-family:ui-monospace,Consolas,monospace;font-size:12.5px" />
-              <button onclick="sendCmd('${row.server_id}','${cmdId}')">Send</button>
-            </div>` : ''}
-          </details>`
-        return `<div class="card">
-          <div class="row"><span class="name grow">${esc(row.name)}</span>${chip}</div>
-          ${players}${addr}${buttons}${consoleBlock}
+        const consoleBlock = state === 'offline' ? '' : `
+          <button class="conbtn${conOpen ? ' open' : ''}" id="conbtn-${row.server_id}" onclick="toggleConsole('${row.server_id}')">${icons.chev} Console</button>
+          <div class="console${conOpen ? ' open' : ''}" id="con-${row.server_id}">${esc(row.console || 'No output yet.')}</div>
+          <div class="cmdrow${conOpen ? ' open' : ''}" id="cmdw-${row.server_id}">
+            <input id="${cmdId}" placeholder="say hi · save · kick <id>" ${running ? '' : 'disabled'}
+              onkeydown="if(event.key==='Enter')sendCmd('${row.server_id}','${cmdId}')" />
+            <button onclick="sendCmd('${row.server_id}','${cmdId}')" ${running ? '' : 'disabled'} aria-label="Send">${icons.send}</button>
+          </div>`
+
+        return `<div class="card${state === 'offline' ? ' offline' : ''}">
+          <div class="head">
+            <div class="tile" style="background:${gradOf(row.server_id)}">${esc((row.name || '?').charAt(0).toUpperCase())}<span class="st ${stClass}"></span></div>
+            <div class="who">
+              <div class="nm">${esc(row.name || 'Server')}</div>
+              <div class="ln">${esc(line)}</div>
+            </div>
+            <span class="chip ${stClass}">${chipText}</span>
+          </div>
+          ${pills.length ? `<div class="pills">${pills.join('')}</div>` : ''}
+          ${addr}
+          ${acts}
+          ${consoleBlock}
         </div>`
       }).join('')
+
+      for (const id of openConsoles) {
+        const con = $(`con-${id}`)
+        if (con) con.scrollTop = con.scrollHeight
+      }
+    }
+
+    // design/debug hook: paints mock cards without auth (read-only UI, commands stay gated)
+    window.__renderPreview = (rows) => {
+      $('login').hidden = true
+      $('topbar').hidden = false
+      $('app').hidden = false
+      render(rows)
     }
 
     async function refresh() {
@@ -203,17 +489,18 @@
       try {
         render(await fetchServers())
       } catch (e) {
-        $('servers').innerHTML = `<div class="err">${esc(e.message)}</div>`
+        $('servers').innerHTML = `<div class="empty"><b>Could not reach the cloud</b>${esc(e.message)}</div>`
       }
     }
 
     async function enter(session) {
       me = session.user.id
-      $('who').textContent = session.user.email ?? ''
       const { data } = await supabase.from('profiles').select('username').eq('id', me).maybeSingle()
       if (data?.username) myName = `${data.username} (phone)`
       $('login').hidden = true
+      $('topbar').hidden = false
       $('app').hidden = false
+      $('servers').innerHTML = '<div class="skel"></div><div class="skel"></div>'
       void refresh()
       clearInterval(timer)
       timer = setInterval(refresh, 8000)
