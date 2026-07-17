@@ -25,6 +25,21 @@ let vapidOwner: string | null = null
 let subsCache: { at: number; rows: SubscriptionRow[] } | null = null
 const recent = new Map<string, number>()
 
+/** server.ts hooks this up so notification problems surface in the server console. */
+let logSink: ((serverId: string, line: string) => void) | null = null
+const sinkThrottle = new Map<string, number>()
+export function setNotificationLogSink(sink: (serverId: string, line: string) => void): void {
+  logSink = sink
+}
+function surface(tag: string, message: string): void {
+  const serverId = tag.includes(':') ? tag.split(':')[0] : ''
+  if (!serverId || !logSink) return
+  const last = sinkThrottle.get(message)
+  if (last && Date.now() - last < 10 * 60_000) return
+  sinkThrottle.set(message, Date.now())
+  logSink(serverId, `[ELauncher] ${message}`)
+}
+
 async function ensureVapid(me: string): Promise<{ publicKey: string; privateKey: string } | null> {
   if (vapid && vapidOwner === me) return vapid
   const supabase = getClient()
@@ -49,18 +64,37 @@ async function ensureVapid(me: string): Promise<{ publicKey: string; privateKey:
   return vapid
 }
 
-// create the account's keypair soon after boot so phones can subscribe right away
-setTimeout(() => {
-  void (async () => {
-    try {
-      if (!isCloudConfigured()) return
-      const me = (await getClient().auth.getSession()).data.session?.user.id
-      if (me) await ensureVapid(me)
-    } catch {
-      // offline or signed out — the keypair gets created on the first event instead
+// create the account's keypair soon after boot so phones can subscribe right away,
+// then watch for newly enrolled phones and greet them — instant proof the pipeline works
+let knownEndpoints: Set<string> | null = null
+async function pushWatchTick(): Promise<void> {
+  if (!isCloudConfigured()) return
+  const supabase = getClient()
+  const me = (await supabase.auth.getSession()).data.session?.user.id
+  if (!me) return
+  const keys = await ensureVapid(me)
+  if (!keys) return
+  const { data } = await supabase.from('push_subscriptions').select('id, endpoint, subscription').eq('owner_id', me)
+  const rows = (data as SubscriptionRow[] | null) ?? []
+  if (knownEndpoints) {
+    const fresh = rows.filter((row) => !knownEndpoints!.has(row.endpoint))
+    for (const row of fresh) {
+      try {
+        await webpush.sendNotification(
+          row.subscription,
+          JSON.stringify({ title: 'ELauncher', body: 'Notifications are on — this phone will get server alerts.', tag: 'welcome' }),
+          { vapidDetails: { subject: CONTACT, publicKey: keys.publicKey, privateKey: keys.privateKey }, TTL: 600 }
+        )
+      } catch {
+        // greeting is best-effort
+      }
     }
-  })()
-}, 6_000)
+  }
+  knownEndpoints = new Set(rows.map((row) => row.endpoint))
+  subsCache = { at: Date.now(), rows }
+}
+setTimeout(() => void pushWatchTick().catch(() => {}), 6_000)
+setInterval(() => void pushWatchTick().catch(() => {}), 30_000)
 
 /** Fire-and-forget push to every phone the account registered. Never throws. */
 export function notifyPhones(title: string, body: string, tag = ''): void {
@@ -79,13 +113,19 @@ export function notifyPhones(title: string, body: string, tag = ''): void {
       const me = (await supabase.auth.getSession()).data.session?.user.id
       if (!me) return
       const keys = await ensureVapid(me)
-      if (!keys) return
+      if (!keys) {
+        surface(tag, 'Notifications: cloud tables are missing — run the schema update in Supabase, then try again.')
+        return
+      }
 
       if (!subsCache || Date.now() - subsCache.at > SUB_CACHE_MS) {
         const { data } = await supabase.from('push_subscriptions').select('id, endpoint, subscription').eq('owner_id', me)
         subsCache = { at: Date.now(), rows: (data as SubscriptionRow[] | null) ?? [] }
       }
-      if (subsCache.rows.length === 0) return
+      if (subsCache.rows.length === 0) {
+        surface(tag, 'Notifications: no phones enrolled yet — tap the bell in the phone app.')
+        return
+      }
 
       const payload = JSON.stringify({ title, body, tag })
       await Promise.all(
@@ -101,6 +141,8 @@ export function notifyPhones(title: string, body: string, tag = ''): void {
               // the phone unsubscribed or the endpoint expired — drop the row
               await supabase.from('push_subscriptions').delete().eq('id', row.id)
               subsCache = null
+            } else {
+              surface(tag, `Notifications: push delivery failed${status ? ` (HTTP ${status})` : ''}.`)
             }
           }
         })

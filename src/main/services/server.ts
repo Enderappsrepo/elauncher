@@ -60,7 +60,10 @@ import {
   type PalworldHandle
 } from './palworld'
 import { closePort, getMappedAddress } from './upnp'
-import { notifyPhones } from './notifications'
+import { notifyPhones, setNotificationLogSink } from './notifications'
+
+// notification problems (missing tables, no phones enrolled) print into the server console
+setNotificationLogSink((serverId, line) => pushLog(serverId, line))
 
 const MANIFEST_URL = 'https://piston-meta.mojang.com/mc/game/version_manifest_v2.json'
 /** PaperMC "Fill" API — the old api.papermc.io/v2 endpoint was retired (410). */
