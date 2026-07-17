@@ -316,17 +316,51 @@
       return d > 0 ? `${d}d ${h % 24}h` : h > 0 ? `${h}h ${m % 60}m` : `${Math.max(0, m)}m`
     }
 
+    /** serverId -> owning account (yours, or the friend who shared it with you) */
+    const ownerOf = new Map()
+
     async function queue(serverId, action, payload = '') {
       const { error } = await supabase.from('server_commands').insert({
-        server_id: serverId, owner_id: me, sender_id: me, sender_name: myName, action, payload
+        server_id: serverId, owner_id: ownerOf.get(serverId) ?? me, sender_id: me, sender_name: myName, action, payload
       })
       if (error) throw new Error(error.message)
     }
 
     async function fetchServers() {
-      const { data, error } = await supabase.from('server_status').select('*').eq('owner_id', me).order('name')
-      if (error) throw new Error(error.message)
-      return data ?? []
+      // your servers + servers other people shared with you (Access tab in the launcher)
+      const [mineRes, sharesRes] = await Promise.all([
+        supabase.from('server_status').select('*').eq('owner_id', me),
+        supabase.from('server_shares').select('server_id, server_name, owner_id').eq('grantee_id', me)
+      ])
+      if (mineRes.error) throw new Error(mineRes.error.message)
+      const mine = (mineRes.data ?? []).map((row) => ({ ...row, _owner: null }))
+      mine.forEach((row) => ownerOf.set(row.server_id, me))
+
+      const shares = sharesRes.error ? [] : (sharesRes.data ?? [])
+      let shared = []
+      if (shares.length) {
+        const ids = shares.map((s) => s.server_id)
+        const ownerIds = [...new Set(shares.map((s) => s.owner_id))]
+        const [stRes, ownersRes] = await Promise.all([
+          supabase.from('server_status').select('*').in('server_id', ids),
+          supabase.from('profiles').select('id, username').in('id', ownerIds)
+        ])
+        const stMap = new Map((stRes.data ?? []).map((row) => [row.server_id, row]))
+        const names = new Map((ownersRes.data ?? []).map((p) => [p.id, p.username]))
+        const mineIds = new Set(mine.map((row) => row.server_id))
+        shared = shares
+          .filter((s) => !mineIds.has(s.server_id))
+          .map((s) => {
+            ownerOf.set(s.server_id, s.owner_id)
+            const st = stMap.get(s.server_id)
+            return {
+              ...(st ?? { server_id: s.server_id, name: s.server_name, state: 'stopped', players: [], console: '', updated_at: '' }),
+              name: (st && st.name) || s.server_name,
+              _owner: names.get(s.owner_id) ?? 'friend'
+            }
+          })
+      }
+      return [...mine, ...shared].sort((a, b) => (a.name || '').localeCompare(b.name || ''))
     }
 
     async function waitForState(serverId, wanted, timeoutMs) {
@@ -427,6 +461,7 @@
             : state === 'stopped' ? 'Ready when you are' : 'Working on it…'
 
         const pills = []
+        if (row._owner) pills.push(pill(icons.users, `${esc(row._owner)}&#8217;s PC`))
         if (fresh && row.started_at && running) pills.push(pill(icons.clock, `<b>${fmtUptime(Date.now() - new Date(row.started_at).getTime())}</b>`))
         if (fresh && row.memory_mb != null && running) pills.push(pill(icons.chipIc, `<b>${(row.memory_mb / 1024).toFixed(1)} GB</b>${row.cpu_percent != null ? ` · ${row.cpu_percent}%` : ''}`))
         if (fresh && running) pills.push(pill(icons.users, `<b>${players.length}</b> online`))
