@@ -1,9 +1,226 @@
 import { useCallback, useEffect, useState } from 'react'
-import type { CloudPackDetails, CloudProfile, LauncherNewsItem } from '@shared/types'
+import type { CloudPackDetails, CloudProfile, HostReport, LauncherNewsItem, LocalServer } from '@shared/types'
 import { useAppState } from '../state'
 import { useToast } from '../toast'
 import { formatBytes, timeAgo, tileGradient } from '../fmt'
-import { IconAlert, IconBox, IconEdit, IconNews, IconPlus, IconRefresh, IconShield, IconTrash } from '../icons'
+import {
+  IconAlert,
+  IconBox,
+  IconEdit,
+  IconGauge,
+  IconNews,
+  IconPlus,
+  IconRefresh,
+  IconServer,
+  IconShield,
+  IconTrash,
+  IconZap
+} from '../icons'
+
+type Health = 'smooth' | 'fair' | 'poor' | null
+interface LiveState {
+  state: string
+  memoryMB: number | null
+  cpuPercent: number | null
+  health: Health
+}
+
+/** Admin capacity + performance dashboard: how the host is doing and how many more servers fit. */
+function CapacityTab(): React.JSX.Element {
+  const [report, setReport] = useState<HostReport | null>(null)
+  const [servers, setServers] = useState<LocalServer[]>([])
+  const [states, setStates] = useState<Record<string, LiveState>>({})
+
+  const load = useCallback(() => {
+    window.elauncher.host.report().then(setReport).catch(() => {})
+    window.elauncher.server.list().then(setServers).catch(() => {})
+    window.elauncher.server.getStates().then((s) => setStates(s as Record<string, LiveState>)).catch(() => {})
+  }, [])
+
+  useEffect(() => {
+    load()
+    const t = setInterval(load, 5000)
+    return () => clearInterval(t)
+  }, [load])
+
+  if (!report) return <div className="skeleton" style={{ height: 260 }} />
+
+  const totalGB = report.specs.ramGB
+  const threads = report.specs.threads
+  const OS_RESERVE = 4
+  // allocated footprint of a running server (palworld self-sizes ~14 GB; minecraft reserves its heap)
+  const allocGB = (s: LocalServer): number => (s.game === 'palworld' ? 14 : Math.max(2, s.memoryMax / 1024 || 4))
+
+  const running = servers.filter((s) => (states[s.id]?.state ?? 'stopped') !== 'stopped')
+  const committedGB = OS_RESERVE + running.reduce((sum, s) => sum + allocGB(s), 0)
+  const freeGB = Math.max(0, totalGB - committedGB)
+  const usedPct = Math.min(100, Math.round((committedGB / Math.max(1, totalGB)) * 100))
+
+  // live CPU across running servers, and the worst health reading
+  const cpuSum = running.reduce((sum, s) => sum + (states[s.id]?.cpuPercent ?? 0), 0)
+  const healths = running.map((s) => states[s.id]?.health).filter(Boolean) as Health[]
+  const anyPoor = healths.includes('poor')
+  const anyFair = healths.includes('fair')
+
+  // capacity headroom — the smaller of what RAM and CPU threads allow
+  const threadsFree = threads - 2 - running.length * 2
+  const moreMcByRam = Math.floor(freeGB / 4)
+  const morePalByRam = Math.floor(freeGB / 14)
+  const moreByThreads = Math.max(0, Math.floor(threadsFree / 2))
+  const moreMc = Math.max(0, Math.min(moreMcByRam, moreByThreads))
+  const morePal = Math.max(0, Math.min(morePalByRam, Math.floor(moreByThreads / 2)))
+
+  const verdict: { label: string; color: string; note: string } =
+    freeGB < 2 || anyPoor || cpuSum > 90 || report.specs.freeRamGB < 1.5
+      ? { label: 'Under pressure', color: 'var(--red)', note: 'At or near capacity — avoid adding servers; consider a scheduled restart or lower view-distance on busy ones.' }
+      : freeGB < 4 || anyFair || cpuSum > 70
+        ? { label: 'Getting busy', color: '#fbbf24', note: 'Working, but with limited headroom. Keep an eye on memory and CPU before taking on more.' }
+        : { label: 'Healthy', color: 'var(--green)', note: 'Plenty of headroom — comfortable to run more servers.' }
+
+  const bar = (pct: number, color: string): React.JSX.Element => (
+    <div style={{ height: 10, borderRadius: 99, background: 'var(--bg-hover)', overflow: 'hidden' }}>
+      <div style={{ width: `${pct}%`, height: '100%', background: color, transition: 'width .4s' }} />
+    </div>
+  )
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      {/* verdict banner */}
+      <div className="card settings-section" style={{ borderColor: verdict.color }}>
+        <div className="row" style={{ gap: 12 }}>
+          <span className="stat-icon" style={{ background: 'transparent', color: verdict.color }}>
+            <IconGauge size={22} />
+          </span>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 18, fontWeight: 750, color: verdict.color }}>{verdict.label}</div>
+            <div className="small muted">{verdict.note}</div>
+          </div>
+          <div style={{ textAlign: 'right' }}>
+            <div style={{ fontSize: 20, fontWeight: 800 }}>
+              {running.length}
+              <span className="faint" style={{ fontSize: 14, fontWeight: 500 }}>
+                {' '}
+                / {servers.length}
+              </span>
+            </div>
+            <div className="small faint">servers running</div>
+          </div>
+        </div>
+      </div>
+
+      {/* resource meters */}
+      <div className="card settings-section">
+        <div className="section-title">
+          <span className="row" style={{ gap: 9 }}>
+            <IconZap size={15} /> Host resources
+          </span>
+          <span className="small faint">
+            {report.specs.cpuModel} · {threads} threads · {totalGB} GB
+          </span>
+        </div>
+        <div className="field">
+          <div className="row" style={{ justifyContent: 'space-between', marginBottom: 6 }}>
+            <label style={{ margin: 0 }}>Memory committed</label>
+            <span className="small faint">
+              {committedGB.toFixed(0)} / {totalGB} GB · {freeGB.toFixed(0)} GB free
+            </span>
+          </div>
+          {bar(usedPct, usedPct > 85 ? 'var(--red)' : usedPct > 65 ? '#fbbf24' : 'var(--green)')}
+        </div>
+        <div className="field">
+          <div className="row" style={{ justifyContent: 'space-between', marginBottom: 6 }}>
+            <label style={{ margin: 0 }}>CPU load (running servers)</label>
+            <span className="small faint">{Math.round(cpuSum)}% of one machine</span>
+          </div>
+          {bar(Math.min(100, cpuSum), cpuSum > 90 ? 'var(--red)' : cpuSum > 70 ? '#fbbf24' : 'var(--green)')}
+        </div>
+        {report.specs.diskType === 'HDD' && (
+          <div className="hint" style={{ color: 'var(--red)' }}>
+            Mechanical hard drive — world saves and chunk loading will stutter under load. An SSD is the biggest upgrade for hosting.
+          </div>
+        )}
+      </div>
+
+      {/* how many more can run */}
+      <div className="card settings-section">
+        <div className="section-title">
+          <span className="row" style={{ gap: 9 }}>
+            <IconServer size={15} /> Room for more servers
+          </span>
+          <span className="small faint">rough estimate</span>
+        </div>
+        <div className="props-grid">
+          <div className="stat-tile">
+            <div className="stat-icon">
+              <IconBox size={18} />
+            </div>
+            <div>
+              <div className="stat-value stat-value-sm">{moreMc}</div>
+              <div className="stat-label">more Minecraft (~4 GB each)</div>
+            </div>
+          </div>
+          <div className="stat-tile">
+            <div className="stat-icon">
+              <IconBox size={18} />
+            </div>
+            <div>
+              <div className="stat-value stat-value-sm">{morePal}</div>
+              <div className="stat-label">more Palworld (~14 GB each)</div>
+            </div>
+          </div>
+        </div>
+        <div className="hint">
+          Based on {freeGB.toFixed(0)} GB free memory and {Math.max(0, threadsFree)} spare CPU threads. Real capacity depends on
+          player counts, mods, and base sizes — treat these as a ceiling, not a promise.
+        </div>
+      </div>
+
+      {/* per-server health */}
+      {running.length > 0 && (
+        <div className="card settings-section">
+          <div className="section-title">
+            <span className="row" style={{ gap: 9 }}>
+              <IconServer size={15} /> Running servers
+            </span>
+          </div>
+          {running.map((s) => {
+            const st = states[s.id]
+            const h = st?.health
+            const color = h === 'poor' ? 'var(--red)' : h === 'fair' ? '#fbbf24' : 'var(--green)'
+            const label = h === 'poor' ? 'Struggling' : h === 'fair' ? 'Busy' : 'Smooth'
+            return (
+              <div key={s.id} className="row" style={{ gap: 10, padding: '8px 0', borderTop: '1px solid rgba(255,255,255,.06)' }}>
+                <span style={{ fontWeight: 650, flex: 1, minWidth: 0 }}>{s.name}</span>
+                <span className="small faint">{s.game === 'palworld' ? 'Palworld' : s.kind}</span>
+                {st?.memoryMB != null && <span className="small faint">{(st.memoryMB / 1024).toFixed(1)} GB</span>}
+                {st?.cpuPercent != null && <span className="small faint">{st.cpuPercent}% CPU</span>}
+                <span className="chip" style={{ color, borderColor: 'transparent', background: 'rgba(255,255,255,.05)' }}>
+                  {label}
+                </span>
+              </div>
+            )
+          })}
+        </div>
+      )}
+
+      {/* host limitations from the estimator */}
+      {report.limitations.length > 0 && (
+        <div className="card settings-section">
+          <div className="section-title">
+            <span className="row" style={{ gap: 9 }}>
+              <IconAlert size={15} /> Things to watch
+            </span>
+          </div>
+          {report.limitations.map((limit, i) => (
+            <div key={i} className="hint" style={{ marginTop: 4 }}>
+              • {limit}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
 
 function MembersTab(): React.JSX.Element {
   const { cloudUser } = useAppState()
@@ -477,7 +694,7 @@ function NewsTab(): React.JSX.Element {
 
 export default function AdminPage(): React.JSX.Element {
   const { cloudUser } = useAppState()
-  const [tab, setTab] = useState<'members' | 'packs' | 'news'>('members')
+  const [tab, setTab] = useState<'capacity' | 'members' | 'packs' | 'news'>('capacity')
   const [reloadKey, setReloadKey] = useState(0)
 
   if (!cloudUser?.isAdmin) {
@@ -498,7 +715,7 @@ export default function AdminPage(): React.JSX.Element {
         <div>
           <h1>Admin</h1>
           <p className="muted" style={{ marginTop: 4 }}>
-            Manage members, the shared modpack library, and launcher news.
+            Hosting capacity, members, the shared modpack library, and launcher news.
           </p>
         </div>
         <button className="ghost" onClick={() => setReloadKey((k) => k + 1)}>
@@ -506,6 +723,9 @@ export default function AdminPage(): React.JSX.Element {
         </button>
       </div>
       <div className="tabs">
+        <button className={tab === 'capacity' ? 'active' : ''} onClick={() => setTab('capacity')}>
+          Capacity
+        </button>
         <button className={tab === 'members' ? 'active' : ''} onClick={() => setTab('members')}>
           Members
         </button>
@@ -517,7 +737,15 @@ export default function AdminPage(): React.JSX.Element {
         </button>
       </div>
       <div key={reloadKey}>
-        {tab === 'members' ? <MembersTab /> : tab === 'packs' ? <PacksTab /> : <NewsTab />}
+        {tab === 'capacity' ? (
+          <CapacityTab />
+        ) : tab === 'members' ? (
+          <MembersTab />
+        ) : tab === 'packs' ? (
+          <PacksTab />
+        ) : (
+          <NewsTab />
+        )}
       </div>
     </div>
   )
