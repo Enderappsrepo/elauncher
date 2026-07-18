@@ -278,6 +278,54 @@
     .toast.bad { border-color: rgba(251, 113, 133, 0.4); color: var(--red); }
     @keyframes rise { from { opacity: 0; transform: translateY(10px); } }
     @keyframes pulse { 50% { opacity: 0.35; } }
+
+    /* ---------- desktop: a friendly wide layout ---------- */
+    @media (min-width: 760px) {
+      .shell { max-width: 1040px; padding: 0 32px calc(52px + env(safe-area-inset-bottom)); }
+      .top { margin: 0 0 24px; padding: calc(16px + env(safe-area-inset-top)) 6px 15px; border-radius: 0 0 16px 16px; }
+      .wordmark { font-size: 18px; }
+
+      /* server cards flow into a responsive grid instead of a single column */
+      #servers { display: grid; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); gap: 16px; align-items: start; }
+      #servers .card { margin-bottom: 0; }
+      #servers .skel, #servers .empty { grid-column: 1 / -1; }
+      .card { border-radius: 18px; }
+      .card:hover { border-color: var(--line-strong); }
+
+      /* host + hosting keep full width, a bit more breathing room */
+      #host, #hosting { max-width: 720px; }
+      .home-head { margin-top: 30px; }
+
+      /* login stays a tidy card, not a stretched banner */
+      .login { max-width: 440px; margin: 0 auto; padding-top: 10vh; }
+
+      /* control panel: a centered modal dialog instead of a bottom sheet */
+      .sheet {
+        top: 50%; bottom: auto; left: 50%; right: auto; margin: 0;
+        transform: translate(-50%, -50%);
+        width: 580px; max-width: 580px; max-height: 84vh;
+        border: 1px solid var(--line-strong); border-radius: 22px;
+        animation: pop 0.22s cubic-bezier(0.22, 1, 0.36, 1);
+      }
+      @keyframes pop { from { opacity: 0; transform: translate(-50%, -46%) scale(0.97); } }
+      .sheet-grip { display: none; }
+      .sheet-top { padding-top: 15px; }
+      .sheet-body { padding: 20px 22px; }
+    }
+
+    /* wide desktop: let servers use three columns and center the shell */
+    @media (min-width: 1160px) { .shell { max-width: 1160px; } }
+
+    /* mobile polish: comfortable tap targets and edge spacing */
+    @media (max-width: 759px) {
+      .card { padding: 15px 15px 16px; }
+      .btn { min-height: 46px; }
+      .chip { font-size: 11.5px; }
+    }
+    @media (hover: hover) {
+      .btn:hover, .minibtn:hover, .conbtn:hover { filter: brightness(1.12); }
+      .card { transition: border-color 0.18s ease; }
+    }
   </style>
 </head>
 <body>
