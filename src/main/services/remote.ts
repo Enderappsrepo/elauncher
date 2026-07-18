@@ -2,13 +2,20 @@ import type { LocalServerState, ManagedServer, ServerShare } from '@shared/types
 import { isCloudConfigured } from '@shared/cloudConfig'
 import { getClient, getUser } from './cloud'
 import {
+  getPalworldPlayerDetails,
+  getServerAutomation,
   getServerLogs,
+  getServerProperties,
   getServerStates,
   listLocalServers,
+  palworldModerate,
   sendServerCommand,
+  setServerAutomation,
+  setServerProperties,
   startServer,
   stopServer
 } from './server'
+import type { PalworldModerationAction, ServerAutomation } from '@shared/types'
 
 /**
  * Remote server management, relayed through the shared cloud:
@@ -19,7 +26,7 @@ import {
  * Row Level Security limits everything to explicit owner→grantee grants.
  */
 
-const HEARTBEAT_MS = 10_000
+const HEARTBEAT_MS = 5_000
 const CONSOLE_TAIL_LINES = 80
 /** shares are re-checked this often so new grants start syncing without a restart */
 const SHARE_REFRESH_MS = 60_000
@@ -314,10 +321,78 @@ async function hostTick(): Promise<void> {
         console.warn(`[remote] command ${cmd.action} from ${cmd.sender_name} failed:`, e)
       }
     }
+
+    // 3. execute control-panel requests (settings, players, automation) with responses
+    const { data: requests } = await supabase
+      .from('server_requests')
+      .select('*')
+      .eq('owner_id', me)
+      .eq('done', false)
+      .order('created_at', { ascending: true })
+      .limit(20)
+    for (const req of (requests as {
+      id: string
+      server_id: string
+      requester_id: string
+      action: string
+      params: Record<string, unknown>
+    }[]) ?? []) {
+      let response: unknown = null
+      let error: string | null = null
+      try {
+        if (!localIds.has(req.server_id)) throw new Error('server is not on this machine')
+        if (req.requester_id !== me && !sharedServerIds.has(req.server_id)) throw new Error('access was revoked')
+        response = await runPanelRequest(req.server_id, req.action, req.params)
+      } catch (e) {
+        error = e instanceof Error ? e.message : String(e)
+      }
+      await supabase
+        .from('server_requests')
+        .update({ done: true, response: response ?? null, error })
+        .eq('id', req.id)
+    }
   } catch (e) {
     console.warn('[remote] host tick failed:', e)
   } finally {
     ticking = false
+  }
+}
+
+/** Execute one control-panel request against a local server and return its result. */
+async function runPanelRequest(serverId: string, action: string, params: Record<string, unknown>): Promise<unknown> {
+  switch (action) {
+    case 'info': {
+      const record = listLocalServers().find((s) => s.id === serverId)
+      if (!record) throw new Error('server not found')
+      return {
+        game: record.game ?? 'minecraft',
+        kind: record.kind,
+        minecraftVersion: record.minecraftVersion,
+        port: record.port,
+        memoryMax: record.memoryMax,
+        communityServer: Boolean(record.communityServer),
+        automation: getServerAutomation(serverId)
+      }
+    }
+    case 'getProps':
+      return getServerProperties(serverId)
+    case 'setProps':
+      return setServerProperties(serverId, (params.updates as Record<string, string>) ?? {})
+    case 'setAutomation':
+      setServerAutomation(serverId, (params.automation as ServerAutomation) ?? {})
+      return { ok: true }
+    case 'players':
+      return getPalworldPlayerDetails(serverId)
+    case 'moderate':
+      await palworldModerate(
+        serverId,
+        params.action as PalworldModerationAction,
+        String(params.target ?? ''),
+        params.message ? String(params.message) : undefined
+      )
+      return { ok: true }
+    default:
+      throw new Error(`unknown request: ${action}`)
   }
 }
 

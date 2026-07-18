@@ -3,8 +3,8 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>ELauncher — a Minecraft launcher for you and your friends</title>
-  <meta name="description" content="A free, open-source Minecraft launcher for Windows: Microsoft login, Fabric/Forge/NeoForge, a Modrinth + CurseForge mod browser, shareable modpacks, and one-click cloud packs for your friend group." />
+  <title>ELauncher — play modded, host your own servers</title>
+  <meta name="description" content="A free, open-source launcher for Windows: Microsoft login, Fabric/Forge/NeoForge, a mod browser, shareable modpacks — plus one-click Minecraft &amp; Palworld servers you manage from the app or a phone control panel." />
   <meta property="og:title" content="ELauncher" />
   <meta property="og:description" content="A free Minecraft launcher built for friend groups — mod loaders, mod browser, shareable modpacks, automatic updates." />
   <meta property="og:image" content="https://enderappsrepo.github.io/elauncher/icon.png" />
@@ -342,6 +342,37 @@
     }
     .note b { color: var(--text); }
 
+    /* ---- hosting ---- */
+    .host-split { margin-top: 40px; display: grid; grid-template-columns: 1fr 300px; gap: 40px; align-items: center; }
+    .host-features .hf { display: flex; gap: 14px; margin-bottom: 22px; }
+    .host-features .hf .ic { flex: none; width: 40px; height: 40px; border-radius: 11px; display: grid; place-items: center; background: var(--accent-soft); color: var(--accent); }
+    .host-features .hf b { display: block; font-size: 15.5px; margin-bottom: 2px; }
+    .host-features .hf span { color: var(--text-dim); font-size: 14px; }
+    .phone { display: flex; justify-content: center; }
+    .phone-scr {
+      width: 290px; border-radius: 34px; border: 1px solid var(--border-strong);
+      background: #0b0b11; padding: 16px 13px; box-shadow: 0 40px 100px rgba(0,0,0,.6), 0 0 70px rgba(124,108,255,.14);
+    }
+    .p-top { display: flex; align-items: center; gap: 8px; padding: 4px 4px 14px; font-size: 13px; font-weight: 700; }
+    .p-top img { width: 22px; height: 22px; border-radius: 6px; }
+    .p-top b { background: linear-gradient(90deg, var(--accent), var(--accent-2)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+    .p-top .p-live { margin-left: auto; font-size: 10.5px; color: var(--green); font-weight: 600; }
+    .p-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 15px; padding: 13px; margin-bottom: 11px; }
+    .p-card.dim { opacity: .6; }
+    .p-row { display: flex; align-items: center; gap: 10px; }
+    .p-tile { width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; color: #fff; font-weight: 800; }
+    .p-nm { font-weight: 700; font-size: 14px; }
+    .p-sub { font-size: 11px; color: var(--text-faint); }
+    .p-chip { font-size: 10px; font-weight: 700; color: var(--green); background: rgba(52,211,153,.12); border: 1px solid rgba(52,211,153,.3); padding: 3px 8px; border-radius: 99px; }
+    .p-chip.off { color: var(--text-faint); background: transparent; border-color: var(--border); }
+    .p-pills { display: flex; gap: 6px; margin-top: 11px; flex-wrap: wrap; }
+    .p-pills span { font-size: 10.5px; color: var(--text-dim); background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 99px; padding: 4px 9px; }
+    .p-acts { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 11px; }
+    .p-btn { text-align: center; font-size: 12.5px; font-weight: 700; padding: 9px; border-radius: 10px; border: 1px solid var(--border-strong); color: var(--text); }
+    .p-btn.stop { color: #fb7185; border-color: rgba(251,113,133,.35); background: rgba(251,113,133,.1); }
+    .p-panel { text-align: center; font-size: 12px; color: var(--text-faint); margin-top: 10px; padding-top: 4px; }
+    @media (max-width: 820px) { .host-split { grid-template-columns: 1fr; } .phone { margin-top: 10px; } }
+
     /* ---- faq ---- */
     .faq { max-width: 760px; margin-top: 36px; }
     details {
@@ -392,8 +423,9 @@
       <span class="brand">E<b>Launcher</b></span>
       <nav>
         <a href="#features">Features</a>
-        <a href="#friends">For friend groups</a>
+        <a href="#hosting">Hosting</a>
         <a href="#faq">FAQ</a>
+        <a href="manage/">Panel</a>
         <a class="gh" href="https://github.com/Enderappsrepo/elauncher" target="_blank" rel="noopener">GitHub</a>
       </nav>
     </header>
@@ -403,10 +435,11 @@
     <div class="wrap">
       <section class="hero" style="padding-top: 56px">
         <span class="pill"><span class="dot"></span> Free &amp; open source · Windows 10/11</span>
-        <h1>Minecraft, modded, <em>minus the hassle.</em></h1>
+        <h1>Play modded, <em>host anything.</em></h1>
         <p class="sub">
-          ELauncher is a clean, fast Minecraft launcher built for friend groups — Microsoft login,
-          Fabric / Forge / NeoForge, a built-in mod browser, and modpacks your friends install with one click.
+          ELauncher is a clean, fast launcher for you and your friends — Microsoft login, mod loaders, a built-in
+          mod browser, one-click modpacks, and <b style="color:var(--text)">your own Minecraft &amp; Palworld servers</b>
+          you manage from the app or your phone.
         </p>
         <div class="cta-row">
           <a class="btn-primary" data-dl="setup" href="https://github.com/Enderappsrepo/elauncher/releases/latest">
@@ -521,6 +554,39 @@
         </div>
       </section>
 
+      <section id="hosting">
+        <div class="kicker">New · game server hosting</div>
+        <h2 class="sec-h2">Run a server. Control it from anywhere.</h2>
+        <p class="sec-sub">Spin up a Minecraft or Palworld dedicated server on your PC in a minute — then manage it from the app, or from your phone through a clean web panel that installs like an app.</p>
+        <div class="host-split">
+          <div class="host-features">
+            <div class="hf"><div class="ic"><svg class="i" viewBox="0 0 24 24"><path d="M5 12h14M12 5v14"/></svg></div><div><b>One-click servers</b><span>Minecraft (Paper/Vanilla/Fabric/Forge) and Palworld — the launcher downloads, configures, and starts it.</span></div></div>
+            <div class="hf"><div class="ic"><svg class="i" viewBox="0 0 24 24"><path d="M4 4h16v12H4zM8 20h8M12 16v4"/></svg></div><div><b>Full control panel</b><span>Console, settings, players &amp; moderation, and automation — the whole panel, on your phone.</span></div></div>
+            <div class="hf"><div class="ic"><svg class="i" viewBox="0 0 24 24"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 01-3.4 0"/></svg></div><div><b>Notified instantly</b><span>Push alerts when the server starts, stops, crashes, or a friend joins.</span></div></div>
+            <div class="hf"><div class="ic"><svg class="i" viewBox="0 0 24 24"><path d="M21 12a9 9 0 11-6.2-8.5"/><path d="M12 7v5l3 2"/></svg></div><div><b>Runs itself</b><span>Scheduled restarts, rolling backups, crash auto-restart, and a memory guard keep it healthy unattended.</span></div></div>
+            <a class="btn-primary" href="manage/" style="margin-top:24px">Open the panel →</a>
+          </div>
+          <div class="phone">
+            <div class="phone-scr">
+              <div class="p-top"><img src="icon.png" alt="" /><span>ELauncher <b>Remote</b></span><span class="p-live">● live</span></div>
+              <div class="p-card">
+                <div class="p-row"><span class="p-tile" style="background:linear-gradient(135deg,#7c6cff,#22d3ee)">P</span>
+                  <div style="flex:1"><div class="p-nm">Pal Kingdom</div><div class="p-sub">2 playing — Jedi, Ben</div></div>
+                  <span class="p-chip">Online</span></div>
+                <div class="p-pills"><span>2h 44m</span><span>7.8 GB · 23%</span><span>v0.6.4</span></div>
+                <div class="p-acts"><span class="p-btn stop">Stop</span><span class="p-btn">Restart</span></div>
+                <div class="p-panel">⚙ Control panel</div>
+              </div>
+              <div class="p-card dim">
+                <div class="p-row"><span class="p-tile" style="background:linear-gradient(135deg,#059669,#22d3ee)">S</span>
+                  <div style="flex:1"><div class="p-nm">Survival SMP</div><div class="p-sub">Ready when you are</div></div>
+                  <span class="p-chip off">Stopped</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
       <section id="download">
         <div class="dl-panel">
           <h2>Get ELauncher</h2>
@@ -565,6 +631,14 @@
           <details>
             <summary>What about the "cloud" — whose servers are those?</summary>
             <p>Your own. The modpack cloud is a free Supabase project that one person in your group sets up in about five minutes (instructions in the README). Nobody else's server is involved.</p>
+          </details>
+          <details>
+            <summary>How does the server hosting work?</summary>
+            <p>The launcher runs a dedicated Minecraft or Palworld server on your PC and links it to a free cloud relay. From the web panel (or your phone) you get live status, console, full settings, player moderation, and automation — no port-forwarding needed for Minecraft, and clear guidance for Palworld. Your PC stays the host; the panel is just the remote control.</p>
+          </details>
+          <details>
+            <summary>Can I let friends manage a server?</summary>
+            <p>Yes — grant any ELauncher account access to a specific server and it shows up in their launcher and phone panel with console and controls, scoped to just that server. Revoke anytime.</p>
           </details>
           <details>
             <summary>Mac or Linux?</summary>

@@ -210,6 +210,55 @@
     .home-head { font-size: 12px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase;
       color: var(--faint); margin: 22px 2px 10px; }
 
+    /* ---------- control-panel sheet ---------- */
+    .sheet-bg { position: fixed; inset: 0; z-index: 40; background: rgba(0,0,0,.55);
+      backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px); animation: fade .2s; }
+    @keyframes fade { from { opacity: 0; } }
+    .sheet { position: fixed; left: 0; right: 0; bottom: 0; z-index: 41; max-height: 92dvh;
+      background: var(--bg); border-top-left-radius: 22px; border-top-right-radius: 22px;
+      border-top: 1px solid var(--line-strong); box-shadow: 0 -20px 60px rgba(0,0,0,.6);
+      display: flex; flex-direction: column; animation: slideup .26s cubic-bezier(.22,1,.36,1);
+      max-width: 540px; margin: 0 auto; }
+    @keyframes slideup { from { transform: translateY(100%); } }
+    .sheet-grip { width: 38px; height: 4px; border-radius: 99px; background: var(--line-strong); margin: 9px auto 4px; flex: none; }
+    .sheet-top { display: flex; align-items: center; gap: 10px; padding: 4px 16px 12px; border-bottom: 1px solid var(--line); }
+    .sheet-top .tile { width: 38px; height: 38px; border-radius: 11px; font-size: 16px; }
+    .sheet-top .nm { font-weight: 750; font-size: 16px; }
+    .sheet-top .sub { font-size: 12px; color: var(--faint); }
+    .sheet-tabs { display: flex; gap: 4px; padding: 10px 12px; overflow-x: auto; border-bottom: 1px solid var(--line); flex: none; }
+    .sheet-tabs button { flex: none; padding: 8px 14px; border-radius: 10px; font-size: 13px; font-weight: 650; color: var(--dim); white-space: nowrap; }
+    .sheet-tabs button.on { background: var(--accent-soft); color: var(--accent); }
+    .sheet-body { padding: 16px; overflow-y: auto; flex: 1; }
+    .frow { margin-bottom: 15px; }
+    .frow label { display: block; font-size: 12px; font-weight: 650; color: var(--faint); margin-bottom: 6px; }
+    .frow input, .frow select { width: 100%; padding: 11px 12px; border-radius: 11px; background: var(--card-2);
+      border: 1px solid var(--line); color: var(--text); outline: none; }
+    .frow input:focus, .frow select:focus { border-color: var(--accent); }
+    .frow .hint2 { font-size: 11.5px; color: var(--faint); margin-top: 5px; }
+    .frow.check { display: flex; align-items: center; gap: 10px; }
+    .frow.check input { width: auto; }
+    .frow.check label { margin: 0; color: var(--text); font-size: 13.5px; font-weight: 500; }
+    .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .rateseg { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+    .rateseg .seg { display: inline-flex; background: var(--card-2); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+    .rateseg .seg button { padding: 8px 11px; font-size: 12.5px; color: var(--dim); }
+    .rateseg .seg button.on { background: var(--accent-soft); color: var(--accent); }
+    .rateseg input { width: 72px; }
+    .savebar { position: sticky; bottom: -16px; margin: 8px -16px -16px; padding: 12px 16px calc(14px + env(safe-area-inset-bottom));
+      background: linear-gradient(transparent, var(--bg) 30%); display: flex; gap: 10px; align-items: center; }
+    .savebar .cta { flex: 1; padding: 13px; }
+    .plister .prow { display: flex; align-items: center; gap: 10px; padding: 9px 0; border-top: 1px solid var(--line); }
+    .plister .prow:first-child { border-top: 0; }
+    .plister .pn { font-weight: 650; }
+    .plister .pm { font-size: 12px; color: var(--faint); }
+    .minibtn { padding: 7px 12px; border-radius: 9px; font-size: 12.5px; font-weight: 650; border: 1px solid var(--line-strong); background: var(--card-2); color: var(--text); }
+    .minibtn.red { color: var(--red); border-color: rgba(251,113,133,.35); background: var(--red-soft); }
+    .searchbar { display: flex; align-items: center; gap: 9px; padding: 10px 12px; margin-bottom: 12px; border-radius: 12px; background: var(--card-2); border: 1px solid var(--line); }
+    .searchbar input { flex: 1; background: none; border: 0; color: var(--text); outline: none; }
+    .searchbar svg { width: 15px; height: 15px; color: var(--faint); }
+    .grouphead { font-size: 11px; font-weight: 700; letter-spacing: .4px; text-transform: uppercase; color: var(--faint); margin: 16px 0 8px; }
+    .loadrow { text-align: center; color: var(--faint); padding: 28px 0; font-size: 13px; }
+
     /* ---------- skeletons / empty / toasts ---------- */
     .skel { height: 132px; border-radius: var(--radius); margin-bottom: 14px; border: 1px solid var(--line);
       background: linear-gradient(100deg, var(--card) 40%, var(--card-2) 50%, var(--card) 60%);
@@ -280,6 +329,7 @@
          style="color:var(--faint);font-size:12px;text-decoration:none">♥ Support ELauncher</a>
     </div>
   </div>
+  <div id="sheet"></div>
   <div id="toasts"></div>
 
   <script type="module">
@@ -309,7 +359,9 @@
       users: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>',
       clock: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>',
       chipIc: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><line x1="9" y1="1" x2="9" y2="4"/><line x1="15" y1="1" x2="15" y2="4"/><line x1="9" y1="20" x2="9" y2="23"/><line x1="15" y1="20" x2="15" y2="23"/><line x1="20" y1="9" x2="23" y2="9"/><line x1="20" y1="14" x2="23" y2="14"/><line x1="1" y1="9" x2="4" y2="9"/><line x1="1" y1="14" x2="4" y2="14"/></svg>',
-      tag: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>'
+      tag: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>',
+      sliders: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></svg>',
+      x: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>'
     }
 
     function toast(message, bad = false) {
@@ -454,6 +506,8 @@
 
     function render(rows) {
       const wrap = $('servers')
+      rowsById.clear()
+      rows.forEach((r) => rowsById.set(r.server_id, r))
       if (!rows.length) {
         wrap.innerHTML = `<div class="empty">
           <div class="halo"><img src="../icon.png" alt="" /></div>
@@ -499,16 +553,8 @@
                 <button class="btn start" onclick="act('${row.server_id}','start')" ${busy ? 'disabled' : ''}>${icons.play} Start server</button>
               </div>`
 
-        const conOpen = openConsoles.has(row.server_id)
-        const cmdId = `cmd-${row.server_id}`
-        const consoleBlock = state === 'offline' ? '' : `
-          <button class="conbtn${conOpen ? ' open' : ''}" id="conbtn-${row.server_id}" onclick="toggleConsole('${row.server_id}')">${icons.chev} Console</button>
-          <div class="console${conOpen ? ' open' : ''}" id="con-${row.server_id}">${esc(row.console || 'No output yet.')}</div>
-          <div class="cmdrow${conOpen ? ' open' : ''}" id="cmdw-${row.server_id}">
-            <input id="${cmdId}" placeholder="say hi · save · kick <id>" ${running ? '' : 'disabled'}
-              onkeydown="if(event.key==='Enter')sendCmd('${row.server_id}','${cmdId}')" />
-            <button onclick="sendCmd('${row.server_id}','${cmdId}')" ${running ? '' : 'disabled'} aria-label="Send">${icons.send}</button>
-          </div>`
+        const manage = state === 'offline' ? '' :
+          `<button class="conbtn" onclick="openSheet('${row.server_id}')">${icons.sliders} Open control panel</button>`
 
         return `<div class="card${state === 'offline' ? ' offline' : ''}">
           <div class="head">
@@ -522,7 +568,7 @@
           ${pills.length ? `<div class="pills">${pills.join('')}</div>` : ''}
           ${addr}
           ${acts}
-          ${consoleBlock}
+          ${manage}
         </div>`
       }).join('')
 
@@ -546,10 +592,224 @@
       $('hosting').innerHTML = html
     }
 
+    // ---------- control-panel sheet (settings, players, automation over the relay) ----------
+    const rowsById = new Map()
+    let sheetId = null, sheetInfo = null, sheetTab = 'console', dirty = {}
+
+    // two-way request: queue it, wait for the launcher to answer
+    async function request(serverId, action, params = {}, timeoutMs = 22000) {
+      const ownerId = ownerOf.get(serverId) ?? me
+      const { data, error } = await supabase.from('server_requests')
+        .insert({ server_id: serverId, owner_id: ownerId, requester_id: me, action, params }).select('id').single()
+      if (error) throw new Error(error.message)
+      const until = Date.now() + timeoutMs
+      while (Date.now() < until) {
+        await new Promise((r) => setTimeout(r, 1200))
+        const { data: row } = await supabase.from('server_requests').select('done,response,error').eq('id', data.id).maybeSingle()
+        if (row?.done) {
+          if (row.error) throw new Error(row.error)
+          return row.response
+        }
+      }
+      throw new Error('The PC did not answer — is the launcher running?')
+    }
+
+    const PAL_ENUMS = {
+      Difficulty: ['None', 'Casual', 'Normal', 'Hard'],
+      DeathPenalty: ['None', 'Item', 'ItemAndEquipment', 'All']
+    }
+    const PAL_ESS = [
+      ['ServerName', 'Server name', 'text'], ['ServerDescription', 'Description', 'text'],
+      ['ServerPassword', 'Join password', 'text'], ['ServerPlayerMaxNum', 'Max players', 'num'],
+      ['Difficulty', 'Difficulty', 'enum'], ['DeathPenalty', 'Death penalty', 'enum'],
+      ['ExpRate', 'XP rate', 'num'], ['PalCaptureRate', 'Capture rate', 'num'],
+      ['DayTimeSpeedRate', 'Day speed', 'num'], ['NightTimeSpeedRate', 'Night speed', 'num'],
+      ['bEnablePlayerToPlayerDamage', 'PvP damage', 'bool'], ['bEnableInvaderEnemy', 'Raids', 'bool']
+    ]
+    const MC_ENUMS = { gamemode: ['survival', 'creative', 'adventure'], difficulty: ['peaceful', 'easy', 'normal', 'hard'] }
+    const MC_ESS = [
+      ['motd', 'MOTD', 'text'], ['max-players', 'Max players', 'num'], ['gamemode', 'Game mode', 'enum'],
+      ['difficulty', 'Difficulty', 'enum'], ['view-distance', 'View distance', 'num'],
+      ['pvp', 'PvP', 'bool'], ['white-list', 'Whitelist only', 'bool']
+    ]
+    const isPal = () => sheetInfo?.game === 'palworld'
+    const boolTrue = (v) => /^true$/i.test(v)
+    const boolStr = (on) => (isPal() ? (on ? 'True' : 'False') : (on ? 'true' : 'false'))
+
+    window.openSheet = async (serverId) => {
+      sheetId = serverId; sheetTab = 'console'; dirty = {}; sheetInfo = null
+      paintSheet('<div class="loadrow">Loading control panel…</div>')
+      try { sheetInfo = await request(serverId, 'info') } catch (e) { toast(e.message, true); return closeSheet() }
+      renderTab()
+    }
+    window.closeSheet = () => { sheetId = null; $('sheet').innerHTML = '' }
+    window.sheetGo = (tab) => { if (Object.keys(dirty).length && !confirm('Discard unsaved changes?')) return; sheetTab = tab; dirty = {}; renderTab() }
+    window.setDirty = (k, v) => { dirty[k] = v }
+
+    function paintSheet(bodyHtml) {
+      const row = rowsById.get(sheetId) || {}
+      const tabs = ['console', 'settings', isPal() ? 'players' : 'players', 'automation']
+      const label = { console: 'Console', settings: 'Settings', players: 'Players', automation: 'Automation' }
+      $('sheet').innerHTML = `<div class="sheet-bg" onclick="closeSheet()"></div>
+        <div class="sheet">
+          <div class="sheet-grip"></div>
+          <div class="sheet-top">
+            <div class="tile" style="background:${gradOf(sheetId)}">${esc((row.name || '?').charAt(0).toUpperCase())}</div>
+            <div style="flex:1;min-width:0"><div class="nm">${esc(row.name || 'Server')}</div>
+              <div class="sub">${sheetInfo ? (isPal() ? 'Palworld' : 'Minecraft ' + esc(sheetInfo.minecraftVersion || '')) + ' · port ' + sheetInfo.port : ''}</div></div>
+            <button class="iconbtn" onclick="closeSheet()">${icons.x}</button>
+          </div>
+          <div class="sheet-tabs">${tabs.map((t) => `<button class="${t === sheetTab ? 'on' : ''}" onclick="sheetGo('${t}')">${label[t]}</button>`).join('')}</div>
+          <div class="sheet-body" id="sheetBody">${bodyHtml}</div>
+        </div>`
+    }
+
+    async function renderTab() {
+      paintSheet('<div class="loadrow">Loading…</div>')
+      const body = $('sheetBody')
+      try {
+        if (sheetTab === 'console') return renderConsole(body)
+        if (sheetTab === 'settings') return renderSettings(body, await request(sheetId, 'getProps'))
+        if (sheetTab === 'players') return isPal() ? renderPalPlayers(body, await request(sheetId, 'players')) : renderMcPlayers(body)
+        if (sheetTab === 'automation') return renderAutomation(body, sheetInfo.automation || {})
+      } catch (e) {
+        body.innerHTML = `<div class="loadrow" style="color:var(--red)">${esc(e.message)}</div>`
+      }
+    }
+
+    function renderConsole(body) {
+      const row = rowsById.get(sheetId) || {}
+      const running = row.state === 'running'
+      body.innerHTML = `<div class="console open" style="max-height:46dvh">${esc(row.console || 'No output yet.')}</div>
+        <div class="cmdrow open" style="margin-top:10px">
+          <input id="sheetCmd" placeholder="${running ? 'say hi · save · kick <id>' : 'start the server to send commands'}" ${running ? '' : 'disabled'}
+            onkeydown="if(event.key==='Enter')sendCmd('${sheetId}','sheetCmd')" />
+          <button onclick="sendCmd('${sheetId}','sheetCmd')" ${running ? '' : 'disabled'}>${icons.send}</button>
+        </div>
+        <div class="frow" style="margin-top:8px"><div class="hint2">The console refreshes every few seconds while this panel is open.</div></div>`
+      const con = body.querySelector('.console'); if (con) con.scrollTop = con.scrollHeight
+    }
+
+    function ctrl(key, labelText, type, value, enums) {
+      if (type === 'bool') {
+        return `<div class="frow check"><input type="checkbox" id="f-${key}" ${boolTrue(value) ? 'checked' : ''}
+          onchange="setDirty('${key}', this.checked ? '${boolStr(true)}' : '${boolStr(false)}')"><label for="f-${key}">${labelText}</label></div>`
+      }
+      let input
+      if (type === 'enum') input = `<select onchange="setDirty('${key}', this.value)">${(enums || []).map((o) => `<option ${o === value ? 'selected' : ''}>${o}</option>`).join('')}</select>`
+      else input = `<input type="${type === 'num' ? 'number' : 'text'}" step="any" value="${esc(String(value ?? ''))}" oninput="setDirty('${key}', this.value)">`
+      return `<div class="frow"><label>${labelText}</label>${input}</div>`
+    }
+
+    function renderSettings(body, props) {
+      const ess = isPal() ? PAL_ESS : MC_ESS
+      const enums = isPal() ? PAL_ENUMS : MC_ENUMS
+      const defaults = isPal() ? { ServerPlayerMaxNum: '16', ExpRate: '1', DeathPenalty: 'All' } : { 'max-players': '10', gamemode: 'survival', difficulty: 'normal', 'view-distance': '10' }
+      const essKeys = new Set(ess.map((e) => e[0]))
+      const essHtml = ess.map(([k, l, t]) => ctrl(k, l, t, props[k] ?? defaults[k] ?? (t === 'bool' ? boolStr(false) : ''), enums[k])).join('')
+      const rest = Object.keys(props).filter((k) => !essKeys.has(k)).sort()
+      body.innerHTML = `<div class="grouphead">Essentials</div>${essHtml}
+        <div class="grouphead">All settings</div>
+        <div class="searchbar">${icons.chipIc}<input id="setSearch" placeholder="Search settings…" oninput="filterSettings(this.value)"></div>
+        <div id="allSettings">${rest.map((k) => {
+          const v = props[k]; const t = /^(true|false)$/i.test(v) ? 'bool' : (/^-?\d+(\.\d+)?$/.test(v) ? 'num' : 'text')
+          return `<div class="setwrap" data-k="${esc(k.toLowerCase())}">${ctrl(k, k, t, v, null)}</div>`
+        }).join('')}</div>
+        <div class="savebar"><button class="cta" onclick="saveSettings()">Save settings</button></div>`
+    }
+    window.filterSettings = (q) => {
+      q = q.trim().toLowerCase()
+      document.querySelectorAll('#allSettings .setwrap').forEach((el) => { el.style.display = !q || el.dataset.k.includes(q) ? '' : 'none' })
+    }
+    window.saveSettings = async () => {
+      if (!Object.keys(dirty).length) return toast('Nothing changed')
+      try { await request(sheetId, 'setProps', { updates: dirty }); dirty = {}; toast('Saved — applies on next restart') }
+      catch (e) { toast(e.message, true) }
+    }
+
+    function renderPalPlayers(body, players) {
+      const list = players || []
+      body.innerHTML = `<div class="grouphead">Online now (${list.length})</div>
+        <div class="plister">${list.length ? list.map((p) => `<div class="prow">
+          <div style="flex:1;min-width:0"><div class="pn">${esc(p.name)}</div><div class="pm">lvl ${p.level ?? '?'} · ${esc(p.userId || 'no id')}</div></div>
+          <button class="minibtn" onclick="palMod('kick','${esc(p.userId || '')}','${esc(p.name)}')">Kick</button>
+          <button class="minibtn red" onclick="palMod('ban','${esc(p.userId || '')}','${esc(p.name)}')">Ban</button>
+        </div>`).join('') : '<div class="loadrow">Nobody online.</div>'}</div>
+        <div class="grouphead">Broadcast</div>
+        <div class="cmdrow open"><input id="palSay" placeholder="Message to everyone…"><button onclick="palSay()">${icons.send}</button></div>
+        <div class="grouphead">Unban</div>
+        <div class="cmdrow open"><input id="palUnban" placeholder="steam_7656…"><button class="minibtn" onclick="palUnban()">Unban</button></div>`
+    }
+    window.palMod = async (action, userId, name) => {
+      if (!userId) return toast('No platform id yet — try again in a moment', true)
+      if (!confirm(`${action === 'ban' ? 'Ban' : 'Kick'} ${name}?`)) return
+      try { await request(sheetId, 'moderate', { action, target: userId }); toast(`${name} ${action === 'ban' ? 'banned' : 'kicked'}`); renderTab() }
+      catch (e) { toast(e.message, true) }
+    }
+    window.palSay = async () => {
+      const m = $('palSay').value.trim(); if (!m) return
+      try { await request(sheetId, 'moderate', { action: 'announce', target: m }); $('palSay').value = ''; toast('Broadcast sent') } catch (e) { toast(e.message, true) }
+    }
+    window.palUnban = async () => {
+      const id = $('palUnban').value.trim(); if (!id) return
+      try { await request(sheetId, 'moderate', { action: 'unban', target: id }); $('palUnban').value = ''; toast('Unbanned ' + id) } catch (e) { toast(e.message, true) }
+    }
+
+    function renderMcPlayers(body) {
+      const row = rowsById.get(sheetId) || {}
+      const online = (row.players || [])
+      body.innerHTML = `<div class="grouphead">Online now (${online.length})</div>
+        <div class="plister">${online.length ? online.map((n) => `<div class="prow"><div class="pn" style="flex:1">${esc(n)}</div>
+          <button class="minibtn" onclick="mcCmd('kick ${esc(n)}')">Kick</button>
+          <button class="minibtn" onclick="mcCmd('op ${esc(n)}')">Op</button>
+          <button class="minibtn red" onclick="mcCmd('ban ${esc(n)}')">Ban</button></div>`).join('') : '<div class="loadrow">Nobody online.</div>'}</div>
+        <div class="grouphead">Whitelist</div>
+        <div class="cmdrow open"><input id="mcWl" placeholder="PlayerName"><button class="minibtn" onclick="mcCmd('whitelist add '+document.getElementById('mcWl').value.trim())">Add</button></div>
+        <div class="frow"><div class="hint2">Runs the matching server command. The server must be online.</div></div>`
+    }
+    window.mcCmd = async (cmd) => {
+      if (!cmd.trim()) return
+      try { await queue(sheetId, 'command', cmd); toast('Command sent') } catch (e) { toast(e.message, true) }
+    }
+
+    function autoRow(html) { return `<div class="frow">${html}</div>` }
+    function renderAutomation(body, a) {
+      const sel = (key, opts, val) => `<select onchange="setAuto('${key}', this.value)">${opts.map(([v, l]) => `<option value="${v}" ${String(val) === v ? 'selected' : ''}>${l}</option>`).join('')}</select>`
+      window.__auto = { ...a }
+      window.setAuto = (k, v) => { window.__auto[k] = k === 'restartMode' || k === 'restartDailyAt' ? v : Number(v); }
+      window.setAutoBool = (k, v) => { window.__auto[k] = v }
+      body.innerHTML = `
+        <div class="frow"><label>Auto-save world</label>${sel('saveIntervalMin', [['0', 'Off'], ['5', 'Every 5 min'], ['10', 'Every 10 min'], ['15', 'Every 15 min'], ['30', 'Every 30 min'], ['60', 'Every hour']], a.saveIntervalMin || 0)}</div>
+        <div class="frow"><label>Scheduled restart</label>${sel('restartMode', [['off', 'Off'], ['interval', 'Every N hours'], ['daily', 'Daily at a time']], a.restartMode || 'off')}</div>
+        <div class="grid2">
+          <div class="frow"><label>Restart every (hours)</label><input type="number" value="${a.restartEveryHours || 6}" oninput="setAuto('restartEveryHours', this.value)"></div>
+          <div class="frow"><label>Daily time</label><input type="time" value="${a.restartDailyAt || '04:00'}" onchange="setAuto('restartDailyAt', this.value)"></div>
+        </div>
+        <div class="frow"><label>Warn players (min)</label><input type="number" value="${a.restartWarningMin ?? 5}" oninput="setAuto('restartWarningMin', this.value)"></div>
+        <div class="frow"><label>World backups</label>${sel('backupIntervalHours', [['0', 'Off'], ['1', 'Hourly'], ['3', 'Every 3h'], ['6', 'Every 6h'], ['12', 'Every 12h'], ['24', 'Daily']], a.backupIntervalHours || 0)}</div>
+        <div class="frow"><label>Restart above memory</label>${sel('restartAboveMemoryMB', [['0', 'Off'], ['4096', '4 GB'], ['8192', '8 GB'], ['12288', '12 GB'], ['16384', '16 GB']], a.restartAboveMemoryMB || 0)}</div>
+        <div class="frow check"><input type="checkbox" id="a-crash" ${a.restartOnCrash ? 'checked' : ''} onchange="setAutoBool('restartOnCrash', this.checked)"><label for="a-crash">Restart automatically after a crash</label></div>
+        <div class="frow check"><input type="checkbox" id="a-boot" ${a.autoStart ? 'checked' : ''} onchange="setAutoBool('autoStart', this.checked)"><label for="a-boot">Start with the launcher</label></div>
+        <div class="savebar"><button class="cta" onclick="saveAuto()">Save automation</button></div>`
+    }
+    window.saveAuto = async () => {
+      try { await request(sheetId, 'setAutomation', { automation: window.__auto }); sheetInfo.automation = window.__auto; toast('Automation saved') }
+      catch (e) { toast(e.message, true) }
+    }
+
     async function refresh() {
       if (!me || document.hidden) return
       try {
         render(await fetchServers())
+        // keep an open console tab live without disturbing other tabs' edits
+        if (sheetId && sheetTab === 'console') {
+          const con = document.querySelector('#sheetBody .console')
+          if (con) {
+            const stick = con.scrollHeight - con.scrollTop - con.clientHeight < 40
+            con.textContent = (rowsById.get(sheetId) || {}).console || 'No output yet.'
+            if (stick) con.scrollTop = con.scrollHeight
+          }
+        }
       } catch (e) {
         $('servers').innerHTML = `<div class="empty"><b>Could not reach the cloud</b>${esc(e.message)}</div>`
       }

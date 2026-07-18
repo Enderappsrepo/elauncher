@@ -268,6 +268,46 @@ create policy "owners manage their host specs"
   on public.host_specs for all to authenticated
   using (owner_id = auth.uid()) with check (owner_id = auth.uid());
 
+-- two-way control-panel channel (2026-07-18): the web/phone panel inserts a
+-- request (read settings, edit settings, list/moderate players, set automation);
+-- the hosting launcher executes it via the same code the app uses and writes the
+-- response back. Mirrors server_commands' owner-or-grantee security.
+create table if not exists public.server_requests (
+  id uuid primary key default gen_random_uuid(),
+  server_id uuid not null,
+  owner_id uuid not null references public.profiles (id) on delete cascade,
+  requester_id uuid not null references public.profiles (id) on delete cascade,
+  action text not null,
+  params jsonb not null default '{}',
+  response jsonb,
+  error text,
+  done boolean not null default false,
+  created_at timestamptz not null default now()
+);
+
+alter table public.server_requests enable row level security;
+
+drop policy if exists "requesters queue requests" on public.server_requests;
+create policy "requesters queue requests"
+  on public.server_requests for insert to authenticated
+  with check (
+    requester_id = auth.uid()
+    and (
+      owner_id = auth.uid()
+      or exists (
+        select 1 from public.server_shares s
+        where s.server_id = server_requests.server_id and s.grantee_id = auth.uid()
+      )
+    )
+  );
+drop policy if exists "owners execute requests" on public.server_requests;
+create policy "owners execute requests"
+  on public.server_requests for all to authenticated
+  using (owner_id = auth.uid()) with check (owner_id = auth.uid());
+drop policy if exists "requesters read their requests" on public.server_requests;
+create policy "requesters read their requests"
+  on public.server_requests for select to authenticated using (requester_id = auth.uid());
+
 -- ============================================================
 -- Hosting business (2026-07-18): plans, settings, orders.
 -- Customers order in the web panel and pay via PayPal.me (or an optional

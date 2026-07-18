@@ -945,6 +945,11 @@ function handleCrashRestart(id: string): void {
   }, 5_000)
 }
 
+/** Current automation config for a server (empty object when none set). */
+export function getServerAutomation(id: string): ServerAutomation {
+  return loadServers().find((s) => s.id === id)?.automation ?? {}
+}
+
 /** Persist automation config; re-arms timers live when the server is already running. */
 export function setServerAutomation(id: string, automation: ServerAutomation): LocalServer[] {
   const servers = loadServers()
