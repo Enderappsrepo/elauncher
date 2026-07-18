@@ -46,6 +46,7 @@ import { getInstance } from './instances'
 import { getLoaderVersions } from './versions'
 import { searchSkin } from './skins'
 import { broadcast } from './game'
+import { headlessLog, LOG_CONSOLE } from './headless'
 import { getShareInfo, getTunnelAddress, onTunnelClosed, stopTunnel } from './hosting'
 import {
   PALWORLD_BASE_PORT,
@@ -135,7 +136,19 @@ const logs = new Map<string, string[]>()
 const pendingLogs = new Map<string, string[]>()
 let logFlushTimer: NodeJS.Timeout | null = null
 
+/** Server display name for journal lines, cached — pushLog can run hundreds of times a second. */
+const logNames = new Map<string, string>()
+function logName(id: string): string {
+  let name = logNames.get(id)
+  if (!name) {
+    name = loadServers().find((s) => s.id === id)?.name ?? id.slice(0, 8)
+    logNames.set(id, name)
+  }
+  return name
+}
+
 function pushLog(id: string, line: string): void {
+  if (LOG_CONSOLE) console.log(`[${logName(id)}] ${line}`)
   const buffer = logs.get(id) ?? []
   buffer.push(line)
   if (buffer.length > MAX_LOG_LINES) buffer.splice(0, buffer.length - MAX_LOG_LINES)
@@ -164,8 +177,19 @@ const resourceStats = new Map<string, { memoryMB: number; cpuPercent: number | n
 const serverVersions = new Map<string, string>()
 
 function setState(id: string, state: LocalServerState, error?: string): void {
+  const prev = states.get(id)
   states.set(id, state)
   const server = loadServers().find((s) => s.id === id)
+  // journal the lifecycle on headless hosts — but only real transitions
+  // (joins/tunnel changes re-announce the same state and would spam)
+  if (prev !== state) {
+    const address = server ? publicAddress(server) : null
+    headlessLog(
+      `[${server?.name ?? id}] ${state}` +
+        (state === 'running' && address ? ` — join at ${address}` : '') +
+        (error ? ` — ${error}` : '')
+    )
+  }
   broadcast('server:state', {
     serverId: id,
     state,

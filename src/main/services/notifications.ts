@@ -1,6 +1,7 @@
 import webpush from 'web-push'
 import { isCloudConfigured } from '@shared/cloudConfig'
 import { getClient } from './cloud'
+import { headlessLog } from './headless'
 
 /**
  * Phone notifications over Web Push. The launcher itself is the sender — it
@@ -105,6 +106,8 @@ export function notifyPhones(title: string, body: string, tag = ''): void {
       const last = recent.get(dedupeKey)
       if (last && Date.now() - last < DEDUPE_MS) return
       recent.set(dedupeKey, Date.now())
+      // every alert a phone would get also lands in journalctl on a headless host
+      headlessLog(`[${title}] ${body}`)
       if (recent.size > 200) {
         for (const [key, at] of recent) if (Date.now() - at > DEDUPE_MS) recent.delete(key)
       }

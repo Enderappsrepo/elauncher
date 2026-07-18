@@ -5,6 +5,7 @@ import { ensureDataDirs } from './paths'
 import { registerIpc } from './ipc'
 import { initUpdater } from './services/updater'
 import { getUser, signIn } from './services/cloud'
+import { HEADLESS } from './services/headless'
 
 /**
  * Headless host mode — run the launcher's host services (cloud relay,
@@ -12,8 +13,9 @@ import { getUser, signIn } from './services/cloud'
  * and be managed entirely from the web/phone panel. Toggle with the env var
  * ELAUNCHER_HEADLESS=1 (or --headless); sign in via ELAUNCHER_EMAIL /
  * ELAUNCHER_PASSWORD the first time (the session then persists).
+ * The flag itself lives in services/headless.ts, which also mirrors server
+ * lifecycle/alerts to stdout so journalctl shows what the box is doing.
  */
-const HEADLESS = process.env.ELAUNCHER_HEADLESS === '1' || process.argv.includes('--headless')
 
 async function startHeadless(): Promise<void> {
   console.log('[ELauncher] headless host starting…')
