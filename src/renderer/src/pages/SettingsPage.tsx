@@ -258,6 +258,22 @@ export default function SettingsPage(): React.JSX.Element {
 
         <UpdatesCard />
 
+        <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <div className="switch-title">Support ELauncher ♥</div>
+          <div className="switch-desc">
+            The launcher is free and stays that way — sponsorships keep the cloud (accounts, remote management,
+            notifications) running.
+          </div>
+          <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
+            <a className="ghost small" style={{ textDecoration: 'none' }} href="https://github.com/sponsors/Enderappsrepo" target="_blank" rel="noreferrer">
+              Sponsor on GitHub
+            </a>
+            <a className="ghost small" style={{ textDecoration: 'none' }} href="https://github.com/Enderappsrepo/elauncher" target="_blank" rel="noreferrer">
+              Star the project
+            </a>
+          </div>
+        </div>
+
         <div className="row">
           <button className="primary" onClick={() => void save()}>
             Save settings
