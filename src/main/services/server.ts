@@ -1207,6 +1207,26 @@ function healthOf(id: string): 'smooth' | 'fair' | 'poor' | null {
   return 'smooth'
 }
 
+/**
+ * On a Linux host (VPS), open the server's port in ufw automatically so players
+ * can connect without manual firewall edits. Best-effort: if ufw isn't installed
+ * or isn't active, the ports are simply already reachable and this is a no-op.
+ */
+function ensureFirewallPort(id: string, port: number, protocol: 'tcp' | 'udp'): void {
+  if (process.platform !== 'linux') return
+  try {
+    const proc = spawn('ufw', ['allow', `${port}/${protocol}`])
+    proc.on('error', () => {
+      // ufw not installed — nothing to open, ports are already exposed
+    })
+    proc.on('exit', (code) => {
+      if (code === 0) pushLog(id, `[ELauncher] Opened ${protocol.toUpperCase()} port ${port} in the firewall`)
+    })
+  } catch {
+    // best-effort
+  }
+}
+
 export async function startServer(id: string): Promise<void> {
   const current = states.get(id) ?? 'stopped'
   if (current !== 'stopped') throw new Error('This server is already running.')
@@ -1239,6 +1259,7 @@ export async function startServer(id: string): Promise<void> {
     procs.set(id, proc)
     lastStartAt.set(id, Date.now())
     lagEvents.delete(id)
+    ensureFirewallPort(id, server.port, 'tcp')
 
     const onLine = (line: string): void => {
       pushLog(id, line)
@@ -1374,6 +1395,7 @@ async function startPalworldServer(server: LocalServer): Promise<void> {
     procs.set(id, handle.proc)
     palworldHandles.set(id, handle)
     lastStartAt.set(id, Date.now())
+    ensureFirewallPort(id, server.port, 'udp')
   } catch (e) {
     setState(id, 'stopped', e instanceof Error ? e.message : String(e))
     throw e
