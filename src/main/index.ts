@@ -26,6 +26,21 @@ async function startHeadless(): Promise<void> {
     }
     if (user) {
       console.log(`[ELauncher] signed in as ${user.username}${user.isAdmin ? ' (admin)' : ''} — hosting active.`)
+      // a VPS has a direct public IP — auto-fill publicHost so join addresses show
+      // in the panel without any manual config (the user can override with a domain)
+      try {
+        const { getSettings, setSettings } = await import('./services/settings')
+        const current = getSettings()
+        if (!current.publicHost) {
+          const ip = (await (await fetch('https://api.ipify.org', { signal: AbortSignal.timeout(6000) })).text()).trim()
+          if (/^\d{1,3}(\.\d{1,3}){3}$/.test(ip)) {
+            setSettings({ ...current, publicHost: ip })
+            console.log(`[ELauncher] public address set to ${ip} — servers will show <ip>:<port>.`)
+          }
+        }
+      } catch {
+        // no public IP detected — servers still run; set publicHost manually to show the address
+      }
     } else {
       console.warn(
         '[ELauncher] not signed in. Set ELAUNCHER_EMAIL and ELAUNCHER_PASSWORD (once), then restart. Status and controls run through the cloud panel.'

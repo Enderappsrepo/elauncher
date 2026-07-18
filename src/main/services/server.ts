@@ -111,6 +111,10 @@ function publicAddress(server: LocalServer): string | null {
     const host = getAssignedHost(server.id) ?? getSettings().publicHost ?? mapping.externalIp
     return `${host}:${mapping.port}`
   }
+  // direct-public-IP host (a VPS): the port is reachable at the public host with no
+  // NAT mapping to traverse — publish the assigned/configured host directly
+  const directHost = getAssignedHost(server.id) ?? getSettings().publicHost
+  if (directHost) return `${directHost}:${server.port}`
   return gameOf(server) === 'palworld' ? null : getTunnelAddress(server.port)
 }
 
