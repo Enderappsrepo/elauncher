@@ -613,8 +613,10 @@
             ? (players.length ? `${players.length} playing — ${players.join(', ')}` : 'Online — nobody on yet')
             : state === 'stopped' ? 'Ready when you are' : 'Working on it…'
 
+        const perf = perfOf(row)
         const pills = []
         if (row._owner) pills.push(pill(icons.users, `${esc(row._owner)}&#8217;s PC`))
+        if (perf) pills.push(`<span class="pill" style="color:${perf[2]}"><span style="width:7px;height:7px;border-radius:99px;background:${perf[2]};display:inline-block"></span>${perf[1]}</span>`)
         if (fresh && row.started_at && running) pills.push(pill(icons.clock, `<b>${fmtUptime(Date.now() - new Date(row.started_at).getTime())}</b>`))
         if (fresh && row.memory_mb != null && running) pills.push(pill(icons.chipIc, `<b>${(row.memory_mb / 1024).toFixed(1)} GB</b>${row.cpu_percent != null ? ` · ${row.cpu_percent}%` : ''}`))
         if (fresh && running) pills.push(pill(icons.users, `<b>${players.length}</b> online`))
@@ -953,6 +955,14 @@
       const state = fresh ? row.state : 'offline'
       return state === 'running' ? 'on' : (state === 'starting' || state === 'stopping') ? 'warm' : state === 'offline' ? 'dead' : ''
     }
+    // performance reading from the published CPU load (the launcher also detects tick lag directly)
+    const perfOf = (row) => {
+      const fresh = Date.now() - new Date(row.updated_at).getTime() < HEARTBEAT_MS * 4
+      if (!fresh || row.state !== 'running' || row.cpu_percent == null) return null
+      if (row.cpu_percent >= 90) return ['poor', 'Struggling', 'var(--red)']
+      if (row.cpu_percent >= 70) return ['fair', 'Busy', 'var(--amber)']
+      return ['smooth', 'Smooth', 'var(--green)']
+    }
     function renderDeskList(rows) {
       const el = $('dsideList')
       if (!el) return
@@ -983,7 +993,9 @@
         ? `<button class="dbtn stop" onclick="act('${row.server_id}','stop')" ${transit ? 'disabled' : ''}>${icons.stop} Stop</button>
            <button class="dbtn" onclick="act('${row.server_id}','restart')" ${transit ? 'disabled' : ''}>${icons.redo} Restart</button>`
         : `<button class="dbtn start" onclick="act('${row.server_id}','start')">${icons.play} Start</button>`
+      const perf = perfOf(row)
       const stats = []
+      if (perf) stats.push(`<div class="dstat"><div class="v" style="color:${perf[2]}">${perf[1]}</div><div class="l">Performance</div></div>`)
       if (running && row.started_at) stats.push(`<div class="dstat"><div class="v">${fmtUptime(Date.now() - new Date(row.started_at).getTime())}</div><div class="l">Uptime</div></div>`)
       if (running && row.memory_mb != null) stats.push(`<div class="dstat"><div class="v">${(row.memory_mb / 1024).toFixed(1)} GB</div><div class="l">Memory${row.cpu_percent != null ? ` · ${row.cpu_percent}% CPU` : ''}</div></div>`)
       stats.push(`<div class="dstat"><div class="v">${running ? (row.players?.length || 0) : '—'}</div><div class="l">Players</div></div>`)
@@ -1025,6 +1037,9 @@
     }
 
     function applyLayout(rows) {
+      // the desktop path doesn't call render(), so populate the shared lookup here
+      rowsById.clear()
+      rows.forEach((r) => rowsById.set(r.server_id, r))
       if (DESK()) {
         document.body.classList.add('desk')
         renderDeskList(rows)
