@@ -16,7 +16,7 @@ web/phone panel at `/manage/`.
 
 ## 1. Rent a Linux VPS
 
-- **Ubuntu 22.04 LTS** (or Debian 12) is the easiest target.
+- **Ubuntu 24.04 LTS** (or 22.04 / Debian 12) is the easiest target.
 - Size RAM to what you'll run: Minecraft ≈ 4 GB each, Palworld ≈ 16 GB, plus ~1 GB
   for the OS (Linux's overhead is far smaller than Windows).
 - SSD/NVMe storage, ≥ 40 GB.
@@ -36,8 +36,9 @@ curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
 apt install -y nodejs
 
 # Electron's runtime libraries (headless still needs these present)
+# (Ubuntu 22.04 / Debian 12: the audio lib is named libasound2 there, not libasound2t64)
 apt install -y libnss3 libatk1.0-0 libatk-bridge2.0-0 libcups2 libgbm1 \
-  libgtk-3-0 libasound2 libxshmfence1 libxdamage1 libxrandr2 libxcomposite1
+  libgtk-3-0 libasound2t64 libxshmfence1 libxdamage1 libxrandr2 libxcomposite1
 
 # a JRE is only needed if you skip ELauncher's managed Java; it downloads its own
 ```
@@ -89,6 +90,10 @@ After=network-online.target
 [Service]
 WorkingDirectory=/root/elauncher
 EnvironmentFile=/etc/elauncher.env
+# pin the data dir to /root/.config — without this it can land in /tmp, which is
+# often noexec (breaks the Java runtime) and wiped on reboot (loses worlds)
+Environment=HOME=/root
+Environment=XDG_CONFIG_HOME=/root/.config
 # xvfb-run gives Electron a virtual display; --no-sandbox is required as root
 ExecStart=/usr/bin/xvfb-run -a /root/elauncher/node_modules/.bin/electron ./out/main/index.js --headless --no-sandbox
 Restart=always
@@ -97,6 +102,8 @@ RestartSec=5
 [Install]
 WantedBy=multi-user.target
 ```
+
+Server data (worlds, configs, your login) lives in `/root/.config/elauncher-data/`.
 
 Then:
 
