@@ -267,6 +267,30 @@ function installerUrl(kind: 'forge' | 'neoforge', mc: string, loaderVersion: str
   return `https://maven.minecraftforge.net/net/minecraftforge/forge/${mc}-${loaderVersion}/forge-${mc}-${loaderVersion}-installer.jar`
 }
 
+/**
+ * The newest loader version whose installer is actually published. NeoForge/Forge
+ * occasionally list a version in maven metadata with no working installer.jar
+ * (a broken/incomplete release), so verify and step back to the newest that 404s.
+ * Fabric has no installer step — its newest is always fine.
+ */
+async function pickInstallableLoaderVersion(
+  kind: 'fabric' | 'neoforge' | 'forge',
+  mc: string,
+  versions: string[]
+): Promise<string> {
+  if (kind === 'fabric') return versions[0]
+  for (const version of versions.slice(0, 8)) {
+    try {
+      const res = await fetch(installerUrl(kind, mc, version), { method: 'HEAD' })
+      // only a definitive 404 disqualifies a version; anything else, assume it's fine
+      if (res.status !== 404) return version
+    } catch {
+      // network hiccup — try the next candidate
+    }
+  }
+  return versions[0] // nothing verified; let the download surface a clear error
+}
+
 /** Run the Forge/NeoForge installer's --installServer step (downloads the server libraries). */
 function runInstaller(dir: string, installerName: string, java: string): Promise<void> {
   return new Promise((resolvePromise, rejectPromise) => {
@@ -625,7 +649,7 @@ export async function createServer(opts: CreateServerOptions): Promise<LocalServ
       emitTask(`Resolving ${plan.kind} for ${plan.minecraftVersion}`, -1)
       const versions = await getLoaderVersions(plan.kind as 'fabric' | 'neoforge' | 'forge', plan.minecraftVersion)
       if (versions.length === 0) throw new Error(`${plan.kind} is not available for Minecraft ${plan.minecraftVersion}.`)
-      plan.loaderVersion = versions[0]
+      plan.loaderVersion = await pickInstallableLoaderVersion(plan.kind as 'fabric' | 'neoforge' | 'forge', plan.minecraftVersion, versions)
     }
 
     emitTask(`Resolving ${plan.kind} server for ${plan.minecraftVersion}`, -1)
