@@ -21,7 +21,7 @@ import {
  *  - keeps shares in place for healthy active orders (heals re-approvals).
  */
 
-const POLL_MS = 60_000
+const POLL_MS = 15_000
 
 interface PlanRow {
   id: string
@@ -40,34 +40,37 @@ interface OrderRow {
   status: string
   server_id: string | null
   paid_until: string | null
+  config: { loader?: string; version?: string; modpack?: string } | null
 }
 
 let running = false
+const provisioning = new Set<string>()
 
-async function provision(
-  order: OrderRow,
-  plan: PlanRow,
-  me: string
-): Promise<void> {
+/** Build the Minecraft content source from the customer's order config. */
+async function minecraftSource(
+  config: OrderRow['config']
+): Promise<{ type: 'fresh'; kind: 'vanilla' | 'paper' | 'fabric' | 'neoforge' | 'forge'; minecraftVersion: string } | { type: 'modrinthPack'; projectId: string }> {
+  if (config?.modpack) return { type: 'modrinthPack', projectId: config.modpack }
+  const kind = (['vanilla', 'paper', 'fabric', 'neoforge', 'forge'].includes(config?.loader ?? '')
+    ? config!.loader
+    : 'paper') as 'vanilla' | 'paper' | 'fabric' | 'neoforge' | 'forge'
+  return { type: 'fresh', kind, minecraftVersion: config?.version || (await latestMinecraftRelease()) }
+}
+
+async function provision(order: OrderRow, plan: PlanRow, me: string): Promise<void> {
   const supabase = getClient()
+  const note = async (text: string): Promise<void> => {
+    await supabase.from('hosting_orders').update({ note: text, updated_at: new Date().toISOString() }).eq('id', order.id)
+  }
+
+  // tell the customer it's happening before the (possibly long) download starts
+  await note(plan.game === 'palworld' ? 'Setting up your server — downloading (~8 GB, a few minutes)…' : 'Setting up your server…')
+
   const name = order.server_name.trim() || plan.name
   const server =
     plan.game === 'palworld'
-      ? await createServer({
-          name,
-          acceptEula: true,
-          source: { type: 'palworld', maxPlayers: plan.max_players }
-        })
-      : await createServer({
-          name,
-          memoryMax: plan.memory_mb,
-          acceptEula: true,
-          source: {
-            type: 'fresh',
-            kind: 'paper',
-            minecraftVersion: await latestMinecraftRelease()
-          }
-        })
+      ? await createServer({ name, acceptEula: true, source: { type: 'palworld', maxPlayers: plan.max_players } })
+      : await createServer({ name, memoryMax: plan.memory_mb, acceptEula: true, source: await minecraftSource(order.config) })
   if (!server) throw new Error('server creation was cancelled')
 
   if (plan.game === 'minecraft') {
@@ -128,8 +131,14 @@ async function tick(): Promise<void> {
       if (!plan) continue
       try {
         if (!order.server_id) {
+          if (provisioning.has(order.id)) continue // a slow download from a prior tick is still running
+          provisioning.add(order.id)
           notifyPhones('Hosting', `Provisioning ${plan.name} for order ${order.reference}…`, 'hosting')
-          await provision(order, plan, me)
+          try {
+            await provision(order, plan, me)
+          } finally {
+            provisioning.delete(order.id)
+          }
         } else if (order.paid_until && new Date(order.paid_until).getTime() < Date.now()) {
           if (localIds.has(order.server_id)) stopServer(order.server_id)
           await supabase
@@ -168,6 +177,6 @@ async function tick(): Promise<void> {
 }
 
 export function startHostingProvisioner(): void {
-  setTimeout(() => void tick(), 12_000)
+  setTimeout(() => void tick(), 6_000)
   setInterval(() => void tick(), POLL_MS)
 }

@@ -1,7 +1,7 @@
 // ELauncher Remote — app shell service worker.
 // Network-first so updates land instantly; cached shell keeps the app opening
 // offline. API traffic (Supabase) is never cached — live data only.
-const SHELL = 'elauncher-remote-v5'
+const SHELL = 'elauncher-remote-v6'
 
 self.addEventListener('install', (event) => {
   event.waitUntil(

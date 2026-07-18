@@ -7,8 +7,11 @@ import {
   getServerLogs,
   getServerProperties,
   getServerStates,
+  installServerMod,
   listLocalServers,
+  listServerMods,
   palworldModerate,
+  removeServerMod,
   sendServerCommand,
   setServerAutomation,
   setServerProperties,
@@ -391,6 +394,13 @@ async function runPanelRequest(serverId: string, action: string, params: Record<
         params.message ? String(params.message) : undefined
       )
       return { ok: true }
+    case 'mods':
+      return listServerMods(serverId)
+    case 'installMod':
+      await installServerMod(serverId, String(params.projectId ?? ''))
+      return { ok: true }
+    case 'removeMod':
+      return removeServerMod(serverId, String(params.fileName ?? ''))
     default:
       throw new Error(`unknown request: ${action}`)
   }

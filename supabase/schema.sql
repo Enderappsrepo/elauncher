@@ -346,9 +346,12 @@ create table if not exists public.hosting_orders (
   server_id uuid,
   paid_until timestamptz,
   note text not null default '',
+  config jsonb not null default '{}',
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+-- existing clouds: add the customer-config column (loader/version/modpack)
+alter table public.hosting_orders add column if not exists config jsonb not null default '{}';
 
 alter table public.hosting_plans enable row level security;
 alter table public.hosting_settings enable row level security;

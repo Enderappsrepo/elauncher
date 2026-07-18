@@ -646,10 +646,11 @@
     window.sheetGo = (tab) => { if (Object.keys(dirty).length && !confirm('Discard unsaved changes?')) return; sheetTab = tab; dirty = {}; renderTab() }
     window.setDirty = (k, v) => { dirty[k] = v }
 
+    const isModdable = () => sheetInfo && sheetInfo.game === 'minecraft' && ['fabric', 'forge', 'neoforge'].includes(sheetInfo.kind)
     function paintSheet(bodyHtml) {
       const row = rowsById.get(sheetId) || {}
-      const tabs = ['console', 'settings', isPal() ? 'players' : 'players', 'automation']
-      const label = { console: 'Console', settings: 'Settings', players: 'Players', automation: 'Automation' }
+      const tabs = ['console', 'settings', 'players', ...(isModdable() ? ['mods'] : []), 'automation']
+      const label = { console: 'Console', settings: 'Settings', players: 'Players', mods: 'Mods', automation: 'Automation' }
       $('sheet').innerHTML = `<div class="sheet-bg" onclick="closeSheet()"></div>
         <div class="sheet">
           <div class="sheet-grip"></div>
@@ -671,6 +672,7 @@
         if (sheetTab === 'console') return renderConsole(body)
         if (sheetTab === 'settings') return renderSettings(body, await request(sheetId, 'getProps'))
         if (sheetTab === 'players') return isPal() ? renderPalPlayers(body, await request(sheetId, 'players')) : renderMcPlayers(body)
+        if (sheetTab === 'mods') return renderMods(body, await request(sheetId, 'mods'))
         if (sheetTab === 'automation') return renderAutomation(body, sheetInfo.automation || {})
       } catch (e) {
         body.innerHTML = `<div class="loadrow" style="color:var(--red)">${esc(e.message)}</div>`
@@ -772,6 +774,39 @@
       try { await queue(sheetId, 'command', cmd); toast('Command sent') } catch (e) { toast(e.message, true) }
     }
 
+    function renderMods(body, installed) {
+      const list = installed || []
+      body.innerHTML = `<div class="grouphead">Installed (${list.length})</div>
+        <div class="plister" id="modInstalled">${list.length ? list.map((m) => `<div class="prow">
+          ${m.iconUrl ? `<img src="${esc(m.iconUrl)}" style="width:30px;height:30px;border-radius:7px">` : ''}
+          <div style="flex:1;min-width:0"><div class="pn">${esc(m.title || m.fileName)}</div><div class="pm">${esc(m.versionNumber || m.fileName)}</div></div>
+          <button class="minibtn red" onclick="removeMod('${esc(m.fileName)}')">Remove</button></div>`).join('') : '<div class="loadrow">No mods yet — search below.</div>'}</div>
+        <div class="grouphead">Add mods · ${esc(sheetInfo.kind)} ${esc(sheetInfo.minecraftVersion || '')}</div>
+        <div class="searchbar">${icons.chipIc}<input placeholder="Search Modrinth mods…" oninput="modSearch(this.value)"></div>
+        <div id="modResults" class="plister"><div class="loadrow">Type to search.</div></div>`
+    }
+    window.modSearch = async (q) => {
+      const box = $('modResults'); if (!box) return
+      if (!q.trim()) { box.innerHTML = '<div class="loadrow">Type to search.</div>'; return }
+      box.innerHTML = '<div class="loadrow">Searching…</div>'
+      try {
+        const hits = await modrinthSearch(q, 'mod', sheetInfo.minecraftVersion, sheetInfo.kind)
+        box.innerHTML = hits.map((h) => `<div class="prow">
+          ${h.icon_url ? `<img src="${esc(h.icon_url)}" style="width:30px;height:30px;border-radius:7px">` : ''}
+          <div style="flex:1;min-width:0"><div class="pn">${esc(h.title)}</div><div class="pm">${(h.downloads || 0).toLocaleString()} downloads</div></div>
+          <button class="minibtn" onclick="installMod('${h.project_id}', this)">Install</button></div>`).join('') || '<div class="loadrow">No mods found.</div>'
+      } catch { box.innerHTML = '<div class="loadrow" style="color:var(--red)">Search failed.</div>' }
+    }
+    window.installMod = async (projectId, btn) => {
+      if (btn) { btn.disabled = true; btn.textContent = 'Installing…' }
+      try { await request(sheetId, 'installMod', { projectId }, 40000); toast('Mod installed — restart to apply'); renderTab() }
+      catch (e) { toast(e.message, true); if (btn) { btn.disabled = false; btn.textContent = 'Install' } }
+    }
+    window.removeMod = async (fileName) => {
+      if (!confirm('Remove this mod?')) return
+      try { await request(sheetId, 'removeMod', { fileName }); toast('Removed'); renderTab() } catch (e) { toast(e.message, true) }
+    }
+
     function autoRow(html) { return `<div class="frow">${html}</div>` }
     function renderAutomation(body, a) {
       const sel = (key, opts, val) => `<select onchange="setAuto('${key}', this.value)">${opts.map(([v, l]) => `<option value="${v}" ${String(val) === v ? 'selected' : ''}>${l}</option>`).join('')}</select>`
@@ -846,6 +881,7 @@
 
     // ---------- hosting: plans, orders, admin approval ----------
     let isAdmin = false
+    const plansCache = new Map()
     const REF = () => 'ELH-' + Math.random().toString(36).slice(2, 7).toUpperCase()
     const money = (n, c) => `${c === 'USD' ? '$' : ''}${Number(n).toFixed(2)}${c === 'USD' ? '' : ' ' + c}`
     const STATUS_LABEL = {
@@ -853,14 +889,102 @@
       active: ['on', 'Active'], past_due: ['dead', 'Past due'], rejected: ['dead', 'Rejected'], cancelled: ['', 'Cancelled']
     }
 
+    // ---- ordering with configuration (loader / version / modpack) ----
+    let mcVersions = null
+    async function loadMcVersions() {
+      if (mcVersions) return mcVersions
+      try {
+        const r = await fetch('https://piston-meta.mojang.com/mc/game/version_manifest_v2.json')
+        const j = await r.json()
+        mcVersions = j.versions.filter((v) => v.type === 'release').map((v) => v.id).slice(0, 40)
+      } catch { mcVersions = ['1.21.4', '1.21.1', '1.20.1'] }
+      return mcVersions
+    }
+    async function modrinthSearch(query, type, mcVer, loader) {
+      const facets = [[`project_type:${type}`]]
+      if (mcVer) facets.push([`versions:${mcVer}`])
+      if (loader && type === 'mod') facets.push([`categories:${loader}`])
+      const url = `https://api.modrinth.com/v2/search?limit=12&index=relevance&query=${encodeURIComponent(query || '')}&facets=${encodeURIComponent(JSON.stringify(facets))}`
+      const r = await fetch(url)
+      return (await r.json()).hits || []
+    }
+
+    let order = null
     window.orderPlan = async (planId) => {
-      const name = (prompt('Name your server') || '').trim()
-      if (!name) return
-      const reference = REF()
-      const { error } = await supabase.from('hosting_orders').insert({ user_id: me, plan_id: planId, server_name: name, reference })
+      const plan = plansCache.get(planId)
+      if (!plan) return
+      order = { plan, name: '', mode: 'fresh', loader: 'paper', version: '', versions: [], modpack: null, modpackName: '' }
+      renderOrder()
+      if (plan.game === 'minecraft') {
+        order.versions = await loadMcVersions()
+        order.version = order.versions[0] || ''
+        renderOrder()
+      }
+    }
+    window.closeOrder = () => { order = null; $('sheet').innerHTML = '' }
+    window.setOrder = (k, v) => { order[k] = v; if (k === 'mode' || k === 'loader') renderOrder() }
+    window.pickPack = (id, name) => { order.modpack = id; order.modpackName = name; renderOrder() }
+    window.orderSearchPack = async (q) => {
+      const box = $('packResults'); if (box) box.innerHTML = '<div class="loadrow">Searching…</div>'
+      try {
+        const hits = await modrinthSearch(q, 'modpack')
+        if (box) box.innerHTML = hits.map((h) => `<button class="prow" style="width:100%;text-align:left;border:0;background:none" onclick="pickPack('${h.project_id}','${esc(h.title).replace(/'/g, '')}')">
+          ${h.icon_url ? `<img src="${esc(h.icon_url)}" style="width:34px;height:34px;border-radius:8px">` : '<span class="p-tile" style="width:34px;height:34px">?</span>'}
+          <div style="flex:1;min-width:0"><div class="pn">${esc(h.title)}</div><div class="pm">${(h.downloads || 0).toLocaleString()} downloads</div></div>
+          ${order.modpack === h.project_id ? '<span class="chip on">✓</span>' : ''}</button>`).join('') || '<div class="loadrow">No modpacks found.</div>'
+      } catch { if (box) box.innerHTML = '<div class="loadrow" style="color:var(--red)">Search failed.</div>' }
+    }
+
+    function renderOrder() {
+      const o = order, plan = o.plan, mc = plan.game === 'minecraft'
+      const money2 = money(plan.price_monthly, plan.currency)
+      let cfg = ''
+      if (mc) {
+        cfg = `<div class="sheet-tabs" style="border:0;padding:0 0 12px">
+            <button class="${o.mode === 'fresh' ? 'on' : ''}" onclick="setOrder('mode','fresh')">Fresh server</button>
+            <button class="${o.mode === 'modpack' ? 'on' : ''}" onclick="setOrder('mode','modpack')">From a modpack</button>
+          </div>`
+        if (o.mode === 'fresh') {
+          cfg += `<div class="grid2">
+            <div class="frow"><label>Loader</label><select onchange="setOrder('loader',this.value)">
+              ${['paper', 'vanilla', 'fabric', 'neoforge', 'forge'].map((k) => `<option value="${k}" ${o.loader === k ? 'selected' : ''}>${k[0].toUpperCase() + k.slice(1)}</option>`).join('')}
+            </select></div>
+            <div class="frow"><label>Version</label><select onchange="setOrder('version',this.value)">
+              ${o.versions.map((v) => `<option ${o.version === v ? 'selected' : ''}>${v}</option>`).join('')}
+            </select></div></div>
+            <div class="frow"><div class="hint2">${o.loader === 'paper' ? 'Paper: fast, plugins.' : o.loader === 'vanilla' ? 'Vanilla: the official server.' : 'You can add mods after it is set up, from the Mods tab.'}</div></div>`
+        } else {
+          cfg += `<div class="searchbar">${icons.chipIc}<input placeholder="Search Modrinth modpacks…" oninput="orderSearchPack(this.value)"></div>
+            <div id="packResults" class="plister">${o.modpack ? `<div class="hintline">Selected: <b>${esc(o.modpackName)}</b></div>` : '<div class="loadrow">Type to search modpacks.</div>'}</div>`
+        }
+      }
+      $('sheet').innerHTML = `<div class="sheet-bg" onclick="closeOrder()"></div>
+        <div class="sheet"><div class="sheet-grip"></div>
+          <div class="sheet-top"><div class="tile" style="background:${gradOf(plan.id)};width:38px;height:38px;border-radius:11px;font-size:15px">${mc ? 'M' : 'P'}</div>
+            <div style="flex:1"><div class="nm">${esc(plan.name)}</div><div class="sub">${mc ? 'Minecraft' : 'Palworld'} · ${plan.max_players} players · ${plan.memory_mb / 1024} GB · ${money2}/mo</div></div>
+            <button class="iconbtn" onclick="closeOrder()">${icons.x}</button></div>
+          <div class="sheet-body">
+            <div class="frow"><label>Server name</label><input value="${esc(o.name)}" oninput="setOrder('name',this.value)" placeholder="My Server"></div>
+            ${cfg}
+            <div class="savebar"><button class="cta" onclick="submitOrder()">Create order · ${money2}/mo</button></div>
+          </div></div>`
+    }
+    window.submitOrder = async () => {
+      const o = order, name = o.name.trim()
+      if (!name) return toast('Name your server first', true)
+      const config = {}
+      if (o.plan.game === 'minecraft') {
+        if (o.mode === 'modpack') { if (!o.modpack) return toast('Pick a modpack, or choose Fresh server', true); config.modpack = o.modpack }
+        else { config.loader = o.loader; config.version = o.version }
+      }
+      const base = { user_id: me, plan_id: o.plan.id, server_name: name, reference: REF() }
+      let { error } = await supabase.from('hosting_orders').insert({ ...base, config })
+      // older clouds without the config column: fall back so ordering still works
+      if (error && /config|column|schema cache/i.test(error.message || '')) {
+        ;({ error } = await supabase.from('hosting_orders').insert(base))
+      }
       if (error) return toast(error.message, true)
-      toast('Order created — follow the payment steps')
-      void loadHosting()
+      closeOrder(); toast('Order created — follow the payment steps'); void loadHosting()
     }
     window.markPaid = async (orderId) => {
       const { error } = await supabase.rpc('hosting_mark', { order_id: orderId, new_status: 'pending_review' })
@@ -914,6 +1038,7 @@
         isAdmin = Boolean(prof?.is_admin)
         const planList = plans ?? []
         const planMap = new Map(planList.map((p) => [p.id, p]))
+        plansCache.clear(); planList.forEach((p) => plansCache.set(p.id, p))
         const cfg = settings ?? { paypal_me: '' }
         const orders = (myOrders ?? []).filter((o) => o.user_id === me)
         let html = ''
@@ -924,14 +1049,17 @@
           html += `<div class="home-head">Your hosting</div>`
           html += liveOrders.map((o) => {
             const plan = planMap.get(o.plan_id)
-            const [cls, label] = STATUS_LABEL[o.status] ?? ['', o.status]
+            const settingUp = o.status === 'active' && !o.server_id
+            const [cls, label] = settingUp ? ['warm', 'Setting up…'] : (STATUS_LABEL[o.status] ?? ['', o.status])
             const until = o.paid_until ? ` · renews ${new Date(o.paid_until).toLocaleDateString()}` : ''
             const pay = (o.status === 'awaiting_payment' || o.status === 'past_due') ? payBlock(o, plan, cfg) : ''
             const cancel = (o.status === 'awaiting_payment' || o.status === 'pending_review') ? `<button class="conbtn" onclick="cancelOrder('${o.id}')">Cancel order</button>` : ''
+            const failed = /failed/i.test(o.note || '')
+            const noteHtml = o.note ? `<div class="hintline"${failed ? ' style="color:var(--red)"' : ''}>${settingUp && !failed ? '⏳ ' : ''}${esc(o.note)}</div>` : ''
+            const readyHint = o.status === 'active' && o.server_id ? `<div class="hintline">✓ Your server is live — manage it in the list above.</div>` : ''
             return `<div class="card">
               <div class="head"><div class="who"><div class="nm">${esc(o.server_name)}</div><div class="ln">${plan ? esc(plan.name) : o.plan_id}${until}</div></div><span class="chip ${cls}">${label}</span></div>
-              ${o.note ? `<div class="hintline" style="color:var(--red)">${esc(o.note)}</div>` : ''}
-              ${pay}${cancel}
+              ${noteHtml}${readyHint}${pay}${cancel}
             </div>`
           }).join('')
         }
