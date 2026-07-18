@@ -260,6 +260,54 @@
     .loadrow { text-align: center; color: var(--faint); padding: 28px 0; font-size: 13px; }
     .dangerzone { border: 1px solid rgba(251,113,133,.35); background: rgba(251,113,133,.05); border-radius: 13px; padding: 14px; margin-bottom: 8px; }
 
+    /* ---------- revamped settings ---------- */
+    .set-hero { margin-bottom: 18px; }
+    .set-hero h3 { font-size: 15px; font-weight: 750; margin-bottom: 3px; }
+    .set-hero p { font-size: 12.5px; color: var(--faint); }
+    .essgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .essgrid .full { grid-column: 1 / -1; }
+    @media (max-width: 560px) { .essgrid { grid-template-columns: 1fr; } }
+    .setgroup { border: 1px solid var(--line); border-radius: 14px; margin-bottom: 10px; overflow: hidden; background: var(--card); }
+    .setgroup > .gh { display: flex; align-items: center; gap: 11px; padding: 14px 15px; cursor: pointer; user-select: none; font-weight: 650; font-size: 14px; }
+    .setgroup > .gh:hover { background: var(--card-2); }
+    .setgroup > .gh .gi { width: 30px; height: 30px; border-radius: 9px; display: grid; place-items: center; background: var(--accent-soft); color: var(--accent); flex: none; }
+    .setgroup > .gh .cnt { margin-left: auto; font-size: 12px; color: var(--faint); font-weight: 500; }
+    .setgroup > .gh .chev { color: var(--faint); transition: transform .2s; }
+    .setgroup.open > .gh .chev { transform: rotate(90deg); }
+    .setgroup > .body { display: none; padding: 2px 15px 10px; }
+    .setgroup.open > .body { display: block; }
+    .setrow { padding: 13px 0; border-top: 1px solid var(--line); }
+    .setrow:first-child { border-top: 0; }
+    .setrow > label { display: block; font-size: 13.5px; font-weight: 600; margin-bottom: 7px; }
+    .setrow .h { font-size: 12px; color: var(--faint); margin-top: 6px; line-height: 1.45; }
+    .setrow input, .setrow select { width: 100%; padding: 10px 12px; border-radius: 10px; background: var(--card-2); border: 1px solid var(--line); color: var(--text); outline: none; }
+    .setrow input:focus, .setrow select:focus { border-color: var(--accent); }
+    .setrow.check { display: flex; align-items: flex-start; gap: 11px; }
+    .setrow.check input { width: auto; margin-top: 2px; }
+    .setrow.check > div { flex: 1; }
+    .setrow.check label { display: block; font-size: 13.5px; font-weight: 600; margin: 0; }
+    .rate { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+    .rate .seg { display: inline-flex; background: var(--card-2); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+    .rate .seg button { padding: 9px 13px; font-size: 12.5px; color: var(--dim); border: 0; background: none; }
+    .rate .seg button.on { background: var(--accent-soft); color: var(--accent); }
+    .rate input { width: 88px; }
+    .platgrid { display: flex; gap: 16px; flex-wrap: wrap; }
+    .platgrid label { display: flex; align-items: center; gap: 7px; font-size: 13px; font-weight: 500; margin: 0; }
+    .platgrid input { width: auto; }
+    .nores { text-align: center; color: var(--faint); padding: 22px; font-size: 13px; }
+
+    /* ---------- file manager ---------- */
+    .crumbs { display: flex; flex-wrap: wrap; gap: 2px; align-items: center; margin-bottom: 10px; font-size: 12.5px; color: var(--faint); }
+    .crumbs button { color: var(--accent); font-weight: 650; padding: 4px 7px; border-radius: 8px; max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .crumbs button:hover { background: var(--accent-soft); }
+    .ficon { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 8px; background: var(--card-2); color: var(--dim); flex: none; }
+    .ficon svg { width: 15px; height: 15px; }
+    .filebar { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; flex-wrap: wrap; }
+    .filebar .fname { flex: 1; min-width: 130px; font: 12px ui-monospace, Menlo, Consolas, monospace; color: var(--dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .fileedit { width: 100%; min-height: 44dvh; padding: 12px; border-radius: 13px; background: #0a0a10; border: 1px solid var(--line);
+      color: #d7dbea; font: 12px/1.55 ui-monospace, Menlo, Consolas, monospace; outline: none; resize: vertical; }
+    .fileedit:focus { border-color: var(--accent); }
+
     /* ---------- skeletons / empty / toasts ---------- */
     .skel { height: 132px; border-radius: var(--radius); margin-bottom: 14px; border: 1px solid var(--line);
       background: linear-gradient(100deg, var(--card) 40%, var(--card-2) 50%, var(--card) 60%);
@@ -517,15 +565,36 @@
       return [...mine, ...shared].sort((a, b) => (a.name || '').localeCompare(b.name || ''))
     }
 
+    /** Watch for a state via the live-merged rows; fetch as fallback when realtime is off. */
     async function waitForState(serverId, wanted, timeoutMs) {
       const until = Date.now() + timeoutMs
+      let lastFetch = Date.now()
       while (Date.now() < until) {
-        await new Promise((r) => setTimeout(r, 4000))
-        const rows = await fetchServers().catch(() => [])
-        const row = rows.find((r) => r.server_id === serverId)
+        await new Promise((r) => setTimeout(r, rtLive ? 500 : 1500))
+        if (!rtLive && Date.now() - lastFetch > 3500) {
+          lastFetch = Date.now()
+          const rows = await fetchServers().catch(() => null)
+          if (rows) applyLayout(rows)
+        }
+        const row = rowsById.get(serverId)
         if (row && row.state === wanted) return true
       }
       return false
+    }
+
+    /** Without realtime, poll in quick bursts right after an action so the click still feels snappy. */
+    function refreshSoon() {
+      if (rtLive) return
+      for (const ms of [1200, 3200, 6200]) setTimeout(() => void refresh(), ms)
+    }
+
+    /** Flip the card into its transitional state immediately — the heartbeat corrects it if the host disagrees. */
+    function optimistic(serverId, state) {
+      const row = rowsById.get(serverId)
+      if (row) {
+        row.state = state
+        schedulePaint()
+      }
     }
 
     window.act = async (serverId, action) => {
@@ -533,22 +602,25 @@
       try {
         if (action === 'restart') {
           restarting.add(serverId)
-          render(await fetchServers().catch(() => []))
+          optimistic(serverId, 'stopping')
           toast('Restarting — saving and stopping first…')
           await queue(serverId, 'stop')
           if (await waitForState(serverId, 'stopped', 120_000)) {
             await queue(serverId, 'start')
+            optimistic(serverId, 'starting')
             toast('Starting back up')
           } else toast('The server did not stop in time', true)
           restarting.delete(serverId)
         } else {
+          optimistic(serverId, action === 'start' ? 'starting' : 'stopping')
           await queue(serverId, action)
           toast(action === 'start' ? 'Start request sent' : 'Stop request sent')
         }
-        void refresh()
+        refreshSoon()
       } catch (e) {
         restarting.delete(serverId)
         toast(e.message ?? 'Command failed', true)
+        void refresh() // roll back the optimistic state
       }
     }
 
@@ -559,7 +631,13 @@
       try {
         await queue(serverId, 'command', value)
         input.value = ''
-        toast('Command sent')
+        // echo into the open console right away; the host's own echo replaces it within a beat
+        const con = document.querySelector('#dbody .console, #sheetBody .console')
+        if (con) {
+          con.textContent = (con.textContent === 'No output yet.' ? '' : con.textContent + '\n') + '> ' + value
+          con.scrollTop = con.scrollHeight
+        }
+        refreshSoon()
       } catch (e) {
         toast(e.message ?? 'Command failed', true)
       }
@@ -678,6 +756,12 @@
       $('app').hidden = false
       $('hosting').innerHTML = html
     }
+    // design/debug: render the settings tab into #servers with mock props (no auth/relay)
+    window.__previewSettings = (game, kind, props) => {
+      $('login').hidden = true; $('topbar').hidden = false; $('app').hidden = false
+      sheetInfo = { game, kind, minecraftVersion: '1.21.1', port: 25565, automation: {} }
+      renderSettings($('servers'), props)
+    }
 
     // ---------- control-panel sheet (settings, players, automation over the relay) ----------
     const rowsById = new Map()
@@ -703,23 +787,105 @@
       throw new Error('The PC did not answer — is the launcher running?')
     }
 
-    const PAL_ENUMS = {
-      Difficulty: ['None', 'Casual', 'Normal', 'Hard'],
-      DeathPenalty: ['None', 'Item', 'ItemAndEquipment', 'All']
+    // ---------- settings knowledge base (labels, explanations, groups) ----------
+    const ACRONYMS = [[/\bPv P\b/g, 'PvP'], [/\bU Id\b/g, 'UID'], [/\bHp\b/g, 'HP'], [/\bUi\b/g, 'UI'], [/\bId\b/g, 'ID'], [/\bXp\b/g, 'XP'], [/\bRest Api\b/gi, 'REST API'], [/\bRcon\b/gi, 'RCON'], [/\bUNKO\b/g, 'Poop']]
+    function labelFor(key) {
+      let s = key.replace(/^b(?=[A-Z])/, '').replace(/_/g, ' ').replace(/([a-z0-9])([A-Z])/g, '$1 $2').replace(/([A-Z]+)([A-Z][a-z])/g, '$1 $2').trim()
+      for (const [re, to] of ACRONYMS) s = s.replace(re, to)
+      return s
     }
-    const PAL_ESS = [
-      ['ServerName', 'Server name', 'text'], ['ServerDescription', 'Description', 'text'],
-      ['ServerPassword', 'Join password', 'text'], ['ServerPlayerMaxNum', 'Max players', 'num'],
-      ['Difficulty', 'Difficulty', 'enum'], ['DeathPenalty', 'Death penalty', 'enum'],
-      ['ExpRate', 'XP rate', 'num'], ['PalCaptureRate', 'Capture rate', 'num'],
-      ['DayTimeSpeedRate', 'Day speed', 'num'], ['NightTimeSpeedRate', 'Night speed', 'num'],
-      ['bEnablePlayerToPlayerDamage', 'PvP damage', 'bool'], ['bEnableInvaderEnemy', 'Raids', 'bool']
+    const HINTS = {
+      // palworld
+      Difficulty: 'Overall preset. "None" means the individual sliders below are used instead.',
+      DeathPenalty: 'What you drop when you die.',
+      DayTimeSpeedRate: 'How fast daytime passes. 2 = days go by twice as fast.',
+      NightTimeSpeedRate: 'How fast nighttime passes.',
+      ExpRate: 'XP multiplier for players and Pals.',
+      PalCaptureRate: 'Capture-chance multiplier when throwing Pal Spheres.',
+      PalSpawnNumRate: 'How many wild Pals spawn — higher means more Pals but more server load.',
+      PalDamageRateAttack: 'Damage dealt by your Pals.',
+      PalDamageRateDefense: 'Damage taken by your Pals — higher makes them squishier.',
+      PalStomachDecreaceRate: 'How fast Pals get hungry.',
+      PalStaminaDecreaceRate: 'How fast Pals tire out.',
+      PalAutoHPRegeneRate: 'Passive HP regen for Pals.',
+      PalEggDefaultHatchingTime: 'Hours for the largest eggs to hatch.',
+      WorkSpeedRate: 'Work speed of Pals at your bases.',
+      PlayerDamageRateAttack: 'Damage dealt by players.',
+      PlayerDamageRateDefense: 'Damage taken by players — higher means you take more.',
+      PlayerStomachDecreaceRate: 'How fast players get hungry.',
+      PlayerStaminaDecreaceRate: 'How fast player stamina drains.',
+      bEnablePlayerToPlayerDamage: 'Players can damage each other (needed for PvP).',
+      bEnableFriendlyFire: 'Attacks also hurt your own guildmates and Pals.',
+      bEnableInvaderEnemy: 'Raid events — hostile groups periodically attack bases.',
+      bIsPvP: 'Enables full PvP mode between players.',
+      bHardcore: 'Hardcore — dying has permanent consequences.',
+      bPalLost: 'A Pal that faints with its owner is lost forever.',
+      ServerPlayerMaxNum: 'Maximum players connected at once.',
+      bEnableFastTravel: 'Allow fast travel between unlocked statues.',
+      ItemWeightRate: 'Item weight multiplier. 0 = everything is weightless.',
+      CollectionDropRate: 'Resource yield from trees, ore, and other gatherables.',
+      EnemyDropItemRate: 'Loot dropped by defeated enemies.',
+      DropItemMaxNum: 'Max items lying on the ground before the oldest despawn.',
+      DropItemAliveMaxHours: 'Hours before dropped items despawn.',
+      BaseCampMaxNum: 'Maximum base camps across the whole server.',
+      BaseCampWorkerMaxNum: 'Maximum Pals working at one base.',
+      BuildObjectDeteriorationDamageRate: 'How fast unattended buildings decay. 0 = no decay.',
+      GuildPlayerMaxNum: 'Maximum members per guild.',
+      CoopPlayerMaxNum: 'Cap for invite-code co-op — not used by dedicated servers.',
+      bAllowGlobalPalboxImport: 'Let players import Pals from other servers. Off keeps progression local.',
+      bAllowGlobalPalboxExport: 'Let players export Pals to the global Palbox.',
+      CrossplayPlatforms: 'Which platforms are allowed to join together.',
+      RESTAPIEnabled: 'Management API ELauncher uses — leave on.',
+      RCONEnabled: 'Legacy admin protocol — ELauncher uses the REST API instead.',
+      bEnableVoiceChat: 'Built-in proximity voice chat.',
+      ServerName: 'Name shown on the join / community-browser screen.',
+      ServerDescription: 'Description shown in the server browser.',
+      ServerPassword: 'Join password. Empty = anyone with the address can join.',
+      // minecraft
+      motd: 'The message shown under the server in the multiplayer list.',
+      'max-players': 'Maximum players allowed online at once.',
+      gamemode: 'Default game mode for players who join.',
+      difficulty: 'Peaceful disables hostile mobs; hard is the toughest.',
+      'view-distance': 'Chunks sent to players. Lower = smoother, less RAM/CPU.',
+      'simulation-distance': 'Chunks that actively tick (mobs, crops). Big performance lever.',
+      pvp: 'Allow players to damage each other.',
+      'white-list': 'Only let allow-listed players join.',
+      'online-mode': 'Verify accounts with Mojang. Keep on unless offline/cracked.',
+      hardcore: 'One life — on death the player is banned/spectator.',
+      'spawn-protection': 'Radius around spawn only ops can build in. 0 = off.',
+      'allow-nether': 'Enable the Nether dimension.',
+      'allow-flight': 'Allow flight mods/elytra without kicking for "flying".',
+      'enable-command-block': 'Allow command blocks in the world.',
+      'level-seed': 'World generation seed. Blank = random.',
+      'level-name': 'Folder name of the world.',
+      'spawn-monsters': 'Whether hostile mobs spawn.',
+      'player-idle-timeout': 'Minutes before an idle player is kicked. 0 = never.',
+      'max-tick-time': 'Watchdog: ms a tick can take before the server force-restarts. -1 = off.'
+    }
+    const ENUM_OPTIONS = {
+      Difficulty: [['None', 'None (use sliders)'], ['Casual', 'Casual'], ['Normal', 'Normal'], ['Hard', 'Hard']],
+      DeathPenalty: [['None', 'Keep everything'], ['Item', 'Drop items'], ['ItemAndEquipment', 'Drop items + equipment'], ['All', 'Drop everything (incl. Pals)']],
+      gamemode: [['survival', 'Survival'], ['creative', 'Creative'], ['adventure', 'Adventure'], ['spectator', 'Spectator']],
+      difficulty: [['peaceful', 'Peaceful'], ['easy', 'Easy'], ['normal', 'Normal'], ['hard', 'Hard']]
+    }
+    // curated top section per game: [key, optional friendly label]
+    const PAL_ESS = [['ServerName', 'Server name'], ['ServerDescription', 'Description'], ['ServerPassword', 'Join password'], ['ServerPlayerMaxNum', 'Max players'], ['Difficulty'], ['DeathPenalty'], ['ExpRate', 'XP rate'], ['PalCaptureRate', 'Capture rate'], ['bEnablePlayerToPlayerDamage', 'PvP damage'], ['bEnableInvaderEnemy', 'Raids']]
+    const MC_ESS = [['motd', 'MOTD'], ['max-players', 'Max players'], ['gamemode', 'Game mode'], ['difficulty', 'Difficulty'], ['view-distance', 'View distance'], ['pvp', 'PvP'], ['white-list', 'Whitelist only']]
+    const PAL_GROUPS = [
+      ['Pals', '🐾', /^Pal|Egg|Monster|Capture|Spawn/],
+      ['Players & combat', '⚔️', /Player|Damage|Stamina|Stomach|Regene|AimAssist|PvP|Invader|Friendly|Poop|UNKO|Hardcore|Respawn|Enhance|Death/i],
+      ['Items & drops', '🎒', /Item|Drop|Collection|Supply|Equipment|Weight|Corruption/i],
+      ['Base & guilds', '🏠', /Base|Guild|Build|Building/i],
+      ['World & time', '🌍', /Time|Random|Difficulty|WorkSpeed|Day|Night|Exp|Predator|Boss/i],
+      ['Multiplayer', '👥', /Coop|Multiplay|Login|FastTravel|Start|Logout|Chat|ClientMod|Crossplay|Voice|Show/i],
+      ['Saves & logs', '💾', /Save|Backup|Log|Reset|Alive|Interval|TTL|Cache/i],
+      ['Network', '🌐', /Port|RCON|REST|Region|Auth|Ban|Lobby|IP$|Palbox/i]
     ]
-    const MC_ENUMS = { gamemode: ['survival', 'creative', 'adventure'], difficulty: ['peaceful', 'easy', 'normal', 'hard'] }
-    const MC_ESS = [
-      ['motd', 'MOTD', 'text'], ['max-players', 'Max players', 'num'], ['gamemode', 'Game mode', 'enum'],
-      ['difficulty', 'Difficulty', 'enum'], ['view-distance', 'View distance', 'num'],
-      ['pvp', 'PvP', 'bool'], ['white-list', 'Whitelist only', 'bool']
+    const MC_GROUPS = [
+      ['Gameplay', '⚔️', /gamemode|difficulty|hardcore|pvp|force-gamemode|flight|command-block|gamerule|spawn-(monsters|animals|npcs)/i],
+      ['World', '🌍', /level-|generate|max-world|nether|view-distance|simulation-distance|spawn-protection/i],
+      ['Players & access', '👥', /max-players|white|online-mode|idle|op-permission|enforce|prevent-proxy|hidden/i],
+      ['Network & performance', '🌐', /port|server-ip|network|rate-limit|tick|entity-broadcast|sync-chunk|native|compression|status/i]
     ]
     const isPal = () => sheetInfo?.game === 'palworld'
     const boolTrue = (v) => /^true$/i.test(v)
@@ -786,40 +952,94 @@
       const con = body.querySelector('.console'); if (con) con.scrollTop = con.scrollHeight
     }
 
-    function ctrl(key, labelText, type, value, enums) {
-      if (type === 'bool') {
-        return `<div class="frow check"><input type="checkbox" id="f-${key}" ${boolTrue(value) ? 'checked' : ''}
-          onchange="setDirty('${key}', this.checked ? '${boolStr(true)}' : '${boolStr(false)}')"><label for="f-${key}">${labelText}</label></div>`
+    const trimNum = (v) => { const n = Number(v); return Number.isFinite(n) ? String(n) : v }
+    const isRate = (key) => /Rate$/.test(key)
+
+    function rateEditor(key, value) {
+      const cur = Number(value)
+      const presets = [0.5, 1, 2, 3].map((p) => `<button class="${Math.abs(cur - p) < 0.001 ? 'on' : ''}" onclick="setRate('${key}',${p},this)">×${p}</button>`).join('')
+      return `<div class="rate"><div class="seg">${presets}</div><input type="number" step="0.1" min="0" value="${esc(trimNum(value))}"
+        oninput="setDirty('${key}',this.value);this.closest('.rate').querySelectorAll('.seg button').forEach(b=>b.classList.remove('on'))"></div>`
+    }
+    window.setRate = (key, p, btn) => {
+      setDirty(key, String(p))
+      btn.parentElement.querySelectorAll('button').forEach((b) => b.classList.toggle('on', b === btn))
+      const input = btn.closest('.rate').querySelector('input'); if (input) input.value = String(p)
+    }
+
+    const PLATFORMS = ['Steam', 'Xbox', 'PS5', 'Mac']
+    function crossplayEditor(key, value) {
+      const active = new Set(String(value).replace(/[()]/g, '').split(',').map((s) => s.trim()).filter(Boolean))
+      return `<div class="platgrid" id="cp-${key}">${PLATFORMS.map((p) => `<label><input type="checkbox" ${active.has(p) ? 'checked' : ''} onchange="setCrossplay('${key}')">${p}</label>`).join('')}</div>`
+    }
+    window.setCrossplay = (key) => {
+      const box = document.getElementById('cp-' + key)
+      const on = PLATFORMS.filter((p, i) => box.querySelectorAll('input')[i].checked)
+      setDirty(key, `(${on.join(',')})`)
+    }
+
+    function settingControl(key, value) {
+      if (key === 'CrossplayPlatforms') return crossplayEditor(key, value)
+      if (ENUM_OPTIONS[key]) return `<select onchange="setDirty('${key}',this.value)">${ENUM_OPTIONS[key].map(([v, l]) => `<option value="${v}" ${v === value ? 'selected' : ''}>${l}</option>`).join('')}</select>`
+      if (isPal() && isRate(key) && /^-?\d/.test(value)) return rateEditor(key, value)
+      if (/^-?\d+(\.\d+)?$/.test(value)) return `<input type="number" step="any" value="${esc(trimNum(value))}" oninput="setDirty('${key}',this.value)">`
+      return `<input value="${esc(String(value ?? ''))}" oninput="setDirty('${key}',this.value)">`
+    }
+    function settingRow(key, value, forcedLabel) {
+      const label = forcedLabel || labelFor(key)
+      const hint = HINTS[key] ? `<div class="h">${esc(HINTS[key])}</div>` : ''
+      const dk = esc((key + ' ' + label + ' ' + (HINTS[key] || '')).toLowerCase())
+      if (/^(true|false)$/i.test(value)) {
+        return `<div class="setrow check" data-k="${dk}"><input type="checkbox" ${boolTrue(value) ? 'checked' : ''}
+          onchange="setDirty('${key}',this.checked?'${boolStr(true)}':'${boolStr(false)}')"><div><label>${label}</label>${hint}</div></div>`
       }
-      let input
-      if (type === 'enum') input = `<select onchange="setDirty('${key}', this.value)">${(enums || []).map((o) => `<option ${o === value ? 'selected' : ''}>${o}</option>`).join('')}</select>`
-      else input = `<input type="${type === 'num' ? 'number' : 'text'}" step="any" value="${esc(String(value ?? ''))}" oninput="setDirty('${key}', this.value)">`
-      return `<div class="frow"><label>${labelText}</label>${input}</div>`
+      return `<div class="setrow" data-k="${dk}"><label>${label}</label>${settingControl(key, value)}${hint}</div>`
     }
 
     function renderSettings(body, props) {
       const ess = isPal() ? PAL_ESS : MC_ESS
-      const enums = isPal() ? PAL_ENUMS : MC_ENUMS
-      const defaults = isPal() ? { ServerPlayerMaxNum: '16', ExpRate: '1', DeathPenalty: 'All' } : { 'max-players': '10', gamemode: 'survival', difficulty: 'normal', 'view-distance': '10' }
+      const groups = isPal() ? PAL_GROUPS : MC_GROUPS
       const essKeys = new Set(ess.map((e) => e[0]))
-      const essHtml = ess.map(([k, l, t]) => ctrl(k, l, t, props[k] ?? defaults[k] ?? (t === 'bool' ? boolStr(false) : ''), enums[k])).join('')
-      const rest = Object.keys(props).filter((k) => !essKeys.has(k)).sort()
-      body.innerHTML = `<div class="grouphead">Essentials</div>${essHtml}
-        <div class="grouphead">All settings</div>
-        <div class="searchbar">${icons.chipIc}<input id="setSearch" placeholder="Search settings…" oninput="filterSettings(this.value)"></div>
-        <div id="allSettings">${rest.map((k) => {
-          const v = props[k]; const t = /^(true|false)$/i.test(v) ? 'bool' : (/^-?\d+(\.\d+)?$/.test(v) ? 'num' : 'text')
-          return `<div class="setwrap" data-k="${esc(k.toLowerCase())}">${ctrl(k, k, t, v, null)}</div>`
-        }).join('')}</div>
-        ${isPal() ? '' : `<div class="grouphead" style="color:var(--red)">Change loader &amp; version</div>
-          <div class="dangerzone">
-            <div class="hint2" style="color:var(--red);margin-bottom:10px">⚠ Rebuilding wipes the world, mods, and every file on this server, then reinstalls it fresh. This cannot be undone.</div>
-            <div class="grid2">
-              <div class="frow"><label>Loader</label><select id="rbLoader">${['paper', 'vanilla', 'fabric', 'neoforge', 'forge'].map((k) => `<option value="${k}" ${sheetInfo.kind === k ? 'selected' : ''}>${k[0].toUpperCase() + k.slice(1)}</option>`).join('')}</select></div>
-              <div class="frow"><label>Version</label><select id="rbVersion"></select></div>
-            </div>
-            <button class="minibtn red" onclick="rebuildServer()">Rebuild server — delete all files</button>
-          </div>`}
+      const wideKeys = new Set(['ServerName', 'ServerDescription', 'motd', 'ServerPassword', 'level-seed', 'CrossplayPlatforms'])
+      const essHtml = ess.map(([k, l]) => {
+        const v = props[k] ?? ''
+        const wide = wideKeys.has(k) || /^(true|false)$/i.test(v) ? ' full' : ''
+        return `<div class="${wide.trim()}">${settingRow(k, v, l)}</div>`
+      }).join('')
+
+      // group the remaining keys
+      const grouped = {}, order = []
+      for (const [t] of groups) { grouped[t] = []; order.push(t) }
+      grouped.Other = []; order.push('Other')
+      for (const k of Object.keys(props).filter((k) => !essKeys.has(k)).sort()) {
+        const g = groups.find(([, , re]) => re.test(k))
+        grouped[g ? g[0] : 'Other'].push(k)
+      }
+      const groupsHtml = order.filter((t) => grouped[t].length).map((t) => {
+        const icon = (groups.find((x) => x[0] === t) || [, '⚙️'])[1]
+        return `<div class="setgroup">
+          <div class="gh" onclick="this.parentElement.classList.toggle('open')"><span class="gi">${icon}</span>${t}<span class="cnt">${grouped[t].length}</span><span class="chev">${icons.chev}</span></div>
+          <div class="body">${grouped[t].map((k) => settingRow(k, props[k])).join('')}</div>
+        </div>`
+      }).join('')
+
+      const danger = isPal() ? '' : `<div class="grouphead" style="color:var(--red);margin-top:24px">Change loader &amp; version</div>
+        <div class="dangerzone">
+          <div class="hint2" style="color:var(--red);margin-bottom:10px">⚠ Rebuilding wipes the world, mods, and every file on this server, then reinstalls it fresh. There is no undo.</div>
+          <div class="grid2">
+            <div class="frow"><label>Loader</label><select id="rbLoader">${['paper', 'vanilla', 'fabric', 'neoforge', 'forge'].map((k) => `<option value="${k}" ${sheetInfo.kind === k ? 'selected' : ''}>${k[0].toUpperCase() + k.slice(1)}</option>`).join('')}</select></div>
+            <div class="frow"><label>Version</label><select id="rbVersion"></select></div>
+          </div>
+          <button class="minibtn red" onclick="rebuildServer()">Rebuild server — delete all files</button>
+        </div>`
+
+      body.innerHTML = `
+        <div class="set-hero"><h3>${isPal() ? 'Palworld' : 'Minecraft'} settings</h3><p>The essentials are up top; every other option is grouped below with a plain-English note. Changes apply on the next server restart.</p></div>
+        <div class="essgrid">${essHtml}</div>
+        <div class="grouphead" style="margin-top:22px">Advanced settings</div>
+        <div class="searchbar">${icons.chipIc}<input placeholder="Search every setting…" oninput="filterSettings(this.value)"></div>
+        <div id="allGroups">${groupsHtml}</div>
+        ${danger}
         <div class="savebar"><button class="cta" onclick="saveSettings()">Save settings</button></div>`
       if (!isPal()) {
         loadMcVersions().then((vers) => {
@@ -830,7 +1050,16 @@
     }
     window.filterSettings = (q) => {
       q = q.trim().toLowerCase()
-      document.querySelectorAll('#allSettings .setwrap').forEach((el) => { el.style.display = !q || el.dataset.k.includes(q) ? '' : 'none' })
+      document.querySelectorAll('#allGroups .setgroup').forEach((g) => {
+        let any = false
+        g.querySelectorAll('.setrow').forEach((r) => {
+          const match = !q || (r.dataset.k || '').includes(q)
+          r.style.display = match ? '' : 'none'
+          if (match) any = true
+        })
+        g.style.display = any ? '' : 'none'
+        g.classList.toggle('open', Boolean(q) && any)
+      })
     }
     window.saveSettings = async () => {
       if (!Object.keys(dirty).length) return toast('Nothing changed')
@@ -1071,23 +1300,67 @@
     }
     matchMedia('(min-width:900px)').addEventListener('change', () => { if (me) void refresh() })
 
+    // keep an open mobile console tab live without disturbing other tabs' edits
+    function paintMobileConsole() {
+      if (DESK() || !sheetId || sheetTab !== 'console') return
+      const con = document.querySelector('#sheetBody .console')
+      if (con) {
+        const stick = con.scrollHeight - con.scrollTop - con.clientHeight < 40
+        con.textContent = (rowsById.get(sheetId) || {}).console || 'No output yet.'
+        if (stick) con.scrollTop = con.scrollHeight
+      }
+    }
+
     async function refresh() {
       if (!me || document.hidden) return
       try {
         const rows = await fetchServers()
         applyLayout(rows)
-        // keep an open mobile console tab live without disturbing other tabs' edits
-        if (!DESK() && sheetId && sheetTab === 'console') {
-          const con = document.querySelector('#sheetBody .console')
-          if (con) {
-            const stick = con.scrollHeight - con.scrollTop - con.clientHeight < 40
-            con.textContent = (rowsById.get(sheetId) || {}).console || 'No output yet.'
-            if (stick) con.scrollTop = con.scrollHeight
-          }
-        }
+        paintMobileConsole()
       } catch (e) {
         const target = DESK() ? $('dsideList') : $('servers')
         if (target) target.innerHTML = `<div class="empty"><b>Could not reach the cloud</b>${esc(e.message)}</div>`
+      }
+    }
+
+    // ---------- realtime: the cloud pushes changes; polling stays as the safety net ----------
+    let rtLive = false
+    let paintQueued = false
+    function schedulePaint() {
+      if (paintQueued) return
+      paintQueued = true
+      setTimeout(() => {
+        paintQueued = false
+        if (!me || document.hidden) return
+        applyLayout([...rowsById.values()].sort((a, b) => (a.name || '').localeCompare(b.name || '')))
+        paintMobileConsole()
+      }, 120)
+    }
+    function mergeStatus(row) {
+      if (!row?.server_id) return
+      const old = rowsById.get(row.server_id)
+      if (!old) return void refresh() // brand-new server — a full fetch fills in owner names
+      rowsById.set(row.server_id, { ...old, ...row })
+      schedulePaint()
+    }
+    let hostingTimer = null
+    function scheduleHosting() {
+      clearTimeout(hostingTimer)
+      hostingTimer = setTimeout(() => void loadHosting(), 250)
+    }
+    function startRealtime() {
+      try {
+        supabase
+          .channel('panel-live')
+          .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'server_status' }, (p) => mergeStatus(p.new))
+          .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'server_status' }, (p) => mergeStatus(p.new))
+          .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'server_requests', filter: `requester_id=eq.${me}` }, (p) => settleRequest(p.new))
+          .on('postgres_changes', { event: '*', schema: 'public', table: 'hosting_orders' }, scheduleHosting)
+          .subscribe((status) => {
+            rtLive = status === 'SUBSCRIBED'
+          })
+      } catch {
+        // realtime not enabled on this cloud — the polls above keep everything working
       }
     }
 
