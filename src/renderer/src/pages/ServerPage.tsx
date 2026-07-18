@@ -952,7 +952,7 @@ function ShareCard({ server, status }: { server: LocalServer; status: Status }):
         if (res.warning) toast.error(res.warning)
         else if (palworld) toast.success('Port opened — share the address with friends')
         else toast.success('Public address is live — share it or publish below')
-      } else toast.error(res.error ?? (palworld ? 'Could not open the port on your router' : 'Could not start the tunnel'))
+      } else toast.error(res.error ?? (palworld ? 'Could not open the port on your router' : 'Could not get a public address'))
     } finally {
       setTunneling(false)
     }
@@ -1014,7 +1014,7 @@ function ShareCard({ server, status }: { server: LocalServer; status: Status }):
             </div>
           </div>
           <div className="field">
-            <label>{palworld ? 'Anywhere (opens the port on your router)' : 'Anywhere (public tunnel)'}</label>
+            <label>{palworld ? 'Anywhere (opens the port on your router)' : 'Anywhere (public address)'}</label>
             {status.tunnelAddress ? (
               <div className="join-addr">
                 <IconGlobe size={14} /> {status.tunnelAddress}
@@ -1028,9 +1028,11 @@ function ShareCard({ server, status }: { server: LocalServer; status: Status }):
                 {tunneling ? (palworld ? 'Opening…' : 'Starting…') : palworld ? 'Open port & get address' : 'Get public address'}
               </button>
             )}
-            {!status.tunnelAddress && palworld && (
+            {!status.tunnelAddress && (
               <div className="hint">
-                Uses UPnP — if your router has it disabled, forward UDP port {server.port} to this PC manually.
+                {palworld
+                  ? `Uses UPnP — if your router has it disabled, forward UDP port ${server.port} to this PC manually.`
+                  : 'Opens the port on your router (UPnP) for a direct address, or falls back to the free bore.pub relay.'}
               </div>
             )}
             {status.tunnelAddress && (
@@ -1051,7 +1053,7 @@ function ShareCard({ server, status }: { server: LocalServer; status: Status }):
                   <span className="hint">Sign in to your ELauncher account to publish this to the Play Together board.</span>
                 )}
                 <button className="ghost small" onClick={() => void window.elauncher.server.tunnelStop(server.port)}>
-                  {palworld ? 'Close port' : 'Stop tunnel'}
+                  {palworld ? 'Close port' : 'Stop sharing'}
                 </button>
               </div>
             )}

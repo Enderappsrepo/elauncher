@@ -4,6 +4,37 @@ import { join } from 'path'
 import { ensureDataDirs } from './paths'
 import { registerIpc } from './ipc'
 import { initUpdater } from './services/updater'
+import { getUser, signIn } from './services/cloud'
+
+/**
+ * Headless host mode — run the launcher's host services (cloud relay,
+ * provisioner, server management) with no window, so a Linux/VPS box can host
+ * and be managed entirely from the web/phone panel. Toggle with the env var
+ * ELAUNCHER_HEADLESS=1 (or --headless); sign in via ELAUNCHER_EMAIL /
+ * ELAUNCHER_PASSWORD the first time (the session then persists).
+ */
+const HEADLESS = process.env.ELAUNCHER_HEADLESS === '1' || process.argv.includes('--headless')
+
+async function startHeadless(): Promise<void> {
+  console.log('[ELauncher] headless host starting…')
+  try {
+    let user = await getUser()
+    if (!user) {
+      const email = process.env.ELAUNCHER_EMAIL
+      const password = process.env.ELAUNCHER_PASSWORD
+      if (email && password) user = await signIn(email, password)
+    }
+    if (user) {
+      console.log(`[ELauncher] signed in as ${user.username}${user.isAdmin ? ' (admin)' : ''} — hosting active.`)
+    } else {
+      console.warn(
+        '[ELauncher] not signed in. Set ELAUNCHER_EMAIL and ELAUNCHER_PASSWORD (once), then restart. Status and controls run through the cloud panel.'
+      )
+    }
+  } catch (e) {
+    console.error('[ELauncher] headless sign-in failed:', e instanceof Error ? e.message : e)
+  }
+}
 
 /** Window icon for dev + unpackaged runs; the packaged exe icon comes from electron-builder. */
 function windowIcon(): string | undefined {
@@ -55,6 +86,12 @@ function createWindow(): void {
 app.whenReady().then(() => {
   ensureDataDirs()
   registerIpc()
+
+  if (HEADLESS) {
+    void startHeadless()
+    return
+  }
+
   createWindow()
   initUpdater()
 
@@ -64,5 +101,6 @@ app.whenReady().then(() => {
 })
 
 app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') app.quit()
+  // headless has no windows and must keep running; on Windows/macOS the GUI quits normally
+  if (!HEADLESS && process.platform !== 'darwin') app.quit()
 })

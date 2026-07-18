@@ -261,11 +261,26 @@ export function registerIpc(): void {
       if (record?.game === 'palworld') {
         const mapping = await upnp.openPort(port, 'UDP', `ELauncher ${record.name}`)
         server.announceServerByPort(port)
-        return { ok: true, address: `${mapping.externalIp}:${port}`, warning: mapping.warning }
+        const address = server.getServerPublicAddress(record.id) ?? `${mapping.externalIp}:${port}`
+        return { ok: true, address, warning: mapping.warning }
       }
-      const res = await hosting.startTunnel(port)
-      server.announceServerByPort(port)
-      return { ok: true, ...res }
+      // minecraft: direct router mapping first (stable address, no relay hop), bore as the fallback
+      try {
+        const mapping = await upnp.openPort(port, 'TCP', `ELauncher ${record?.name ?? 'server'}`)
+        server.announceServerByPort(port)
+        const address = (record && server.getServerPublicAddress(record.id)) || `${mapping.externalIp}:${port}`
+        return { ok: true, address, warning: mapping.warning }
+      } catch (upnpError) {
+        try {
+          const res = await hosting.startTunnel(port)
+          server.announceServerByPort(port)
+          return { ok: true, ...res }
+        } catch (tunnelError) {
+          const upnpMsg = upnpError instanceof Error ? upnpError.message : String(upnpError)
+          const tunnelMsg = tunnelError instanceof Error ? tunnelError.message : String(tunnelError)
+          return { ok: false, error: `Router mapping failed (${upnpMsg}) and the tunnel fallback failed too (${tunnelMsg})` }
+        }
+      }
     } catch (e) {
       return { ok: false, error: e instanceof Error ? e.message : String(e) }
     }
@@ -300,7 +315,10 @@ export function registerIpc(): void {
       server.announceServerByPort(port)
       return
     }
+    // minecraft may be exposed by a router mapping, a tunnel, or both — clear whichever is live
     hosting.stopTunnel(port)
+    await upnp.closePort(port, 'TCP')
+    server.announceServerByPort(port)
   })
   ipcMain.handle('server:mods:list', (_e, id: string) => server.listServerMods(id))
   ipcMain.handle('server:mods:install', async (_e, id: string, projectId: string) => {

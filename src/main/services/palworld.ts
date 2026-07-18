@@ -1,5 +1,5 @@
 import { spawn, type ChildProcess } from 'child_process'
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs'
+import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs'
 import { dirname, join } from 'path'
 import { randomBytes } from 'crypto'
 import { installSteamApp } from './steamcmd'
@@ -18,8 +18,15 @@ export const PALWORLD_BASE_PORT = 8211
 /** Allocate palworld ports two apart so every server's REST port (port+1) stays free. */
 export const PALWORLD_PORT_STEP = 2
 
-const SHIPPING_EXE = join('Pal', 'Binaries', 'Win64', 'PalServer-Win64-Shipping.exe')
-const CONFIG_REL = join('Pal', 'Saved', 'Config', 'WindowsServer', 'PalWorldSettings.ini')
+const IS_WIN = process.platform === 'win32'
+// SteamCMD app 2394010 ships a Windows and a Linux build; paths and the config
+// folder (WindowsServer vs LinuxServer) differ. On Linux we launch the provided
+// PalServer.sh, which sets up the Steam runtime before exec'ing the binary.
+const SHIPPING_EXE = IS_WIN
+  ? join('Pal', 'Binaries', 'Win64', 'PalServer-Win64-Shipping.exe')
+  : join('Pal', 'Binaries', 'Linux', 'PalServer-Linux-Shipping')
+const LAUNCH_SCRIPT = IS_WIN ? 'PalServer.exe' : 'PalServer.sh'
+const CONFIG_REL = join('Pal', 'Saved', 'Config', IS_WIN ? 'WindowsServer' : 'LinuxServer', 'PalWorldSettings.ini')
 const TEMPLATE_REL = 'DefaultPalWorldSettings.ini'
 const SECTION_HEADER = '[/Script/Pal.PalGameWorldSettings]'
 
@@ -166,7 +173,7 @@ export async function installPalworld(
   onProgress: (phase: string, progress: number) => void
 ): Promise<void> {
   await installSteamApp(PALWORLD_APP_ID, dir, onProgress)
-  if (!existsSync(join(dir, SHIPPING_EXE)) && !existsSync(join(dir, 'PalServer.exe'))) {
+  if (!existsSync(join(dir, SHIPPING_EXE)) && !existsSync(join(dir, LAUNCH_SCRIPT))) {
     throw new Error('Palworld server files did not install correctly — retry the install.')
   }
   onProgress('Writing server configuration', -1)
@@ -284,12 +291,11 @@ export function startPalworld(
   })
 
   const shipping = join(dir, SHIPPING_EXE)
-  const useShipping = existsSync(shipping)
-  const exe = useShipping ? shipping : join(dir, 'PalServer.exe')
-  // official perf flags; -port sets the UDP game port. The shipping exe needs
-  // the project name ("Pal") as its first argument when launched directly.
-  const args = [
-    ...(useShipping ? ['Pal'] : []),
+  const useShipping = IS_WIN && existsSync(shipping)
+  // windows: run the shipping exe directly (needs the "Pal" project arg), else
+  // the launch script. linux: always the launch script, which sets up libs.
+  const exe = IS_WIN ? (useShipping ? shipping : join(dir, LAUNCH_SCRIPT)) : join(dir, LAUNCH_SCRIPT)
+  const flags = [
     ...(launch.publicLobby ? ['-publiclobby'] : []),
     `-port=${port}`,
     '-publicport=' + port,
@@ -297,7 +303,16 @@ export function startPalworld(
     '-NoAsyncLoadingThread',
     '-UseMultithreadForDS'
   ]
-  const proc = spawn(exe, args, { cwd: dir, windowsHide: true })
+  const args = [...(useShipping ? ['Pal'] : []), ...flags]
+  if (!IS_WIN) {
+    try {
+      chmodSync(exe, 0o755)
+    } catch {
+      // already executable, or permission handled by steamcmd
+    }
+  }
+  // linux: detached so the whole process group (PalServer.sh + the UE binary) can be killed together
+  const proc = spawn(exe, args, { cwd: dir, windowsHide: true, detached: !IS_WIN })
 
   let exited = false
   const timers: NodeJS.Timeout[] = []
@@ -397,13 +412,18 @@ export function startPalworld(
   return { proc, stop }
 }
 
-/** UE servers spawn child processes — kill the whole tree on Windows. */
+/** UE servers spawn child processes — kill the whole tree (Windows) / group (Linux). */
 function forceKill(proc: ChildProcess): void {
   if (proc.pid === undefined) return
   if (process.platform === 'win32') {
     spawn('taskkill', ['/pid', String(proc.pid), '/T', '/F'], { windowsHide: true })
   } else {
-    proc.kill('SIGKILL')
+    // the server was spawned detached, so it leads its own process group (-pid)
+    try {
+      process.kill(-proc.pid, 'SIGKILL')
+    } catch {
+      proc.kill('SIGKILL')
+    }
   }
 }
 

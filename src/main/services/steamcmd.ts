@@ -1,5 +1,5 @@
 import { spawn } from 'child_process'
-import { existsSync, mkdirSync, rmSync } from 'fs'
+import { chmodSync, existsSync, mkdirSync, rmSync } from 'fs'
 import { join } from 'path'
 import { app } from 'electron'
 import AdmZip from 'adm-zip'
@@ -8,30 +8,49 @@ import { downloadToFile } from './mods'
 /**
  * Minimal SteamCMD manager. SteamCMD is Valve's official command-line Steam
  * client; it distributes free dedicated servers (Palworld, Valheim, …) with
- * anonymous login. The zip comes from Valve's own CDN (pinned URL, not a
- * "latest release" of some repo) and the exe is a universally known,
- * high-prevalence binary — unlike the old bore.exe helper, it does not trip
- * Defender's reputation heuristics.
+ * anonymous login. Downloaded from Valve's own CDN (pinned URL) — a
+ * universally known, high-prevalence tool, so no Defender false positives.
+ * Cross-platform: a .zip with steamcmd.exe on Windows, a .tar.gz with
+ * steamcmd.sh on Linux.
  */
-const STEAMCMD_ZIP_URL = 'https://steamcdn-a.akamaihd.net/client/installer/steamcmd.zip'
+const IS_WIN = process.platform === 'win32'
+const STEAMCMD_URL = IS_WIN
+  ? 'https://steamcdn-a.akamaihd.net/client/installer/steamcmd.zip'
+  : 'https://steamcdn-a.akamaihd.net/client/installer/steamcmd_linux.tar.gz'
 
 const steamcmdDir = join(app.getPath('userData'), 'steamcmd')
-const steamcmdExe = join(steamcmdDir, 'steamcmd.exe')
+const steamcmdExe = join(steamcmdDir, IS_WIN ? 'steamcmd.exe' : 'steamcmd.sh')
 
 async function ensureSteamCmd(onProgress?: (phase: string, progress: number) => void): Promise<string> {
-  if (process.platform !== 'win32') {
-    throw new Error('Hosting non-Minecraft dedicated servers is currently Windows-only.')
+  if (process.platform === 'darwin') {
+    throw new Error('Hosting SteamCMD dedicated servers is supported on Windows and Linux, not macOS.')
   }
   if (existsSync(steamcmdExe)) return steamcmdExe
   mkdirSync(steamcmdDir, { recursive: true })
   onProgress?.('Downloading SteamCMD', -1)
-  const zipPath = join(steamcmdDir, 'steamcmd.zip')
-  await downloadToFile(STEAMCMD_ZIP_URL, zipPath, (received, total) => {
+  const archive = join(steamcmdDir, IS_WIN ? 'steamcmd.zip' : 'steamcmd.tar.gz')
+  await downloadToFile(STEAMCMD_URL, archive, (received, total) => {
     if (total > 0) onProgress?.('Downloading SteamCMD', received / total)
   })
-  new AdmZip(zipPath).extractAllTo(steamcmdDir, true)
-  rmSync(zipPath, { force: true })
-  if (!existsSync(steamcmdExe)) throw new Error('SteamCMD download did not contain steamcmd.exe.')
+  if (IS_WIN) {
+    new AdmZip(archive).extractAllTo(steamcmdDir, true)
+  } else {
+    // extract the tarball with the system tar (present on every Linux box)
+    await new Promise<void>((resolve, reject) => {
+      const t = spawn('tar', ['-xzf', archive, '-C', steamcmdDir])
+      t.on('error', reject)
+      t.on('exit', (code) => (code === 0 ? resolve() : reject(new Error(`tar failed (${code})`))))
+    })
+  }
+  rmSync(archive, { force: true })
+  if (!existsSync(steamcmdExe)) throw new Error('SteamCMD download did not contain the expected launcher.')
+  if (!IS_WIN) {
+    try {
+      chmodSync(steamcmdExe, 0o755)
+    } catch {
+      // best-effort; steamcmd.sh is usually already executable
+    }
+  }
   return steamcmdExe
 }
 

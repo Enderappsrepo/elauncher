@@ -11,6 +11,7 @@ import {
   listLocalServers,
   listServerMods,
   palworldModerate,
+  rebuildServer,
   removeServerMod,
   sendServerCommand,
   setServerAutomation,
@@ -401,6 +402,12 @@ async function runPanelRequest(serverId: string, action: string, params: Record<
       return { ok: true }
     case 'removeMod':
       return removeServerMod(serverId, String(params.fileName ?? ''))
+    case 'rebuild': {
+      const kind = String(params.loader ?? 'paper') as 'vanilla' | 'paper' | 'fabric' | 'neoforge' | 'forge'
+      await rebuildServer(serverId, kind, String(params.version ?? ''))
+      await startServer(serverId).catch(() => {})
+      return { ok: true }
+    }
     default:
       throw new Error(`unknown request: ${action}`)
   }

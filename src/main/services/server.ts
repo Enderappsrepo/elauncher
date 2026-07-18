@@ -59,7 +59,9 @@ import {
   startPalworld,
   type PalworldHandle
 } from './palworld'
-import { closePort, getMappedAddress } from './upnp'
+import { closePort, getMapping } from './upnp'
+import { getAssignedHost, releaseHost } from './hostNames'
+import { getSettings } from './settings'
 import { notifyPhones, setNotificationLogSink } from './notifications'
 
 // notification problems (missing tables, no phones enrolled) print into the server console
@@ -97,9 +99,25 @@ function gameOf(server: LocalServer): ServerGame {
   return server.game ?? 'minecraft'
 }
 
-/** Public address for a server: bore tunnel (minecraft, TCP) or UPnP mapping (palworld, UDP). */
+/**
+ * Public address for a server: router mapping first (stable, direct), bore
+ * tunnel as the minecraft fallback. Mapped addresses show the server's own
+ * pool hostname when one is assigned, then the global custom host, then the
+ * raw external IP. Tunnel addresses are always the relay's real host.
+ */
 function publicAddress(server: LocalServer): string | null {
-  return gameOf(server) === 'palworld' ? getMappedAddress(server.port, 'UDP') : getTunnelAddress(server.port)
+  const mapping = getMapping(server.port, gameOf(server) === 'palworld' ? 'UDP' : 'TCP')
+  if (mapping) {
+    const host = getAssignedHost(server.id) ?? getSettings().publicHost ?? mapping.externalIp
+    return `${host}:${mapping.port}`
+  }
+  return gameOf(server) === 'palworld' ? null : getTunnelAddress(server.port)
+}
+
+/** Public join address for a server, if it's currently exposed. */
+export function getServerPublicAddress(id: string): string | null {
+  const server = loadServers().find((s) => s.id === id)
+  return server ? publicAddress(server) : null
 }
 
 // ---------- runtime state ----------
@@ -153,6 +171,7 @@ function setState(id: string, state: LocalServerState, error?: string): void {
     cpuPercent: resourceStats.get(id)?.cpuPercent ?? null,
     startedAt: procs.has(id) ? (lastStartAt.get(id) ?? null) : null,
     version: serverVersions.get(id) ?? null,
+    health: healthOf(id),
     error
   } satisfies ServerStateEvent)
 }
@@ -174,6 +193,7 @@ export interface ServerStateSnapshot {
   cpuPercent: number | null
   startedAt: number | null
   version: string | null
+  health: 'smooth' | 'fair' | 'poor' | null
 }
 
 export function getServerStates(): Record<string, ServerStateSnapshot> {
@@ -186,7 +206,8 @@ export function getServerStates(): Record<string, ServerStateSnapshot> {
       memoryMB: resourceStats.get(server.id)?.memoryMB ?? null,
       cpuPercent: resourceStats.get(server.id)?.cpuPercent ?? null,
       startedAt: procs.has(server.id) ? (lastStartAt.get(server.id) ?? null) : null,
-      version: serverVersions.get(server.id) ?? null
+      version: serverVersions.get(server.id) ?? null,
+      health: healthOf(server.id)
     }
   }
   return out
@@ -657,6 +678,59 @@ export async function createServer(opts: CreateServerOptions): Promise<LocalServ
   }
 }
 
+/**
+ * Rebuild a Minecraft server with a different loader/version. This DELETES every
+ * file for the server (world, mods, configs, old binaries) and reinstalls fresh,
+ * keeping only the record's id, name, port, and memory. The caller must have
+ * warned the user — there is no undo.
+ */
+export async function rebuildServer(
+  id: string,
+  kind: LocalServer['kind'],
+  minecraftVersion: string
+): Promise<LocalServer> {
+  const servers = loadServers()
+  const record = servers.find((s) => s.id === id)
+  if (!record) throw new Error('Server not found')
+  if (gameOf(record) === 'palworld') throw new Error('Palworld servers cannot change loader.')
+
+  if ((states.get(id) ?? 'stopped') !== 'stopped') {
+    stopServer(id)
+    if (!(await waitForState(id, 'stopped', 60_000))) throw new Error('The server would not stop — try again.')
+    await sleep(1_000)
+  }
+
+  emitTask(`Rebuilding as ${kind} ${minecraftVersion}`, -1)
+  const plan = await planFromSource({ type: 'fresh', kind, minecraftVersion })
+  if (!plan) throw new Error('Could not resolve the new server type.')
+  if (LOADER_KINDS.has(plan.kind) && !plan.loaderVersion) {
+    const versions = await getLoaderVersions(plan.kind as 'fabric' | 'neoforge' | 'forge', plan.minecraftVersion)
+    if (versions.length === 0) throw new Error(`${plan.kind} is not available for Minecraft ${plan.minecraftVersion}.`)
+    plan.loaderVersion = versions[0]
+  }
+  const meta = await mojangServerMeta(plan.minecraftVersion)
+
+  const dir = serverDir(id)
+  rmSync(dir, { recursive: true, force: true }) // wipe world, mods, configs, binaries
+  mkdirSync(dir, { recursive: true })
+  await ensureServerBinary(dir, plan, meta.url, meta.javaComponent)
+  writeFileSync(join(dir, 'eula.txt'), 'eula=true\n', 'utf-8')
+  writeFileSync(
+    join(dir, 'server.properties'),
+    [`server-port=${record.port}`, `motd=${record.name}`, 'online-mode=true', 'max-players=10', 'view-distance=10', ''].join('\n'),
+    'utf-8'
+  )
+
+  record.kind = kind
+  record.minecraftVersion = minecraftVersion
+  record.loaderVersion = plan.loaderVersion
+  record.javaComponent = meta.javaComponent
+  saveServers(servers)
+  logs.delete(id)
+  emitTask('Server rebuilt', 1, true)
+  return record
+}
+
 /** Create a Palworld dedicated server: SteamCMD download + seeded PalWorldSettings.ini. */
 async function createPalworldServer(
   opts: CreateServerOptions,
@@ -703,7 +777,8 @@ export function removeServer(id: string): LocalServer[] {
   const state = states.get(id) ?? 'stopped'
   if (state !== 'stopped') throw new Error('Stop the server before deleting it.')
   const record = loadServers().find((s) => s.id === id)
-  if (record && gameOf(record) === 'palworld') void closePort(record.port, 'UDP')
+  if (record) void closePort(record.port, gameOf(record) === 'palworld' ? 'UDP' : 'TCP')
+  releaseHost(id) // the pool name becomes available for the next hosted server
   rmSync(serverDir(id), { recursive: true, force: true })
   const remaining = loadServers().filter((s) => s.id !== id)
   saveServers(remaining)
@@ -1062,6 +1137,75 @@ const DONE_RE = /\]: Done \([\d.,]+s\)!/
 const JOIN_RE = /\]: ([A-Za-z0-9_]{1,16}) joined the game/
 const LEAVE_RE = /\]: ([A-Za-z0-9_]{1,16}) (?:left the game|lost connection)/
 const BIND_RE = /FAILED TO BIND TO PORT|Address already in use/i
+/** The universal Minecraft "server is lagging" signal (vanilla/paper/forge all print it). */
+const LAG_RE = /Can't keep up.*Running (\d+)ms.*behind|Running (\d+)ms or (\d+) ticks behind/i
+
+/**
+ * Aikar's tuned G1GC flags — the community-standard JVM tuning that keeps a
+ * dedicated Minecraft server's garbage collection from causing tick lag. Region
+ * sizes scale with the heap (Aikar's >12 GB profile for big modded servers).
+ * Applied to every Minecraft server automatically; it's a strict win for a
+ * long-running dedicated process.
+ */
+function aikarFlags(memoryMB: number): string[] {
+  const big = memoryMB >= 12288
+  return [
+    '-XX:+UseG1GC',
+    '-XX:+ParallelRefProcEnabled',
+    '-XX:MaxGCPauseMillis=200',
+    '-XX:+UnlockExperimentalVMOptions',
+    '-XX:+DisableExplicitGC',
+    '-XX:+AlwaysPreTouch',
+    `-XX:G1NewSizePercent=${big ? 40 : 30}`,
+    `-XX:G1MaxNewSizePercent=${big ? 50 : 40}`,
+    `-XX:G1HeapRegionSize=${big ? 16 : 8}M`,
+    `-XX:G1ReservePercent=${big ? 15 : 20}`,
+    '-XX:G1HeapWastePercent=5',
+    '-XX:G1MixedGCCountTarget=4',
+    `-XX:InitiatingHeapOccupancyPercent=${big ? 20 : 15}`,
+    '-XX:G1MixedGCLiveThresholdPercent=90',
+    '-XX:G1RSetUpdatingPauseTimePercent=5',
+    '-XX:SurvivorRatio=32',
+    '-XX:+PerfDisableSharedMem',
+    '-XX:MaxTenuringThreshold=1',
+    '-Dusing.aikars.flags=https://mcflags.emc.gs',
+    '-Daikars.new.flags=true'
+  ]
+}
+
+// ---------- performance health (lag detection) ----------
+
+/** Recent "can't keep up" timestamps per server, for a live smooth/fair/poor reading. */
+const lagEvents = new Map<string, number[]>()
+/** Throttle the in-console "server is lagging" nudge so it doesn't spam. */
+const lastLagNudge = new Map<string, number>()
+
+function recordLag(id: string): void {
+  const now = Date.now()
+  const list = (lagEvents.get(id) ?? []).filter((t) => now - t < 300_000)
+  list.push(now)
+  lagEvents.set(id, list)
+  // if it's persistently behind, nudge once every 5 min with an actionable tip
+  const recent = list.filter((t) => now - t < 120_000).length
+  if (recent >= 3 && now - (lastLagNudge.get(id) ?? 0) > 300_000) {
+    lastLagNudge.set(id, now)
+    pushLog(
+      id,
+      '[ELauncher] Performance: the server is running behind. Try lowering view-distance / simulation-distance in Settings, or reduce loaded chunks. Fewer players and mods also help.'
+    )
+  }
+}
+
+/** Live performance reading for a running server. */
+function healthOf(id: string): 'smooth' | 'fair' | 'poor' | null {
+  if ((states.get(id) ?? 'stopped') !== 'running') return null
+  const now = Date.now()
+  const recent = (lagEvents.get(id) ?? []).filter((t) => now - t < 120_000).length
+  const cpu = resourceStats.get(id)?.cpuPercent ?? 0
+  if (recent >= 3 || cpu >= 95) return 'poor'
+  if (recent >= 1 || cpu >= 80) return 'fair'
+  return 'smooth'
+}
 
 export async function startServer(id: string): Promise<void> {
   const current = states.get(id) ?? 'stopped'
@@ -1079,13 +1223,14 @@ export async function startServer(id: string): Promise<void> {
   setState(id, 'starting')
   try {
     const java = await ensureServerJava(server.javaComponent)
-    pushLog(id, `[ELauncher] Starting ${server.kind} server on port ${server.port} (${server.memoryMax} MiB)`)
+    pushLog(id, `[ELauncher] Starting ${server.kind} server on port ${server.port} (${server.memoryMax} MiB) — optimized GC flags on`)
 
     const proc = spawn(
       java,
       [
         `-Xms${server.memoryMax}M`,
         `-Xmx${server.memoryMax}M`,
+        ...aikarFlags(server.memoryMax),
         ...(argsFile ? [`@${argsFile}`] : ['-jar', 'server.jar']),
         'nogui'
       ],
@@ -1093,9 +1238,11 @@ export async function startServer(id: string): Promise<void> {
     )
     procs.set(id, proc)
     lastStartAt.set(id, Date.now())
+    lagEvents.delete(id)
 
     const onLine = (line: string): void => {
       pushLog(id, line)
+      if (LAG_RE.test(line)) recordLag(id)
       if ((states.get(id) === 'starting') && DONE_RE.test(line)) {
         pushLog(id, `[ELauncher] Server is ready — friends on your network can join localhost:${server.port}`)
         setState(id, 'running')
@@ -1158,7 +1305,7 @@ const palworldHandles = new Map<string, PalworldHandle>()
 async function startPalworldServer(server: LocalServer): Promise<void> {
   const id = server.id
   const dir = serverDir(id)
-  if (!existsSync(join(dir, 'Pal')) && !existsSync(join(dir, 'PalServer.exe'))) {
+  if (!existsSync(join(dir, 'Pal'))) {
     throw new Error('Palworld server files are missing — delete and recreate the server.')
   }
   logs.set(id, [])

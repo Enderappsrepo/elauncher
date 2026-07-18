@@ -5,7 +5,8 @@ import { app } from 'electron'
 /**
  * Minimal native UPnP-IGD client (SSDP discovery + SOAP port mapping).
  * Used to expose UDP game servers (Palworld etc.) that the TCP-only bore
- * relay can't carry. Implemented over plain sockets/fetch — same
+ * relay can't carry, and to give hosted (paid) servers direct TCP mappings
+ * with stable addresses. Implemented over plain sockets/fetch — same
  * no-helper-binaries rule as the bore client in hosting.ts.
  */
 
@@ -37,6 +38,8 @@ export interface PortMapping {
   protocol: 'UDP' | 'TCP'
   /** set when the external IP looks like CGNAT/private — reachability is unlikely */
   warning?: string
+  /** set when the router only granted a finite lease — the mapping is re-asserted after this time */
+  renewAt?: number
 }
 
 let cachedGateway: Gateway | null = null
@@ -205,6 +208,9 @@ function isPrivateIp(ip: string): boolean {
   return a === 10 || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168) || (a === 100 && b >= 64 && b <= 127)
 }
 
+const CGNAT_WARNING =
+  'Your ISP appears to use carrier-grade NAT — this address may not be reachable from outside. Friends on the same network can still join.'
+
 export async function getExternalIp(): Promise<string> {
   const gateway = await discoverGateway()
   const xml = await soap(gateway, 'GetExternalIPAddress', {})
@@ -220,11 +226,16 @@ export async function getExternalIp(): Promise<string> {
  */
 export async function openPort(port: number, protocol: 'UDP' | 'TCP', description = 'ELauncher'): Promise<PortMapping> {
   const existing = mappings.get(mapKey(port, protocol))
-  if (existing) return existing
+  if (existing && (!existing.renewAt || Date.now() < existing.renewAt)) return existing
   let gateway: Gateway
   try {
     gateway = await discoverGateway()
   } catch (e) {
+    // a renewal that can't find the router keeps the mapping we have; retry soon
+    if (existing) {
+      existing.renewAt = Date.now() + 300_000
+      return existing
+    }
     // no automatic mapping available — tell the user exactly what to forward where
     const lan = await getLanIp()
     const reason = e instanceof Error ? e.message : String(e)
@@ -243,21 +254,59 @@ export async function openPort(port: number, protocol: 'UDP' | 'TCP', descriptio
     NewLeaseDuration: lease
   })
   try {
-    await soap(gateway, 'AddPortMapping', args(0))
+    let renewAt: number | undefined
+    try {
+      await soap(gateway, 'AddPortMapping', args(0))
+    } catch {
+      // router rejects infinite leases — take 24h and re-assert halfway through
+      await soap(gateway, 'AddPortMapping', args(86400))
+      renewAt = Date.now() + 43_200_000
+    }
+    const externalIp = await getExternalIp()
+    const mapping: PortMapping = {
+      externalIp,
+      port,
+      protocol,
+      renewAt,
+      warning: isPrivateIp(externalIp) ? CGNAT_WARNING : undefined
+    }
+    mappings.set(mapKey(port, protocol), mapping)
+    return mapping
+  } catch (e) {
+    // the cached gateway may be stale (router rebooted, control URL moved) — rediscover next time
+    cachedGateway = null
+    if (existing) {
+      existing.renewAt = Date.now() + 300_000
+      return existing
+    }
+    throw e
+  }
+}
+
+let externalIpCheckAt = 0
+
+/**
+ * Re-read the router's external IP (throttled to every 30 min) and update live
+ * mappings so published addresses survive an ISP address rotation. Returns true
+ * when the IP actually changed.
+ */
+export async function refreshExternalIp(): Promise<boolean> {
+  if (mappings.size === 0 || Date.now() < externalIpCheckAt) return false
+  externalIpCheckAt = Date.now() + 1_800_000
+  try {
+    const ip = await getExternalIp()
+    let changed = false
+    for (const mapping of mappings.values()) {
+      if (mapping.externalIp !== ip) {
+        mapping.externalIp = ip
+        mapping.warning = isPrivateIp(ip) ? CGNAT_WARNING : undefined
+        changed = true
+      }
+    }
+    return changed
   } catch {
-    await soap(gateway, 'AddPortMapping', args(86400))
+    return false
   }
-  const externalIp = await getExternalIp()
-  const mapping: PortMapping = {
-    externalIp,
-    port,
-    protocol,
-    warning: isPrivateIp(externalIp)
-      ? 'Your ISP appears to use carrier-grade NAT — this address may not be reachable from outside. Friends on the same network can still join.'
-      : undefined
-  }
-  mappings.set(mapKey(port, protocol), mapping)
-  return mapping
 }
 
 export async function closePort(port: number, protocol: 'UDP' | 'TCP'): Promise<void> {
@@ -271,10 +320,9 @@ export async function closePort(port: number, protocol: 'UDP' | 'TCP'): Promise<
   }
 }
 
-/** Public address for a mapped port, if one is active. */
-export function getMappedAddress(port: number, protocol: 'UDP' | 'TCP' = 'UDP'): string | null {
-  const m = mappings.get(mapKey(port, protocol))
-  return m ? `${m.externalIp}:${m.port}` : null
+/** The live mapping record for a port, if one is active. */
+export function getMapping(port: number, protocol: 'UDP' | 'TCP' = 'UDP'): PortMapping | null {
+  return mappings.get(mapKey(port, protocol)) ?? null
 }
 
 export function getMappingWarning(port: number, protocol: 'UDP' | 'TCP' = 'UDP'): string | undefined {

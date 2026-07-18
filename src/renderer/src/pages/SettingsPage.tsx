@@ -256,6 +256,49 @@ export default function SettingsPage(): React.JSX.Element {
           </div>
         </div>
 
+        <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+          <h2 style={{ fontSize: 15, fontWeight: 700 }}>Server hosting</h2>
+          <div className="field">
+            <label>Per-server hostname pool</label>
+            <textarea
+              rows={4}
+              value={settings.hostPool ?? ''}
+              placeholder={'emberpeak.duckdns.org\nstormvale.duckdns.org\none hostname per line'}
+              onChange={(e) => setSettings({ ...settings, hostPool: e.target.value || undefined })}
+            />
+            <div className="hint">
+              Each hosted server claims one name, so every customer sees their own address instead of your shared IP.
+              Create free names at duckdns.org (up to 5 per account) and list them here; a server keeps its name until
+              it&apos;s deleted. The launcher checks hourly that the names still point at you and warns if one drifts.
+            </div>
+          </div>
+          <div className="field">
+            <label>DuckDNS token</label>
+            <input
+              type="password"
+              value={settings.duckdnsToken ?? ''}
+              placeholder="Optional — from your duckdns.org account page"
+              onChange={(e) => setSettings({ ...settings, duckdnsToken: e.target.value || undefined })}
+            />
+            <div className="hint">
+              Lets the launcher keep your .duckdns.org names pointed at this connection automatically, even when your
+              ISP changes your IP.
+            </div>
+          </div>
+          <div className="field">
+            <label>Fallback public address</label>
+            <input
+              value={settings.publicHost ?? ''}
+              placeholder="e.g. play.yourdomain.com — leave empty to use your public IP"
+              onChange={(e) => setSettings({ ...settings, publicHost: e.target.value || undefined })}
+            />
+            <div className="hint">
+              Used when a server has no pool name. Point a DNS A record (or your router&apos;s Dynamic DNS) at this
+              connection first. Tunnel (bore.pub) addresses are unaffected.
+            </div>
+          </div>
+        </div>
+
         <UpdatesCard />
 
         <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>

@@ -298,6 +298,7 @@ const api = {
           cpuPercent: number | null
           startedAt: number | null
           version: string | null
+          health: 'smooth' | 'fair' | 'poor' | null
         }
       >
     > =>

@@ -55,6 +55,12 @@ export interface Settings {
   autoMemory?: boolean
   /** run the game process at above-normal priority. Default off */
   highProcessPriority?: boolean
+  /** hostname published instead of the detected public IP for router-mapped servers (e.g. play.example.com) */
+  publicHost?: string
+  /** newline-separated hostnames hosted servers claim one-each, so every customer sees a unique address */
+  hostPool?: string
+  /** DuckDNS account token — keeps .duckdns.org pool names pointed at this connection automatically */
+  duckdnsToken?: string
 }
 
 export interface MinecraftVersionInfo {
@@ -590,6 +596,8 @@ export interface ServerStatus {
   startedAt?: number | null
   /** game server version, when the server reports one */
   version?: string | null
+  /** live performance reading from lag warnings + CPU (minecraft); null when stopped */
+  health?: 'smooth' | 'fair' | 'poor' | null
 }
 
 export interface ServerStateEvent extends ServerStatus {
