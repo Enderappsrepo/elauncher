@@ -258,6 +258,7 @@
     .searchbar svg { width: 15px; height: 15px; color: var(--faint); }
     .grouphead { font-size: 11px; font-weight: 700; letter-spacing: .4px; text-transform: uppercase; color: var(--faint); margin: 16px 0 8px; }
     .loadrow { text-align: center; color: var(--faint); padding: 28px 0; font-size: 13px; }
+    .dangerzone { border: 1px solid rgba(251,113,133,.35); background: rgba(251,113,133,.05); border-radius: 13px; padding: 14px; margin-bottom: 8px; }
 
     /* ---------- skeletons / empty / toasts ---------- */
     .skel { height: 132px; border-radius: var(--radius); margin-bottom: 14px; border: 1px solid var(--line);
@@ -279,52 +280,74 @@
     @keyframes rise { from { opacity: 0; transform: translateY(10px); } }
     @keyframes pulse { 50% { opacity: 0.35; } }
 
-    /* ---------- desktop: a friendly wide layout ---------- */
-    @media (min-width: 760px) {
-      .shell { max-width: 1040px; padding: 0 32px calc(52px + env(safe-area-inset-bottom)); }
-      .top { margin: 0 0 24px; padding: calc(16px + env(safe-area-inset-top)) 6px 15px; border-radius: 0 0 16px 16px; }
-      .wordmark { font-size: 18px; }
-
-      /* server cards flow into a responsive grid instead of a single column */
-      #servers { display: grid; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); gap: 16px; align-items: start; }
-      #servers .card { margin-bottom: 0; }
-      #servers .skel, #servers .empty { grid-column: 1 / -1; }
-      .card { border-radius: 18px; }
-      .card:hover { border-color: var(--line-strong); }
-
-      /* host + hosting keep full width, a bit more breathing room */
-      #host, #hosting { max-width: 720px; }
-      .home-head { margin-top: 30px; }
-
-      /* login stays a tidy card, not a stretched banner */
-      .login { max-width: 440px; margin: 0 auto; padding-top: 10vh; }
-
-      /* control panel: a centered modal dialog instead of a bottom sheet */
-      .sheet {
-        top: 50%; bottom: auto; left: 50%; right: auto; margin: 0;
-        transform: translate(-50%, -50%);
-        width: 580px; max-width: 580px; max-height: 84vh;
-        border: 1px solid var(--line-strong); border-radius: 22px;
-        animation: pop 0.22s cubic-bezier(0.22, 1, 0.36, 1);
-      }
-      @keyframes pop { from { opacity: 0; transform: translate(-50%, -46%) scale(0.97); } }
-      .sheet-grip { display: none; }
-      .sheet-top { padding-top: 15px; }
-      .sheet-body { padding: 20px 22px; }
-    }
-
-    /* wide desktop: let servers use three columns and center the shell */
-    @media (min-width: 1160px) { .shell { max-width: 1160px; } }
-
-    /* mobile polish: comfortable tap targets and edge spacing */
-    @media (max-width: 759px) {
+    /* ---------- mobile polish ---------- */
+    @media (max-width: 899px) {
       .card { padding: 15px 15px 16px; }
       .btn { min-height: 46px; }
-      .chip { font-size: 11.5px; }
+      #dapp { display: none !important; }
     }
     @media (hover: hover) {
       .btn:hover, .minibtn:hover, .conbtn:hover { filter: brightness(1.12); }
       .card { transition: border-color 0.18s ease; }
+    }
+
+    /* ============ desktop: a real two-pane control panel ============ */
+    #dapp { display: none; }
+    @media (min-width: 900px) {
+      .shell { max-width: 1320px; padding: 0 26px 24px; }
+      .top { margin: 0 0 18px; padding: calc(14px + env(safe-area-inset-top)) 4px 14px; }
+      .wordmark { font-size: 18px; }
+      .login { max-width: 440px; margin: 0 auto; padding-top: 9vh; }
+
+      body.desk #app { display: none; }
+      body.desk #dapp { display: flex; }
+      #dapp { gap: 18px; height: calc(100dvh - 92px); align-items: stretch; }
+
+      /* sidebar */
+      .dside { width: 306px; flex: none; display: flex; flex-direction: column;
+        background: var(--card); border: 1px solid var(--line); border-radius: 20px; overflow: hidden; }
+      .dside-title { padding: 16px 18px 10px; font-size: 11.5px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--faint); }
+      #dsideList { flex: 1; overflow-y: auto; padding: 0 9px 9px; }
+      .dsrow { display: flex; align-items: center; gap: 12px; padding: 11px 11px; border-radius: 13px; cursor: pointer; margin-bottom: 3px; transition: background 0.14s; }
+      .dsrow:hover { background: var(--card-2); }
+      .dsrow.sel { background: var(--accent-soft); box-shadow: inset 0 0 0 1px rgba(124,108,255,.25); }
+      .dsrow .tile { width: 36px; height: 36px; border-radius: 11px; font-size: 15px; position: relative; }
+      .dsrow .dsn { font-weight: 650; font-size: 14.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .dsrow .dsm { font-size: 11.5px; color: var(--faint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .dside-foot { padding: 11px; border-top: 1px solid var(--line); }
+      .dside-foot button { width: 100%; padding: 12px; border-radius: 13px; background: var(--card-2); border: 1px solid var(--line); color: var(--text); font-weight: 650; font-size: 13.5px; }
+      .dside-foot button.sel { background: var(--accent-soft); border-color: rgba(124,108,255,.3); color: var(--accent); }
+
+      /* detail pane */
+      .dmain { flex: 1; min-width: 0; background: var(--card); border: 1px solid var(--line); border-radius: 20px; overflow: hidden; display: flex; flex-direction: column; }
+      .dhero { padding: 20px 24px 0; flex: none; }
+      .dhero-row { display: flex; align-items: center; gap: 14px; }
+      .dhero .tile { width: 52px; height: 52px; border-radius: 15px; font-size: 22px; }
+      .dhero h2 { font-size: 21px; font-weight: 780; letter-spacing: -0.02em; }
+      .dhero .dhsub { color: var(--dim); font-size: 13px; margin-top: 3px; }
+      .dhero-acts { margin-left: auto; display: flex; gap: 9px; }
+      .dbtn { display: inline-flex; align-items: center; gap: 8px; padding: 11px 18px; border-radius: 12px; font-weight: 700; font-size: 14px; border: 1px solid var(--line-strong); background: var(--card-2); color: var(--text); }
+      .dbtn.start { background: var(--green-soft); border-color: rgba(52,211,153,.4); color: var(--green); }
+      .dbtn.stop { background: var(--red-soft); border-color: rgba(251,113,133,.35); color: var(--red); }
+      .dbtn svg { width: 15px; height: 15px; }
+      .dstats { display: flex; gap: 20px; margin: 16px 0 6px; flex-wrap: wrap; }
+      .dstat { }
+      .dstat .v { font-size: 17px; font-weight: 750; }
+      .dstat .l { font-size: 11.5px; color: var(--faint); }
+      .dtabs { display: flex; gap: 4px; padding: 8px 20px 0; border-bottom: 1px solid var(--line); flex: none; }
+      .dtabs button { padding: 11px 16px; font-size: 13.5px; font-weight: 650; color: var(--dim); border-bottom: 2px solid transparent; margin-bottom: -1px; }
+      .dtabs button.on { color: var(--accent); border-bottom-color: var(--accent); }
+      .dbody { flex: 1; overflow-y: auto; padding: 22px 24px; }
+      .dbody .grouphead:first-child { margin-top: 0; }
+      .dbody .savebar { position: sticky; bottom: -22px; margin: 10px -24px -22px; padding: 14px 24px; background: linear-gradient(transparent, var(--card) 40%); }
+      .dwelcome { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; color: var(--faint); text-align: center; padding: 40px; }
+      .dwelcome .halo { width: 74px; height: 74px; margin-bottom: 18px; }
+      .dwelcome .halo img { width: 74px; height: 74px; border-radius: 20px; }
+      .dwelcome b { color: var(--dim); font-size: 16px; display: block; margin-bottom: 6px; }
+      /* store view inside detail reuses the card look */
+      #dmain #host, #dmain #hosting { max-width: 640px; }
+      /* the mobile bottom sheet is never used on desktop */
+      #sheet { display: none; }
     }
   </style>
 </head>
@@ -371,10 +394,21 @@
       <div id="host"></div>
       <div id="servers"></div>
       <div id="hosting"></div>
+      <div style="text-align:center;margin-top:26px">
+        <a href="https://github.com/sponsors/Enderappsrepo" target="_blank" rel="noreferrer"
+           style="color:var(--faint);font-size:12px;text-decoration:none">♥ Support ELauncher</a>
+      </div>
     </div>
-    <div style="text-align:center;margin-top:26px">
-      <a href="https://github.com/sponsors/Enderappsrepo" target="_blank" rel="noreferrer"
-         style="color:var(--faint);font-size:12px;text-decoration:none">♥ Support ELauncher</a>
+
+    <div id="dapp" hidden>
+      <aside class="dside">
+        <div class="dside-title">Servers</div>
+        <div id="dsideList"><div class="loadrow">Loading…</div></div>
+        <div class="dside-foot">
+          <button id="dStoreBtn" onclick="deskSelect('store')">＋ New server &amp; billing</button>
+        </div>
+      </aside>
+      <main class="dmain" id="dmain"></main>
     </div>
   </div>
   <div id="sheet"></div>
@@ -643,6 +677,8 @@
     // ---------- control-panel sheet (settings, players, automation over the relay) ----------
     const rowsById = new Map()
     let sheetId = null, sheetInfo = null, sheetTab = 'console', dirty = {}
+    const DESK = () => matchMedia('(min-width:900px)').matches
+    let deskSel = null // selected server id, or 'store', on desktop
 
     // two-way request: queue it, wait for the launcher to answer
     async function request(serverId, action, params = {}, timeoutMs = 22000) {
@@ -713,9 +749,9 @@
         </div>`
     }
 
-    async function renderTab() {
-      paintSheet('<div class="loadrow">Loading…</div>')
-      const body = $('sheetBody')
+    // shared by the mobile modal and the desktop detail pane
+    async function runTab(body) {
+      body.innerHTML = '<div class="loadrow">Loading…</div>'
       try {
         if (sheetTab === 'console') return renderConsole(body)
         if (sheetTab === 'settings') return renderSettings(body, await request(sheetId, 'getProps'))
@@ -725,6 +761,11 @@
       } catch (e) {
         body.innerHTML = `<div class="loadrow" style="color:var(--red)">${esc(e.message)}</div>`
       }
+    }
+    async function renderTab() {
+      if (DESK()) return deskRenderDetail()
+      paintSheet('<div class="loadrow">Loading…</div>')
+      await runTab($('sheetBody'))
     }
 
     function renderConsole(body) {
@@ -765,7 +806,22 @@
           const v = props[k]; const t = /^(true|false)$/i.test(v) ? 'bool' : (/^-?\d+(\.\d+)?$/.test(v) ? 'num' : 'text')
           return `<div class="setwrap" data-k="${esc(k.toLowerCase())}">${ctrl(k, k, t, v, null)}</div>`
         }).join('')}</div>
+        ${isPal() ? '' : `<div class="grouphead" style="color:var(--red)">Change loader &amp; version</div>
+          <div class="dangerzone">
+            <div class="hint2" style="color:var(--red);margin-bottom:10px">⚠ Rebuilding wipes the world, mods, and every file on this server, then reinstalls it fresh. This cannot be undone.</div>
+            <div class="grid2">
+              <div class="frow"><label>Loader</label><select id="rbLoader">${['paper', 'vanilla', 'fabric', 'neoforge', 'forge'].map((k) => `<option value="${k}" ${sheetInfo.kind === k ? 'selected' : ''}>${k[0].toUpperCase() + k.slice(1)}</option>`).join('')}</select></div>
+              <div class="frow"><label>Version</label><select id="rbVersion"></select></div>
+            </div>
+            <button class="minibtn red" onclick="rebuildServer()">Rebuild server — delete all files</button>
+          </div>`}
         <div class="savebar"><button class="cta" onclick="saveSettings()">Save settings</button></div>`
+      if (!isPal()) {
+        loadMcVersions().then((vers) => {
+          const sel = $('rbVersion'); if (!sel) return
+          sel.innerHTML = vers.map((v) => `<option ${v === sheetInfo.minecraftVersion ? 'selected' : ''}>${v}</option>`).join('')
+        })
+      }
     }
     window.filterSettings = (q) => {
       q = q.trim().toLowerCase()
@@ -775,6 +831,17 @@
       if (!Object.keys(dirty).length) return toast('Nothing changed')
       try { await request(sheetId, 'setProps', { updates: dirty }); dirty = {}; toast('Saved — applies on next restart') }
       catch (e) { toast(e.message, true) }
+    }
+    window.rebuildServer = async () => {
+      const loader = $('rbLoader').value, version = $('rbVersion').value
+      const name = (rowsById.get(sheetId) || {}).name || 'this server'
+      if (!confirm(`Rebuild "${name}" as ${loader} ${version}?\n\nThis DELETES the world, mods, and every file on the server, then reinstalls it fresh. There is no undo.`)) return
+      if (prompt('This permanently deletes all server files. Type REBUILD to confirm.') !== 'REBUILD') return toast('Rebuild cancelled')
+      toast('Rebuilding — this downloads a fresh server, give it a few minutes')
+      try {
+        await request(sheetId, 'rebuild', { loader, version }, 60000)
+        sheetInfo = null; toast('Server rebuilt — it is starting fresh'); renderTab()
+      } catch (e) { toast(e.message, true) }
     }
 
     function renderPalPlayers(body, players) {
@@ -880,12 +947,118 @@
       catch (e) { toast(e.message, true) }
     }
 
+    // ---------- desktop master-detail ----------
+    const stClassOf = (row) => {
+      const fresh = Date.now() - new Date(row.updated_at).getTime() < HEARTBEAT_MS * 4
+      const state = fresh ? row.state : 'offline'
+      return state === 'running' ? 'on' : (state === 'starting' || state === 'stopping') ? 'warm' : state === 'offline' ? 'dead' : ''
+    }
+    function renderDeskList(rows) {
+      const el = $('dsideList')
+      if (!el) return
+      $('dStoreBtn').classList.toggle('sel', deskSel === 'store')
+      el.innerHTML = rows.length ? rows.map((r) => `<div class="dsrow ${deskSel === r.server_id ? 'sel' : ''}" onclick="deskSelect('${r.server_id}')">
+        <span class="tile" style="background:${gradOf(r.server_id)}">${esc((r.name || '?').charAt(0).toUpperCase())}<span class="st ${stClassOf(r)}"></span></span>
+        <div style="flex:1;min-width:0"><div class="dsn">${esc(r.name || 'Server')}</div><div class="dsm">${stClassOf(r) === 'on' ? (r.players?.length ? r.players.length + ' online' : 'Online') : stClassOf(r) === 'dead' ? 'PC offline' : (r.state || 'stopped')}</div></div>
+      </div>`).join('') : '<div class="loadrow">No servers yet.</div>'
+    }
+    window.deskSelect = (id) => {
+      if (Object.keys(dirty).length && !confirm('Discard unsaved changes?')) return
+      deskSel = id; dirty = {}
+      if (id !== 'store') { sheetId = id; sheetInfo = null; sheetTab = 'console' }
+      renderDeskList([...rowsById.values()])
+      deskRenderDetail()
+    }
+    window.deskTabGo = (tab) => {
+      if (Object.keys(dirty).length && !confirm('Discard unsaved changes?')) return
+      sheetTab = tab; dirty = {}
+      document.querySelectorAll('.dtabs button').forEach((b) => b.classList.toggle('on', b.dataset.t === tab))
+      const body = $('dbody'); if (body) runTab(body)
+    }
+    function deskHero(row) {
+      const fresh = Date.now() - new Date(row.updated_at).getTime() < HEARTBEAT_MS * 4
+      const running = fresh && row.state === 'running'
+      const transit = fresh && (row.state === 'starting' || row.state === 'stopping')
+      const power = running || transit
+        ? `<button class="dbtn stop" onclick="act('${row.server_id}','stop')" ${transit ? 'disabled' : ''}>${icons.stop} Stop</button>
+           <button class="dbtn" onclick="act('${row.server_id}','restart')" ${transit ? 'disabled' : ''}>${icons.redo} Restart</button>`
+        : `<button class="dbtn start" onclick="act('${row.server_id}','start')">${icons.play} Start</button>`
+      const stats = []
+      if (running && row.started_at) stats.push(`<div class="dstat"><div class="v">${fmtUptime(Date.now() - new Date(row.started_at).getTime())}</div><div class="l">Uptime</div></div>`)
+      if (running && row.memory_mb != null) stats.push(`<div class="dstat"><div class="v">${(row.memory_mb / 1024).toFixed(1)} GB</div><div class="l">Memory${row.cpu_percent != null ? ` · ${row.cpu_percent}% CPU` : ''}</div></div>`)
+      stats.push(`<div class="dstat"><div class="v">${running ? (row.players?.length || 0) : '—'}</div><div class="l">Players</div></div>`)
+      if (fresh && row.address) stats.push(`<div class="dstat"><div class="v" style="font-family:ui-monospace,Consolas,monospace;font-size:14px;cursor:pointer" onclick="copyAddr('${esc(row.address)}')">${esc(row.address)}</div><div class="l">Public address · copy</div></div>`)
+      const label = running ? 'Online' : transit ? (row.state === 'starting' ? 'Starting…' : 'Stopping…') : !fresh ? 'PC offline' : 'Stopped'
+      const chip = `<span class="chip ${stClassOf(row)}">${label}</span>`
+      return `<div class="dhero"><div class="dhero-row">
+        <span class="tile" style="background:${gradOf(row.server_id)}">${esc((row.name || '?').charAt(0).toUpperCase())}</span>
+        <div style="min-width:0"><div class="row" style="gap:10px"><h2>${esc(row.name || 'Server')}</h2>${chip}</div>
+          <div class="dhsub">${sheetInfo ? (isPal() ? 'Palworld' : 'Minecraft ' + esc(sheetInfo.kind) + ' ' + esc(sheetInfo.minecraftVersion || '')) + ' · port ' + sheetInfo.port : ' '}</div></div>
+        <div class="dhero-acts">${power}</div></div>
+        <div class="dstats">${stats.join('')}</div></div>`
+    }
+    function deskTabsBar() {
+      const tabs = ['console', 'settings', 'players', ...(isModdable() ? ['mods'] : []), 'automation']
+      const label = { console: 'Console', settings: 'Settings', players: 'Players', mods: 'Mods', automation: 'Automation' }
+      return `<div class="dtabs">${tabs.map((t) => `<button data-t="${t}" class="${t === sheetTab ? 'on' : ''}" onclick="deskTabGo('${t}')">${label[t]}</button>`).join('')}</div>`
+    }
+    async function deskRenderDetail() {
+      const main = $('dmain'); if (!main) return
+      if (deskSel === 'store') {
+        main.innerHTML = `<div class="dhero"><div class="dhero-row"><div style="min-width:0"><h2>New server &amp; billing</h2><div class="dhsub">Order a server, pay, and track your plans</div></div></div></div>
+          <div class="dbody"><div id="dHost"></div><div id="dHosting"></div></div>`
+        loadHostCard('dHost'); loadHosting('dHosting'); return
+      }
+      if (!deskSel) {
+        main.innerHTML = `<div class="dwelcome"><div class="halo"><img src="../icon.png" alt=""></div><b>Pick a server</b>Choose one from the left to open its control panel.</div>`
+        return
+      }
+      const row = rowsById.get(deskSel) || {}
+      main.innerHTML = deskHero(row) + `<div class="dtabs"></div><div class="dbody" id="dbody"><div class="loadrow">Loading control panel…</div></div>`
+      try {
+        if (!sheetInfo) { sheetId = deskSel; sheetInfo = await request(deskSel, 'info') }
+        main.innerHTML = deskHero(row) + deskTabsBar() + '<div class="dbody" id="dbody"></div>'
+        await runTab($('dbody'))
+      } catch (e) {
+        const body = main.querySelector('.dbody'); if (body) body.innerHTML = `<div class="loadrow" style="color:var(--red)">${esc(e.message)}</div>`
+      }
+    }
+
+    function applyLayout(rows) {
+      if (DESK()) {
+        document.body.classList.add('desk')
+        renderDeskList(rows)
+        if (deskSel === null) deskSel = rows[0]?.server_id ?? 'store'
+        // refresh the detail lightly: update hero stats / console without disturbing edits
+        if (deskSel && deskSel !== 'store' && !rowsById.get(deskSel)) { deskSel = rows[0]?.server_id ?? 'store'; deskRenderDetail() }
+        else if (!$('dbody') && !$('dHost')) deskRenderDetail()
+        else deskLiveUpdate()
+      } else {
+        document.body.classList.remove('desk')
+        render(rows)
+        void loadHostCard(); void loadHosting()
+      }
+    }
+    // keep hero/console fresh on desktop without clobbering the active tab's edits
+    function deskLiveUpdate() {
+      if (deskSel === 'store' || !deskSel) return
+      const row = rowsById.get(deskSel); if (!row) return
+      const hero = $('dmain')?.querySelector('.dhero')
+      if (hero) hero.outerHTML = deskHero(row)
+      if (sheetTab === 'console') {
+        const con = $('dmain')?.querySelector('.console')
+        if (con) { const stick = con.scrollHeight - con.scrollTop - con.clientHeight < 40; con.textContent = row.console || 'No output yet.'; if (stick) con.scrollTop = con.scrollHeight }
+      }
+    }
+    matchMedia('(min-width:900px)').addEventListener('change', () => { if (me) void refresh() })
+
     async function refresh() {
       if (!me || document.hidden) return
       try {
-        render(await fetchServers())
-        // keep an open console tab live without disturbing other tabs' edits
-        if (sheetId && sheetTab === 'console') {
+        const rows = await fetchServers()
+        applyLayout(rows)
+        // keep an open mobile console tab live without disturbing other tabs' edits
+        if (!DESK() && sheetId && sheetTab === 'console') {
           const con = document.querySelector('#sheetBody .console')
           if (con) {
             const stick = con.scrollHeight - con.scrollTop - con.clientHeight < 40
@@ -894,12 +1067,13 @@
           }
         }
       } catch (e) {
-        $('servers').innerHTML = `<div class="empty"><b>Could not reach the cloud</b>${esc(e.message)}</div>`
+        const target = DESK() ? $('dsideList') : $('servers')
+        if (target) target.innerHTML = `<div class="empty"><b>Could not reach the cloud</b>${esc(e.message)}</div>`
       }
     }
 
     /** "PC as a host" card — the launcher publishes its specs + per-game report. */
-    async function loadHostCard() {
+    async function loadHostCard(target = 'host') {
       try {
         const { data } = await supabase.from('host_specs').select('report').eq('owner_id', me).maybeSingle()
         const report = data?.report
@@ -915,7 +1089,8 @@
             <span class="chip ${cls}">${esc(label)}</span>
           </div>`
         }).join('')
-        $('host').innerHTML = `<div class="card">
+        const hostEl = $(target); if (!hostEl) return
+        hostEl.innerHTML = `<div class="card">
           <div class="row" style="gap:8px">
             <b style="font-size:14.5px;flex:1">Home PC as a host</b>
             <span class="pill">${esc(report.specs.cpuModel)} · ${esc(String(report.specs.ramGB))} GB · ${esc(report.specs.diskType)}</span>
@@ -1075,7 +1250,7 @@
         <div class="acts single"><button class="btn" onclick="markPaid('${order.id}')">I've paid — submit for review</button></div>`
     }
 
-    async function loadHosting() {
+    async function loadHosting(target = 'hosting') {
       try {
         const [{ data: prof }, { data: plans }, { data: settings }, { data: myOrders }] = await Promise.all([
           supabase.from('profiles').select('is_admin').eq('id', me).maybeSingle(),
@@ -1139,7 +1314,7 @@
           }).join('') : `<div class="card"><div class="hintline">No orders waiting.</div></div>`
         }
 
-        $('hosting').innerHTML = html
+        const el = $(target); if (el) el.innerHTML = html
       } catch {
         // tables not migrated yet — hosting section stays empty
       }
@@ -1152,11 +1327,10 @@
       $('login').hidden = true
       $('topbar').hidden = false
       $('app').hidden = false
+      $('dapp').hidden = false
       $('servers').innerHTML = '<div class="skel"></div><div class="skel"></div>'
       void refresh()
       void refreshBell()
-      void loadHostCard()
-      void loadHosting()
       clearInterval(timer)
       timer = setInterval(refresh, 8000)
     }
