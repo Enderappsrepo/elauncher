@@ -40,6 +40,8 @@ export interface PortMapping {
   warning?: string
   /** set when the router only granted a finite lease — the mapping is re-asserted after this time */
   renewAt?: number
+  /** the machine's own NIC address is public (VPS/dedicated box) — no router involved */
+  direct?: boolean
 }
 
 let cachedGateway: Gateway | null = null
@@ -211,6 +213,24 @@ function isPrivateIp(ip: string): boolean {
 const CGNAT_WARNING =
   'Your ISP appears to use carrier-grade NAT — this address may not be reachable from outside. Friends on the same network can still join.'
 
+/**
+ * A NIC whose own address is a global IPv4 means there is no NAT to traverse
+ * (VPS / dedicated box) — the machine's address IS the public address.
+ * Excludes loopback (internal), RFC1918, CGNAT (also covers Tailscale's
+ * 100.64/10), link-local, and multicast/reserved ranges.
+ */
+function directPublicIp(): string | null {
+  for (const infos of Object.values(os.networkInterfaces())) {
+    for (const info of infos ?? []) {
+      if (info.family !== 'IPv4' || info.internal) continue
+      const [a, b] = info.address.split('.').map(Number)
+      const reserved = a === 0 || a >= 224 || (a === 169 && b === 254) || isPrivateIp(info.address)
+      if (!reserved) return info.address
+    }
+  }
+  return null
+}
+
 export async function getExternalIp(): Promise<string> {
   const gateway = await discoverGateway()
   const xml = await soap(gateway, 'GetExternalIPAddress', {})
@@ -227,6 +247,14 @@ export async function getExternalIp(): Promise<string> {
 export async function openPort(port: number, protocol: 'UDP' | 'TCP', description = 'ELauncher'): Promise<PortMapping> {
   const existing = mappings.get(mapKey(port, protocol))
   if (existing && (!existing.renewAt || Date.now() < existing.renewAt)) return existing
+  // directly-public machine (VPS): its own address is the join address —
+  // no router to map, nothing to renew, and the bore fallback never triggers
+  const direct = directPublicIp()
+  if (direct) {
+    const mapping: PortMapping = { externalIp: direct, port, protocol, direct: true }
+    mappings.set(mapKey(port, protocol), mapping)
+    return mapping
+  }
   let gateway: Gateway
   try {
     gateway = await discoverGateway()
@@ -294,7 +322,8 @@ export async function refreshExternalIp(): Promise<boolean> {
   if (mappings.size === 0 || Date.now() < externalIpCheckAt) return false
   externalIpCheckAt = Date.now() + 1_800_000
   try {
-    const ip = await getExternalIp()
+    // direct machines re-read their NIC (instant); router setups ask the gateway
+    const ip = directPublicIp() ?? (await getExternalIp())
     let changed = false
     for (const mapping of mappings.values()) {
       if (mapping.externalIp !== ip) {
@@ -311,7 +340,9 @@ export async function refreshExternalIp(): Promise<boolean> {
 
 export async function closePort(port: number, protocol: 'UDP' | 'TCP'): Promise<void> {
   const key = mapKey(port, protocol)
+  const mapping = mappings.get(key)
   if (!mappings.delete(key)) return
+  if (mapping?.direct) return // nothing was mapped on any router
   try {
     const gateway = await discoverGateway()
     await soap(gateway, 'DeletePortMapping', { NewRemoteHost: '', NewExternalPort: port, NewProtocol: protocol })
