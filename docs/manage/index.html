@@ -345,9 +345,12 @@
       .dwelcome .halo img { width: 74px; height: 74px; border-radius: 20px; }
       .dwelcome b { color: var(--dim); font-size: 16px; display: block; margin-bottom: 6px; }
       /* store view inside detail reuses the card look */
-      #dmain #host, #dmain #hosting { max-width: 640px; }
-      /* the mobile bottom sheet is never used on desktop */
-      #sheet { display: none; }
+      #dmain #dHost, #dmain #dHosting { max-width: 640px; }
+      /* the server control sheet is replaced by inline panels on desktop, but
+         ordering (renderOrder) still opens #sheet — show it as a centered dialog */
+      .sheet { bottom: auto; top: 50%; transform: translateY(-50%); border-radius: 22px;
+        border: 1px solid var(--line-strong); box-shadow: 0 30px 90px rgba(0,0,0,.55);
+        max-height: 84dvh; animation: fade .2s; }
     }
   </style>
 </head>
@@ -1056,7 +1059,8 @@
     }
     // keep hero/console fresh on desktop without clobbering the active tab's edits
     function deskLiveUpdate() {
-      if (deskSel === 'store' || !deskSel) return
+      if (deskSel === 'store') { void loadHostCard(); void loadHosting(); return }
+      if (!deskSel) return
       const row = rowsById.get(deskSel); if (!row) return
       const hero = $('dmain')?.querySelector('.dhero')
       if (hero) hero.outerHTML = deskHero(row)
@@ -1088,7 +1092,7 @@
     }
 
     /** "PC as a host" card — the launcher publishes its specs + per-game report. */
-    async function loadHostCard(target = 'host') {
+    async function loadHostCard(target = $('dHost') ? 'dHost' : 'host') {
       try {
         const { data } = await supabase.from('host_specs').select('report').eq('owner_id', me).maybeSingle()
         const report = data?.report
@@ -1105,13 +1109,14 @@
           </div>`
         }).join('')
         const hostEl = $(target); if (!hostEl) return
-        hostEl.innerHTML = `<div class="card">
+        const html = `<div class="card">
           <div class="row" style="gap:8px">
             <b style="font-size:14.5px;flex:1">Home PC as a host</b>
             <span class="pill">${esc(report.specs.cpuModel)} · ${esc(String(report.specs.ramGB))} GB · ${esc(report.specs.diskType)}</span>
           </div>
           ${rows}
         </div>`
+        if (hostEl.__lastHtml !== html) { hostEl.__lastHtml = html; hostEl.innerHTML = html }
       } catch {
         // card is optional — table may not be migrated yet
       }
@@ -1265,7 +1270,7 @@
         <div class="acts single"><button class="btn" onclick="markPaid('${order.id}')">I've paid — submit for review</button></div>`
     }
 
-    async function loadHosting(target = 'hosting') {
+    async function loadHosting(target = $('dHosting') ? 'dHosting' : 'hosting') {
       try {
         const [{ data: prof }, { data: plans }, { data: settings }, { data: myOrders }] = await Promise.all([
           supabase.from('profiles').select('is_admin').eq('id', me).maybeSingle(),
@@ -1329,7 +1334,10 @@
           }).join('') : `<div class="card"><div class="hintline">No orders waiting.</div></div>`
         }
 
-        const el = $(target); if (el) el.innerHTML = html
+        // repaint only on real changes — this runs on the 8s poll, and a no-op
+        // rewrite would flicker and swallow clicks mid-press
+        const el = $(target)
+        if (el && el.__lastHtml !== html) { el.__lastHtml = html; el.innerHTML = html }
       } catch {
         // tables not migrated yet — hosting section stays empty
       }
