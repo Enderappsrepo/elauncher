@@ -1,5 +1,5 @@
 import { spawn, type ChildProcess } from 'child_process'
-import { copyFileSync, cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'fs'
+import { chmodSync, copyFileSync, cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'fs'
 import { cp } from 'fs/promises'
 import { basename, dirname, join, relative, resolve, sep } from 'path'
 import { cpus, tmpdir } from 'os'
@@ -818,6 +818,14 @@ async function ensureServerJava(component: string): Promise<string> {
     clearInterval(timer)
   }
   if (!existsSync(exe) && !existsSync(javaw)) throw new Error('Java runtime installation failed.')
+  // the extracted runtime may not carry the executable bit on Linux
+  if (process.platform !== 'win32' && existsSync(exe)) {
+    try {
+      chmodSync(exe, 0o755)
+    } catch {
+      // best-effort; a noexec mount is the more likely culprit and is fixed by HOME/paths
+    }
+  }
   writeFileSync(marker, new Date().toISOString())
   emitTask('Java ready', 1, true)
   return existsSync(exe) ? exe : javaw
