@@ -12,6 +12,7 @@ import * as migrate from './services/migrate'
 import * as gameOptions from './services/gameOptions'
 import * as optimize from './services/optimize'
 import * as hosting from './services/hosting'
+import * as hostingOrders from './services/hostingOrders'
 import * as specs from './services/specs'
 import * as upnp from './services/upnp'
 import * as server from './services/server'
@@ -32,6 +33,9 @@ export function registerIpc(): void {
 
   // publish host specs/report so the phone dashboard can show them
   specs.startHostReportPublisher()
+
+  // hosting business: provision/suspend customer servers from approved orders
+  hostingOrders.startHostingProvisioner()
 
   ipcMain.handle('host:report', () => specs.getHostReport())
 

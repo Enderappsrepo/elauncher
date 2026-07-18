@@ -268,6 +268,108 @@ create policy "owners manage their host specs"
   on public.host_specs for all to authenticated
   using (owner_id = auth.uid()) with check (owner_id = auth.uid());
 
+-- ============================================================
+-- Hosting business (2026-07-18): plans, settings, orders.
+-- Customers order in the web panel and pay via PayPal.me (or an optional
+-- Stripe payment link) quoting a reference code. An admin approves the order,
+-- and the admin's launcher provisions the server automatically: creates it
+-- from the plan, starts it, and shares it with the customer.
+
+create table if not exists public.hosting_plans (
+  id text primary key,
+  name text not null,
+  game text not null check (game in ('minecraft', 'palworld')),
+  max_players integer not null default 10,
+  memory_mb integer not null default 4096,
+  price_monthly numeric(8,2) not null,
+  currency text not null default 'USD',
+  stripe_link text,
+  active boolean not null default true,
+  sort integer not null default 0
+);
+
+create table if not exists public.hosting_settings (
+  id integer primary key default 1 check (id = 1),
+  paypal_me text not null default '',
+  order_note text not null default ''
+);
+insert into public.hosting_settings (id) values (1) on conflict (id) do nothing;
+
+create table if not exists public.hosting_orders (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references public.profiles (id) on delete cascade,
+  plan_id text not null references public.hosting_plans (id),
+  server_name text not null default 'My Server',
+  reference text not null unique,
+  status text not null default 'awaiting_payment'
+    check (status in ('awaiting_payment', 'pending_review', 'active', 'past_due', 'rejected', 'cancelled')),
+  server_id uuid,
+  paid_until timestamptz,
+  note text not null default '',
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+alter table public.hosting_plans enable row level security;
+alter table public.hosting_settings enable row level security;
+alter table public.hosting_orders enable row level security;
+
+drop policy if exists "anyone signed in reads plans" on public.hosting_plans;
+create policy "anyone signed in reads plans"
+  on public.hosting_plans for select to authenticated using (true);
+drop policy if exists "admins manage plans" on public.hosting_plans;
+create policy "admins manage plans"
+  on public.hosting_plans for all to authenticated
+  using (public.is_admin()) with check (public.is_admin());
+
+drop policy if exists "anyone signed in reads hosting settings" on public.hosting_settings;
+create policy "anyone signed in reads hosting settings"
+  on public.hosting_settings for select to authenticated using (true);
+drop policy if exists "admins manage hosting settings" on public.hosting_settings;
+create policy "admins manage hosting settings"
+  on public.hosting_settings for all to authenticated
+  using (public.is_admin()) with check (public.is_admin());
+
+drop policy if exists "customers create their orders" on public.hosting_orders;
+create policy "customers create their orders"
+  on public.hosting_orders for insert to authenticated
+  with check (user_id = auth.uid() and status = 'awaiting_payment' and server_id is null and paid_until is null);
+drop policy if exists "customers see their orders" on public.hosting_orders;
+create policy "customers see their orders"
+  on public.hosting_orders for select to authenticated using (user_id = auth.uid());
+drop policy if exists "admins manage orders" on public.hosting_orders;
+create policy "admins manage orders"
+  on public.hosting_orders for all to authenticated
+  using (public.is_admin()) with check (public.is_admin());
+
+-- customers change order status ONLY through this function, so they can flag
+-- payment or cancel but can never touch server_id/paid_until/active.
+create or replace function public.hosting_mark(order_id uuid, new_status text)
+returns void
+language plpgsql
+security definer set search_path = public
+as $$
+begin
+  if new_status not in ('pending_review', 'cancelled') then
+    raise exception 'invalid status';
+  end if;
+  update public.hosting_orders
+    set status = new_status, updated_at = now()
+    where id = order_id
+      and user_id = auth.uid()
+      and status in ('awaiting_payment', 'pending_review', 'past_due')
+      and (new_status <> 'cancelled' or status <> 'past_due');
+end;
+$$;
+
+-- starter plans — edit names, limits, and prices freely
+insert into public.hosting_plans (id, name, game, max_players, memory_mb, price_monthly, sort) values
+  ('mc-basic', 'Minecraft Basic', 'minecraft', 10, 4096, 4.00, 1),
+  ('mc-plus', 'Minecraft Plus', 'minecraft', 20, 8192, 7.00, 2),
+  ('pal-8', 'Palworld 8 slots', 'palworld', 8, 16384, 8.00, 3),
+  ('pal-16', 'Palworld 16 slots', 'palworld', 16, 16384, 12.00, 4)
+on conflict (id) do nothing;
+
 create table if not exists public.server_commands (
   id uuid primary key default gen_random_uuid(),
   server_id uuid not null,

@@ -206,6 +206,9 @@
     .cmdrow button svg { width: 15px; height: 15px; }
 
     .hintline { margin-top: 11px; font-size: 12px; color: var(--faint); }
+    .hintline b { color: var(--text); }
+    .home-head { font-size: 12px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase;
+      color: var(--faint); margin: 22px 2px 10px; }
 
     /* ---------- skeletons / empty / toasts ---------- */
     .skel { height: 132px; border-radius: var(--radius); margin-bottom: 14px; border: 1px solid var(--line);
@@ -247,6 +250,10 @@
       <h1>ELauncher <span>Remote</span></h1>
       <p>Your servers in your pocket — live status, console, and controls through the cloud relay.</p>
       <div class="panel">
+        <div class="field" id="userField" hidden>
+          <label>Username</label>
+          <input id="username" autocomplete="username" placeholder="Steve" />
+        </div>
         <div class="field">
           <label>Email</label>
           <input id="email" type="email" autocomplete="email" inputmode="email" placeholder="you@example.com" />
@@ -257,12 +264,16 @@
         </div>
         <button class="cta" id="loginBtn">Sign in</button>
         <div class="err" id="loginErr"></div>
+        <button id="modeToggle" style="width:100%;margin-top:6px;color:var(--faint);font-size:12.5px">
+          New here? Create an account
+        </button>
       </div>
     </div>
 
     <div id="app" hidden>
       <div id="host"></div>
       <div id="servers"></div>
+      <div id="hosting"></div>
     </div>
     <div style="text-align:center;margin-top:26px">
       <a href="https://github.com/sponsors/Enderappsrepo" target="_blank" rel="noreferrer"
@@ -528,6 +539,12 @@
       $('app').hidden = false
       render(rows)
     }
+    window.__previewHosting = (html) => {
+      $('login').hidden = true
+      $('topbar').hidden = false
+      $('app').hidden = false
+      $('hosting').innerHTML = html
+    }
 
     async function refresh() {
       if (!me || document.hidden) return
@@ -567,6 +584,131 @@
       }
     }
 
+    // ---------- hosting: plans, orders, admin approval ----------
+    let isAdmin = false
+    const REF = () => 'ELH-' + Math.random().toString(36).slice(2, 7).toUpperCase()
+    const money = (n, c) => `${c === 'USD' ? '$' : ''}${Number(n).toFixed(2)}${c === 'USD' ? '' : ' ' + c}`
+    const STATUS_LABEL = {
+      awaiting_payment: ['warm', 'Awaiting payment'], pending_review: ['warm', 'Payment under review'],
+      active: ['on', 'Active'], past_due: ['dead', 'Past due'], rejected: ['dead', 'Rejected'], cancelled: ['', 'Cancelled']
+    }
+
+    window.orderPlan = async (planId) => {
+      const name = (prompt('Name your server') || '').trim()
+      if (!name) return
+      const reference = REF()
+      const { error } = await supabase.from('hosting_orders').insert({ user_id: me, plan_id: planId, server_name: name, reference })
+      if (error) return toast(error.message, true)
+      toast('Order created — follow the payment steps')
+      void loadHosting()
+    }
+    window.markPaid = async (orderId) => {
+      const { error } = await supabase.rpc('hosting_mark', { order_id: orderId, new_status: 'pending_review' })
+      if (error) return toast(error.message, true)
+      toast('Thanks — your payment is under review')
+      void loadHosting()
+    }
+    window.cancelOrder = async (orderId) => {
+      if (!confirm('Cancel this order?')) return
+      await supabase.rpc('hosting_mark', { order_id: orderId, new_status: 'cancelled' })
+      void loadHosting()
+    }
+    window.adminApprove = async (orderId) => {
+      const days = parseInt(prompt('Approve for how many days?', '30') || '', 10)
+      if (!days || days < 1) return
+      const until = new Date(Date.now() + days * 86400000).toISOString()
+      const { error } = await supabase.from('hosting_orders').update({ status: 'active', paid_until: until }).eq('id', orderId)
+      if (error) return toast(error.message, true)
+      toast('Approved — your launcher will provision it within a minute')
+      void loadHosting()
+    }
+    window.adminReject = async (orderId) => {
+      if (!confirm('Reject this order?')) return
+      await supabase.from('hosting_orders').update({ status: 'rejected' }).eq('id', orderId)
+      void loadHosting()
+    }
+
+    function payBlock(order, plan, settings) {
+      if (!plan) return ''
+      const memo = encodeURIComponent(order.reference)
+      const pp = settings.paypal_me
+        ? `https://paypal.me/${settings.paypal_me}/${plan.price_monthly}`
+        : ''
+      const links = []
+      if (pp) links.push(`<a class="btn start" style="text-decoration:none" href="${pp}" target="_blank" rel="noreferrer">Pay ${money(plan.price_monthly, plan.currency)} with PayPal</a>`)
+      if (plan.stripe_link) links.push(`<a class="btn" style="text-decoration:none" href="${esc(plan.stripe_link)}" target="_blank" rel="noreferrer">Pay by card</a>`)
+      if (!links.length) return `<div class="hintline">Payment isn't set up yet — contact the host.</div>`
+      return `<div class="hintline">Send exactly <b>${money(plan.price_monthly, plan.currency)}</b> and put your reference <b>${esc(order.reference)}</b> in the payment note.</div>
+        <div class="acts">${links.join('')}</div>
+        <div class="acts single"><button class="btn" onclick="markPaid('${order.id}')">I've paid — submit for review</button></div>`
+    }
+
+    async function loadHosting() {
+      try {
+        const [{ data: prof }, { data: plans }, { data: settings }, { data: myOrders }] = await Promise.all([
+          supabase.from('profiles').select('is_admin').eq('id', me).maybeSingle(),
+          supabase.from('hosting_plans').select('*').eq('active', true).order('sort'),
+          supabase.from('hosting_settings').select('*').eq('id', 1).maybeSingle(),
+          supabase.from('hosting_orders').select('*').order('created_at', { ascending: false })
+        ])
+        isAdmin = Boolean(prof?.is_admin)
+        const planList = plans ?? []
+        const planMap = new Map(planList.map((p) => [p.id, p]))
+        const cfg = settings ?? { paypal_me: '' }
+        const orders = (myOrders ?? []).filter((o) => o.user_id === me)
+        let html = ''
+
+        // customer: my orders
+        const liveOrders = orders.filter((o) => o.status !== 'cancelled' && o.status !== 'rejected')
+        if (liveOrders.length) {
+          html += `<div class="home-head">Your hosting</div>`
+          html += liveOrders.map((o) => {
+            const plan = planMap.get(o.plan_id)
+            const [cls, label] = STATUS_LABEL[o.status] ?? ['', o.status]
+            const until = o.paid_until ? ` · renews ${new Date(o.paid_until).toLocaleDateString()}` : ''
+            const pay = (o.status === 'awaiting_payment' || o.status === 'past_due') ? payBlock(o, plan, cfg) : ''
+            const cancel = (o.status === 'awaiting_payment' || o.status === 'pending_review') ? `<button class="conbtn" onclick="cancelOrder('${o.id}')">Cancel order</button>` : ''
+            return `<div class="card">
+              <div class="head"><div class="who"><div class="nm">${esc(o.server_name)}</div><div class="ln">${plan ? esc(plan.name) : o.plan_id}${until}</div></div><span class="chip ${cls}">${label}</span></div>
+              ${o.note ? `<div class="hintline" style="color:var(--red)">${esc(o.note)}</div>` : ''}
+              ${pay}${cancel}
+            </div>`
+          }).join('')
+        }
+
+        // customer: order a new server
+        if (planList.length) {
+          html += `<div class="home-head">${liveOrders.length ? 'Add another server' : 'Get a game server'}</div>`
+          html += `<div class="card">` + planList.map((p) => `
+            <div class="head" style="padding:8px 0;border-top:1px solid var(--line)">
+              <div class="who"><div class="nm">${esc(p.name)}</div><div class="ln">${p.game === 'palworld' ? 'Palworld' : 'Minecraft'} · ${p.max_players} players · ${(p.memory_mb/1024)} GB</div></div>
+              <button class="btn start" style="width:auto;padding:9px 14px" onclick="orderPlan('${p.id}')">${money(p.price_monthly, p.currency)}/mo</button>
+            </div>`).join('') + `</div>`
+        }
+
+        // admin: orders needing action
+        if (isAdmin) {
+          const queue = (myOrders ?? []).filter((o) => o.status === 'pending_review' || o.status === 'active' || o.status === 'past_due')
+          html += `<div class="home-head">Admin · orders</div>`
+          if (!cfg.paypal_me) html += `<div class="card"><div class="hintline" style="color:var(--amber)">Set your PayPal.me handle in Supabase → hosting_settings so customers can pay.</div></div>`
+          html += queue.length ? queue.map((o) => {
+            const plan = planMap.get(o.plan_id)
+            const [cls, label] = STATUS_LABEL[o.status] ?? ['', o.status]
+            const actions = o.status === 'pending_review'
+              ? `<div class="acts"><button class="btn start" onclick="adminApprove('${o.id}')">Approve</button><button class="btn stop" onclick="adminReject('${o.id}')">Reject</button></div>`
+              : o.status === 'past_due'
+                ? `<div class="acts single"><button class="btn start" onclick="adminApprove('${o.id}')">Renew</button></div>`
+                : ''
+            return `<div class="card"><div class="head"><div class="who"><div class="nm">${esc(o.server_name)}</div><div class="ln">${plan ? esc(plan.name) : o.plan_id} · ref ${esc(o.reference)}</div></div><span class="chip ${cls}">${label}</span></div>${actions}</div>`
+          }).join('') : `<div class="card"><div class="hintline">No orders waiting.</div></div>`
+        }
+
+        $('hosting').innerHTML = html
+      } catch {
+        // tables not migrated yet — hosting section stays empty
+      }
+    }
+
     async function enter(session) {
       me = session.user.id
       const { data } = await supabase.from('profiles').select('username').eq('id', me).maybeSingle()
@@ -578,17 +720,39 @@
       void refresh()
       void refreshBell()
       void loadHostCard()
+      void loadHosting()
       clearInterval(timer)
       timer = setInterval(refresh, 8000)
     }
 
+    let signupMode = false
+    $('modeToggle').addEventListener('click', () => {
+      signupMode = !signupMode
+      $('userField').hidden = !signupMode
+      $('loginBtn').textContent = signupMode ? 'Create account' : 'Sign in'
+      $('modeToggle').textContent = signupMode ? 'Have an account? Sign in' : 'New here? Create an account'
+    })
+
     $('loginBtn').addEventListener('click', async () => {
       $('loginErr').textContent = ''
       $('loginBtn').disabled = true
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email: $('email').value.trim(),
-        password: $('password').value
-      })
+      const email = $('email').value.trim()
+      const password = $('password').value
+      if (signupMode) {
+        const username = $('username').value.trim()
+        if (!username) {
+          $('loginBtn').disabled = false
+          $('loginErr').textContent = 'Pick a username first.'
+          return
+        }
+        const { data, error } = await supabase.auth.signUp({ email, password, options: { data: { username } } })
+        $('loginBtn').disabled = false
+        if (error) $('loginErr').textContent = error.message
+        else if (data.session) void enter(data.session)
+        else $('loginErr').textContent = 'Almost there — confirm the email we just sent, then sign in.'
+        return
+      }
+      const { data, error } = await supabase.auth.signInWithPassword({ email, password })
       $('loginBtn').disabled = false
       if (error) $('loginErr').textContent = error.message
       else void enter(data.session)
