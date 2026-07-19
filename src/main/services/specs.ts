@@ -76,9 +76,16 @@ export function buildReport(specs: HostSpecs): HostReport {
   // OS + launcher + a browser tab or two
   const headroomGB = Math.max(0, specs.ramGB - 4)
 
-  // Minecraft vanilla/paper — the tick loop is single-thread bound
+  // Minecraft vanilla/paper — the tick loop is single-thread bound, so this cap
+  // is really a proxy for per-core throughput. That's the one thing we can't read
+  // reliably: os.cpus() speed is 0 on most Linux/VM hosts and reports base-not-
+  // turbo on Windows, while server chips (EPYC/Xeon) pair low base clocks with
+  // strong per-core IPC. So base the cap on core count (always reliable) and let
+  // a confidently-high clock lift it — a missing or low reading must never floor
+  // a box that plainly has the cores and memory to host.
   const mcHeap = Math.min(8, headroomGB)
-  const mcCpuCap = specs.speedGHz >= 3.8 ? 40 : specs.speedGHz >= 3.2 ? 25 : specs.speedGHz >= 2.6 ? 15 : 8
+  let mcCpuCap = specs.threads >= 16 ? 40 : specs.threads >= 12 ? 32 : specs.threads >= 8 ? 22 : specs.threads >= 4 ? 14 : 8
+  if (specs.speedGHz >= 3.6) mcCpuCap = Math.round(mcCpuCap * 1.3) // confident desktop-class turbo
   const mcPlayers = mcHeap >= 2 ? Math.min(mcCpuCap, Math.round(mcHeap * 8)) : 0
   games.push({
     game: 'Minecraft (Vanilla / Paper)',

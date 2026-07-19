@@ -38,7 +38,7 @@ const POLL_MS = 15_000
 interface PlanRow {
   id: string
   name: string
-  game: 'minecraft' | 'palworld'
+  game: 'minecraft' | 'palworld' | 'valheim' | 'sdtd'
   max_players: number
   memory_mb: number
   /** optional CPU core cap (column may not exist on older clouds) */
@@ -86,7 +86,7 @@ let poolAlerted = false
 
 async function ensureExposed(server: LocalServer): Promise<string> {
   const game = server.game ?? 'minecraft'
-  const protocol: 'UDP' | 'TCP' = game === 'palworld' ? 'UDP' : 'TCP'
+  const protocol: 'UDP' | 'TCP' = game === 'minecraft' ? 'TCP' : 'UDP'
   const existing = getServerPublicAddress(server.id)
   // claim a unique customer-facing hostname while any are free in the pool
   if (assignHost(server.id)) {
@@ -111,11 +111,11 @@ async function ensureExposed(server: LocalServer): Promise<string> {
     } catch (e) {
       upnpRetryAt = Date.now() + 300_000
       lastUpnpError = e instanceof Error ? e.message : String(e)
-      if (game === 'palworld') throw e // UDP can't ride the TCP relay — no fallback
+      if (game !== 'minecraft') throw e // UDP can't ride the TCP relay — no fallback
     }
   } else if (existing) {
     return existing
-  } else if (game === 'palworld') {
+  } else if (game !== 'minecraft') {
     throw new Error(lastUpnpError)
   }
   const { address } = await startTunnel(server.port)
@@ -126,7 +126,7 @@ async function ensureExposed(server: LocalServer): Promise<string> {
 /** Tear down the public path for a suspended server (mapping and/or relay). */
 function suspendExposure(server: LocalServer): void {
   stopTunnel(server.port)
-  void closePort(server.port, (server.game ?? 'minecraft') === 'palworld' ? 'UDP' : 'TCP')
+  void closePort(server.port, (server.game ?? 'minecraft') === 'minecraft' ? 'TCP' : 'UDP')
 }
 
 let dnsCheckAt = 0
@@ -183,13 +183,15 @@ async function provision(order: OrderRow, plan: PlanRow, me: string): Promise<vo
   }
 
   // tell the customer it's happening before the (possibly long) download starts
-  await note(plan.game === 'palworld' ? 'Setting up your server — downloading (~8 GB, a few minutes)…' : 'Setting up your server…')
+  await note(plan.game === 'minecraft' ? 'Setting up your server…' : 'Setting up your server — downloading the game (this can take a few minutes)…')
 
   const name = order.server_name.trim() || plan.name
   const server =
     plan.game === 'palworld'
       ? await createServer({ name, acceptEula: true, source: { type: 'palworld', maxPlayers: plan.max_players } })
-      : await createServer({ name, memoryMax: plan.memory_mb, acceptEula: true, source: await minecraftSource(order.config) })
+      : plan.game === 'valheim' || plan.game === 'sdtd'
+        ? await createServer({ name, acceptEula: true, source: { type: 'steamgame', game: plan.game, maxPlayers: plan.max_players } })
+        : await createServer({ name, memoryMax: plan.memory_mb, acceptEula: true, source: await minecraftSource(order.config) })
   if (!server) throw new Error('server creation was cancelled')
 
   if (plan.game === 'minecraft') {

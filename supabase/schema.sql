@@ -359,6 +359,10 @@ create table if not exists public.hosting_plans (
 );
 -- optional per-plan CPU core cap (Linux hosts pin the server to this many cores)
 alter table public.hosting_plans add column if not exists cpu_cores integer;
+-- widen the game list as new dedicated servers land (valheim, 7 days to die)
+alter table public.hosting_plans drop constraint if exists hosting_plans_game_check;
+alter table public.hosting_plans add constraint hosting_plans_game_check
+  check (game in ('minecraft', 'palworld', 'valheim', 'sdtd'));
 
 create table if not exists public.hosting_settings (
   id integer primary key default 1 check (id = 1),
@@ -366,6 +370,8 @@ create table if not exists public.hosting_settings (
   order_note text not null default ''
 );
 insert into public.hosting_settings (id) values (1) on conflict (id) do nothing;
+-- master switch: admins can close the shop (hides ordering for customers)
+alter table public.hosting_settings add column if not exists shop_open boolean not null default true;
 
 create table if not exists public.hosting_orders (
   id uuid primary key default gen_random_uuid(),
@@ -438,11 +444,18 @@ end;
 $$;
 
 -- starter plans — edit names, limits, and prices freely
-insert into public.hosting_plans (id, name, game, max_players, memory_mb, price_monthly, sort) values
-  ('mc-basic', 'Minecraft Basic', 'minecraft', 10, 4096, 4.00, 1),
-  ('mc-plus', 'Minecraft Plus', 'minecraft', 20, 8192, 7.00, 2),
-  ('pal-8', 'Palworld 8 slots', 'palworld', 8, 16384, 8.00, 3),
-  ('pal-16', 'Palworld 16 slots', 'palworld', 16, 16384, 12.00, 4)
+-- Seed lineup (fresh installs only — re-runs never overwrite your edits).
+-- Sizing notes: minecraft is single-thread-bound (2-4 cores, RAM per modding level);
+-- palworld eats RAM and threads (16 GB, 4-6 cores); valheim is light (6 GB, hard
+-- 10-player game cap); 7DTD sits in between (10 GB, telnet console included).
+insert into public.hosting_plans (id, name, game, max_players, memory_mb, cpu_cores, price_monthly, sort) values
+  ('mc-basic', 'Minecraft Basic', 'minecraft', 10, 4096, 2, 4.00, 1),
+  ('mc-plus', 'Minecraft Plus', 'minecraft', 20, 8192, 3, 7.00, 2),
+  ('mc-modded', 'Minecraft Modded', 'minecraft', 20, 12288, 4, 10.00, 3),
+  ('pal-8', 'Palworld 8 slots', 'palworld', 8, 16384, 4, 8.00, 4),
+  ('pal-16', 'Palworld 16 slots', 'palworld', 16, 16384, 6, 12.00, 5),
+  ('val-10', 'Valheim', 'valheim', 10, 6144, 3, 6.00, 6),
+  ('sdtd-8', '7 Days to Die', 'sdtd', 8, 10240, 4, 9.00, 7)
 on conflict (id) do nothing;
 
 create table if not exists public.server_commands (

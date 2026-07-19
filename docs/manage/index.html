@@ -992,6 +992,7 @@
         const mock = window.__mockRelay[action]
         return typeof mock === 'function' ? mock(params) : structuredClone(mock)
       }
+      if (!serverId) throw new Error('No server selected — pick the server again and retry.')
       const ownerId = ownerOf.get(serverId) ?? me
       const { data, error } = await supabase.from('server_requests')
         .insert({ server_id: serverId, owner_id: ownerId, requester_id: me, action, params }).select('id').single()
@@ -1124,6 +1125,11 @@
       ['Players & access', '👥', /max-players|white|online-mode|idle|op-permission|enforce|prevent-proxy|hidden/i],
       ['Network & performance', '🌐', /port|server-ip|network|rate-limit|tick|entity-broadcast|sync-chunk|native|compression|status/i]
     ]
+    const GAME_LABEL = { minecraft: 'Minecraft', palworld: 'Palworld', valheim: 'Valheim', sdtd: '7 Days to Die' }
+    const gameLabel = (g) => GAME_LABEL[g] || 'Minecraft'
+    // per-game settings essentials for the non-minecraft, non-palworld games
+    const VAL_ESS = [['name', 'Server name'], ['world', 'World name'], ['password', 'Join password'], ['public', 'Visible in server list']]
+    const SDTD_ESS = [['ServerName', 'Server name'], ['ServerPassword', 'Join password'], ['ServerMaxPlayerCount', 'Max players'], ['GameDifficulty', 'Difficulty (0-5)'], ['DayNightLength', 'Day length (min)'], ['ServerDescription', 'Description']]
     const isPal = () => sheetInfo?.game === 'palworld'
     /** Destructive lifecycle controls (archive/delete/restore) are owner-or-admin only; the host enforces this too. */
     const canManage = (serverId) => isAdmin || ownerOf.get(serverId) === me
@@ -1136,7 +1142,8 @@
       try { sheetInfo = await loadInfo(serverId) } catch (e) { toast(e.message, true); return closeSheet() }
       renderTab()
     }
-    window.closeSheet = () => { sheetId = null; $('sheet').innerHTML = '' }
+    // clear the pair together: a lingering sheetInfo with a null sheetId poisons the desk view
+    window.closeSheet = () => { sheetId = null; sheetInfo = null; $('sheet').innerHTML = '' }
     window.sheetGo = (tab) => { if (Object.keys(dirty).length && !confirm('Discard unsaved changes?')) return; sheetTab = tab; dirty = {}; fileView = null; renderTab() }
     window.setDirty = (k, v) => { dirty[k] = v }
 
@@ -1155,7 +1162,7 @@
           <div class="sheet-top">
             <div class="tile" style="background:${gradOf(sheetId)}">${esc((row.name || '?').charAt(0).toUpperCase())}</div>
             <div style="flex:1;min-width:0"><div class="nm">${esc(row.name || 'Server')}</div>
-              <div class="sub">${sheetInfo ? (isPal() ? 'Palworld' : 'Minecraft ' + esc(sheetInfo.minecraftVersion || '')) + ' · port ' + sheetInfo.port : ''}</div></div>
+              <div class="sub">${sheetInfo ? gameLabel(sheetInfo.game) + (sheetInfo.game === 'minecraft' ? ' ' + esc(sheetInfo.minecraftVersion || '') : '') + ' · port ' + sheetInfo.port : ''}</div></div>
             <button class="iconbtn" onclick="closeSheet()">${icons.x}</button>
           </div>
           <div class="sheet-tabs">${tabs.map((t) => `<button class="${t === sheetTab ? 'on' : ''}" onclick="sheetGo('${t}')">${tico[t]}<span>${label[t]}</span></button>`).join('')}</div>
@@ -1169,7 +1176,11 @@
       try {
         if (sheetTab === 'console') return renderConsole(body)
         if (sheetTab === 'settings') return renderSettings(body, await request(sheetId, 'getProps'))
-        if (sheetTab === 'players') return isPal() ? renderPalPlayers(body, await request(sheetId, 'players')) : renderMcPlayers(body)
+        if (sheetTab === 'players') {
+          if (isPal()) return renderPalPlayers(body, await request(sheetId, 'players'))
+          if (sheetInfo.game === 'valheim' || sheetInfo.game === 'sdtd') return renderSteamPlayers(body)
+          return renderMcPlayers(body)
+        }
         if (sheetTab === 'mods') return renderMods(body, await request(sheetId, 'mods'))
         if (sheetTab === 'files') return renderFiles(body)
         if (sheetTab === 'automation') return renderAutomation(body, sheetInfo.automation || {})
@@ -1186,17 +1197,22 @@
     function renderConsole(body) {
       const row = rowsById.get(sheetId) || {}
       const running = row.state === 'running'
-      const quick = isPal() ? ['save', 'players', 'say Welcome!'] : ['list', 'say Welcome!', 'time set day', 'weather clear']
+      const noConsole = sheetInfo?.game === 'valheim'
+      const quick = isPal()
+        ? ['save', 'players', 'say Welcome!']
+        : sheetInfo?.game === 'sdtd'
+          ? ['saveworld', 'lp', 'say "Welcome!"', 'settime day']
+          : ['list', 'say Welcome!', 'time set day', 'weather clear']
       body.innerHTML = `<div class="con-wrap">
           <div class="con-head"><span class="cdot ${running ? 'on' : ''}"></span>Server console<span style="margin-left:auto">${running ? 'streaming' : 'offline'}</span></div>
           <div class="console open">${esc(row.console || 'No output yet.')}</div>
         </div>
         <div class="cmdrow open" style="margin-top:10px">
-          <input id="sheetCmd" placeholder="${running ? 'Type a command…' : 'start the server to send commands'}" ${running ? '' : 'disabled'}
+          <input id="sheetCmd" placeholder="${noConsole ? 'Valheim has no admin console — logs stream here' : running ? 'Type a command…' : 'start the server to send commands'}" ${running && !noConsole ? '' : 'disabled'}
             onkeydown="if(event.key==='Enter')sendCmd('${sheetId}','sheetCmd')" />
-          <button onclick="sendCmd('${sheetId}','sheetCmd')" ${running ? '' : 'disabled'} aria-label="Send command">${icons.send}</button>
+          <button onclick="sendCmd('${sheetId}','sheetCmd')" ${running && !noConsole ? '' : 'disabled'} aria-label="Send command">${icons.send}</button>
         </div>
-        ${running ? `<div class="qchips">${quick.map((q) => `<button onclick="qcmd(this.textContent)">${esc(q)}</button>`).join('')}</div>` : ''}
+        ${running && !noConsole ? `<div class="qchips">${quick.map((q) => `<button onclick="qcmd(this.textContent)">${esc(q)}</button>`).join('')}</div>` : ''}
         <div class="frow" style="margin-top:10px"><div class="hint2">The console updates live while this panel is open.</div></div>`
       const con = body.querySelector('.console'); if (con) con.scrollTop = con.scrollHeight
     }
@@ -1259,8 +1275,8 @@
     }
 
     function renderSettings(body, props) {
-      const ess = isPal() ? PAL_ESS : MC_ESS
-      const groups = isPal() ? PAL_GROUPS : MC_GROUPS
+      const ess = isPal() ? PAL_ESS : sheetInfo.game === 'valheim' ? VAL_ESS : sheetInfo.game === 'sdtd' ? SDTD_ESS : MC_ESS
+      const groups = isPal() ? PAL_GROUPS : sheetInfo.game === 'minecraft' ? MC_GROUPS : []
       const essKeys = new Set(ess.map((e) => e[0]))
       const wideKeys = new Set(['ServerName', 'ServerDescription', 'motd', 'ServerPassword', 'level-seed', 'CrossplayPlatforms'])
       const essHtml = ess.map(([k, l]) => {
@@ -1285,7 +1301,7 @@
         </div>`
       }).join('')
 
-      const rebuildZone = isPal() ? '' : `<div class="grouphead" style="color:var(--red);margin-top:24px">Change loader &amp; version</div>
+      const rebuildZone = sheetInfo.game !== 'minecraft' ? '' : `<div class="grouphead" style="color:var(--red);margin-top:24px">Change loader &amp; version</div>
         <div class="dangerzone">
           <div class="hint2" style="color:var(--red);margin-bottom:10px">⚠ Rebuilding wipes the world, mods, and every file on this server, then reinstalls it fresh. There is no undo.</div>
           <div class="grid2">
@@ -1321,7 +1337,7 @@
         </div>` : ''
 
       body.innerHTML = `
-        <div class="set-hero"><h3>${isPal() ? 'Palworld' : 'Minecraft'} settings</h3><p>The essentials are up top; every other option is grouped below with a plain-English note. Changes apply on the next server restart.</p></div>
+        <div class="set-hero"><h3>${gameLabel(sheetInfo.game)} settings</h3><p>The essentials are up top; every other option is grouped below with a plain-English note. Changes apply on the next server restart.</p></div>
         ${community}
         <div class="essgrid">${essHtml}</div>
         <div class="grouphead" style="margin-top:22px">Advanced settings</div>
@@ -1484,6 +1500,23 @@
     window.mcCmd = async (cmd) => {
       if (!cmd.trim()) return
       try { await queue(sheetId, 'command', cmd); toast('Command sent') } catch (e) { toast(e.message, true) }
+    }
+
+    // valheim / 7dtd: names stream from the host's log or telnet polling
+    function renderSteamPlayers(body) {
+      const row = rowsById.get(sheetId) || {}
+      const online = row.players || []
+      const canKick = sheetInfo.game === 'sdtd'
+      body.innerHTML = `<div class="grouphead">Online now (${online.length})</div>
+        <div class="plister">${online.length ? online.map((n) => `<div class="prow">
+          <span class="avatar" style="background:${gradOf(n)}">${esc(n.charAt(0).toUpperCase())}</span>
+          <div class="pn" style="flex:1;min-width:0">${esc(n)}</div>
+          ${canKick ? `<button class="minibtn" onclick="mcCmd('kick ${esc(n)}')">Kick</button>
+          <button class="minibtn red" onclick="mcCmd('ban add ${esc(n)} 10 years')">Ban</button>` : ''}
+        </div>`).join('') : '<div class="loadrow">Nobody online.</div>'}</div>
+        <div class="frow"><div class="hint2">${sheetInfo.game === 'valheim'
+          ? 'Valheim has no admin console — control access with the join password in Settings.'
+          : 'Moderation runs 7DTD console commands over the server\'s admin telnet.'}</div></div>`
     }
 
     // paper servers install Bukkit-family plugins; modded servers install loader mods
@@ -1678,7 +1711,7 @@
       return `<div class="dhero"><div class="dhero-row">
         <span class="tile" style="background:${gradOf(row.server_id)}">${esc((row.name || '?').charAt(0).toUpperCase())}</span>
         <div style="min-width:0"><div class="row" style="gap:10px"><h2>${esc(row.name || 'Server')}</h2>${chip}</div>
-          <div class="dhsub">${sheetInfo ? (isPal() ? 'Palworld' : 'Minecraft ' + esc(sheetInfo.kind) + ' ' + esc(sheetInfo.minecraftVersion || '')) + ' · port ' + sheetInfo.port : ' '}</div></div>
+          <div class="dhsub">${sheetInfo ? gameLabel(sheetInfo.game) + (sheetInfo.game === 'minecraft' ? ' ' + esc(sheetInfo.kind) + ' ' + esc(sheetInfo.minecraftVersion || '') : '') + ' · port ' + sheetInfo.port : ' '}</div></div>
         <div class="dhero-acts">${power}</div></div>
         <div class="dstats">${stats.join('')}</div></div>`
     }
@@ -1708,7 +1741,9 @@
       }
       main.innerHTML = deskHero(row) + `<div class="dtabs"></div><div class="dbody" id="dbody"><div class="loadrow">Loading control panel…</div></div>`
       try {
-        if (!sheetInfo) { sheetId = deskSel; sheetInfo = await loadInfo(deskSel) }
+        // resync, not just fill: a stale sheetInfo (e.g. left over from a closed
+        // mobile sheet after widening the window) must never keep an old/null sheetId
+        if (sheetId !== deskSel || !sheetInfo) { sheetId = deskSel; sheetInfo = await loadInfo(deskSel) }
         main.innerHTML = deskHero(row) + deskTabsBar() + '<div class="dbody" id="dbody"></div>'
         await runTab($('dbody'))
       } catch (e) {
@@ -1930,8 +1965,8 @@
       }
       $('sheet').innerHTML = `<div class="sheet-bg" onclick="closeOrder()"></div>
         <div class="sheet"><div class="sheet-grip"></div>
-          <div class="sheet-top"><div class="tile" style="background:${gradOf(plan.id)};width:38px;height:38px;border-radius:11px;font-size:15px">${mc ? 'M' : 'P'}</div>
-            <div style="flex:1"><div class="nm">${esc(plan.name)}</div><div class="sub">${mc ? 'Minecraft' : 'Palworld'} · ${plan.max_players} players · ${plan.memory_mb / 1024} GB · ${money2}/mo</div></div>
+          <div class="sheet-top"><div class="tile" style="background:${gradOf(plan.id)};width:38px;height:38px;border-radius:11px;font-size:15px">${gameLabel(plan.game).charAt(0)}</div>
+            <div style="flex:1"><div class="nm">${esc(plan.name)}</div><div class="sub">${gameLabel(plan.game)} · ${plan.max_players} players · ${plan.memory_mb / 1024} GB · ${money2}/mo</div></div>
             <button class="iconbtn" onclick="closeOrder()">${icons.x}</button></div>
           <div class="sheet-body">
             <div class="frow"><label>Server name</label><input value="${esc(o.name)}" oninput="setOrder('name',this.value)" placeholder="My Server"></div>
@@ -1981,6 +2016,18 @@
       await supabase.from('hosting_orders').update({ status: 'rejected' }).eq('id', orderId)
       void loadHosting()
     }
+    window.adminShop = async (open) => {
+      const { error } = await supabase.from('hosting_settings').update({ shop_open: open }).eq('id', 1)
+      if (error) return toast(error.message, true)
+      toast(open ? 'Shop opened — plans are orderable again' : 'Shop closed — customers no longer see ordering')
+      void loadHosting()
+    }
+    window.adminTogglePlan = async (planId, active) => {
+      const { error } = await supabase.from('hosting_plans').update({ active }).eq('id', planId)
+      if (error) return toast(error.message, true)
+      toast(active ? 'Plan listed in the shop' : 'Plan hidden from the shop')
+      void loadHosting()
+    }
 
     function payBlock(order, plan, settings) {
       if (!plan) return ''
@@ -2001,15 +2048,17 @@
       try {
         const [{ data: prof }, { data: plans }, { data: settings }, { data: myOrders }] = await Promise.all([
           supabase.from('profiles').select('is_admin').eq('id', me).maybeSingle(),
-          supabase.from('hosting_plans').select('*').eq('active', true).order('sort'),
+          supabase.from('hosting_plans').select('*').order('sort'), // all plans — admins manage inactive ones too
           supabase.from('hosting_settings').select('*').eq('id', 1).maybeSingle(),
           supabase.from('hosting_orders').select('*').order('created_at', { ascending: false })
         ])
         isAdmin = Boolean(prof?.is_admin)
-        const planList = plans ?? []
-        const planMap = new Map(planList.map((p) => [p.id, p]))
-        plansCache.clear(); planList.forEach((p) => plansCache.set(p.id, p))
+        const allPlans = plans ?? []
+        const planList = allPlans.filter((p) => p.active !== false)
+        const planMap = new Map(allPlans.map((p) => [p.id, p]))
+        plansCache.clear(); allPlans.forEach((p) => plansCache.set(p.id, p))
         const cfg = settings ?? { paypal_me: '' }
+        const shopOpen = cfg.shop_open !== false // old clouds without the column read as open
         const orders = (myOrders ?? []).filter((o) => o.user_id === me)
         let html = ''
 
@@ -2034,14 +2083,34 @@
           }).join('')
         }
 
-        // customer: order a new server
-        if (planList.length) {
+        // customer: order a new server (hidden entirely while the shop is closed)
+        if (shopOpen && planList.length) {
           html += `<div class="home-head">${liveOrders.length ? 'Add another server' : 'Get a game server'}</div>`
           html += `<div class="card">` + planList.map((p) => `
             <div class="head" style="padding:8px 0;border-top:1px solid var(--line)">
-              <div class="who"><div class="nm">${esc(p.name)}</div><div class="ln">${p.game === 'palworld' ? 'Palworld' : 'Minecraft'} · ${p.max_players} players · ${(p.memory_mb/1024)} GB</div></div>
+              <div class="who"><div class="nm">${esc(p.name)}</div><div class="ln">${gameLabel(p.game)} · ${p.max_players} players · ${(p.memory_mb/1024)} GB</div></div>
               <button class="btn start" style="width:auto;padding:9px 14px" onclick="orderPlan('${p.id}')">${money(p.price_monthly, p.currency)}/mo</button>
             </div>`).join('') + `</div>`
+        } else if (!shopOpen && !isAdmin) {
+          html += `<div class="home-head">Get a game server</div>
+            <div class="card"><div class="hintline">The shop is closed right now — check back soon.</div></div>`
+        }
+
+        // admin: shop controls — close the whole store or shelve individual plans
+        if (isAdmin) {
+          html += `<div class="home-head">Admin · shop</div>
+            <div class="card">
+              <div class="head">
+                <div class="who"><div class="nm">Shop</div><div class="ln">${shopOpen ? 'Customers can order new servers' : 'Ordering is hidden for customers'}</div></div>
+                <button class="minibtn ${shopOpen ? 'red' : 'acc'}" onclick="adminShop(${shopOpen ? 'false' : 'true'})">${shopOpen ? 'Close shop' : 'Open shop'}</button>
+              </div>
+              ${allPlans.map((p) => `<div class="head" style="padding:8px 0;border-top:1px solid var(--line)">
+                <div class="who"><div class="nm" style="${p.active === false ? 'opacity:.5' : ''}">${esc(p.name)}</div>
+                  <div class="ln">${gameLabel(p.game)} · ${p.max_players} players · ${(p.memory_mb / 1024)} GB · ${money(p.price_monthly, p.currency)}/mo</div></div>
+                <span class="chip ${p.active === false ? '' : 'on'}">${p.active === false ? 'Hidden' : 'Listed'}</span>
+                <button class="minibtn" onclick="adminTogglePlan('${p.id}', ${p.active === false ? 'true' : 'false'})">${p.active === false ? 'List' : 'Hide'}</button>
+              </div>`).join('')}
+            </div>`
         }
 
         // admin: orders needing action

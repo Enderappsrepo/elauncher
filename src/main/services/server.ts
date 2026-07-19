@@ -61,6 +61,15 @@ import {
   startPalworld,
   type PalworldHandle
 } from './palworld'
+import {
+  getSteamGameSettings,
+  installSteamGame,
+  isSteamGame,
+  setSteamGameSettings,
+  startSteamGame,
+  STEAM_GAMES,
+  type SteamGameHandle
+} from './steamgames'
 import { closePort, getMapping } from './upnp'
 import { getAssignedHost, releaseHost } from './hostNames'
 import { getSettings } from './settings'
@@ -108,7 +117,7 @@ function gameOf(server: LocalServer): ServerGame {
  * raw external IP. Tunnel addresses are always the relay's real host.
  */
 function publicAddress(server: LocalServer): string | null {
-  const mapping = getMapping(server.port, gameOf(server) === 'palworld' ? 'UDP' : 'TCP')
+  const mapping = getMapping(server.port, gameOf(server) === 'minecraft' ? 'TCP' : 'UDP')
   if (mapping) {
     const host = getAssignedHost(server.id) ?? getSettings().publicHost ?? mapping.externalIp
     return `${host}:${mapping.port}`
@@ -117,7 +126,8 @@ function publicAddress(server: LocalServer): string | null {
   // NAT mapping to traverse — publish the assigned/configured host directly
   const directHost = getAssignedHost(server.id) ?? getSettings().publicHost
   if (directHost) return `${directHost}:${server.port}`
-  return gameOf(server) === 'palworld' ? null : getTunnelAddress(server.port)
+  // only minecraft's TCP traffic can ride the relay tunnel
+  return gameOf(server) === 'minecraft' ? getTunnelAddress(server.port) : null
 }
 
 /** Public join address for a server, if it's currently exposed. */
@@ -363,20 +373,24 @@ function findArgsFile(dir: string): string | null {
   return null
 }
 
-/** First free port for a game, avoiding every claimed game port and palworld REST ports (port+1). */
+/** Ports a server occupies: its game port plus per-game neighbors (palworld REST, sdtd telnet, valheim query). */
+function claimedPorts(server: LocalServer): number[] {
+  const game = gameOf(server)
+  const span = game === 'palworld' ? 2 : isSteamGame(game) ? STEAM_GAMES[game].portStep : 1
+  return Array.from({ length: span }, (_, i) => server.port + i)
+}
+
+/** First free port for a game, avoiding every port claimed by existing servers. */
 function nextFreePort(servers: LocalServer[], game: ServerGame = 'minecraft'): number {
-  const used = new Set<number>()
-  for (const s of servers) {
-    used.add(s.port)
-    if (gameOf(s) === 'palworld') used.add(s.port + 1)
-  }
-  if (game === 'palworld') {
-    let port = PALWORLD_BASE_PORT
-    while (used.has(port) || used.has(port + 1)) port += PALWORLD_PORT_STEP
-    return port
-  }
-  let port = BASE_PORT
-  while (used.has(port)) port++
+  const used = new Set<number>(servers.flatMap(claimedPorts))
+  const [base, step] =
+    game === 'palworld'
+      ? [PALWORLD_BASE_PORT, PALWORLD_PORT_STEP]
+      : isSteamGame(game)
+        ? [STEAM_GAMES[game].basePort, STEAM_GAMES[game].portStep]
+        : [BASE_PORT, 1]
+  let port = base
+  while (Array.from({ length: step }, (_, i) => port + i).some((p) => used.has(p))) port += step
   return port
 }
 
@@ -662,6 +676,7 @@ const LOADER_KINDS = new Set(['fabric', 'neoforge', 'forge'])
 
 export async function createServer(opts: CreateServerOptions): Promise<LocalServer | null> {
   if (opts.source.type === 'palworld') return createPalworldServer(opts, opts.source)
+  if (opts.source.type === 'steamgame') return createSteamGameServer(opts, opts.source)
   if (!opts.acceptEula) {
     throw new Error('You must accept the Minecraft EULA to run a server.')
   }
@@ -811,6 +826,49 @@ async function createPalworldServer(
   mkdirSync(dir, { recursive: true })
   try {
     await installPalworld(
+      dir,
+      { serverName: name, serverPassword: source.serverPassword, maxPlayers: source.maxPlayers, port: server.port },
+      (phase, progress) => emitTask(phase, progress)
+    )
+    saveServers([...servers, server])
+    emitTask('Server created', 1, true)
+    return server
+  } catch (e) {
+    // don't leave a broken half-installed server behind
+    rmSync(dir, { recursive: true, force: true })
+    emitTask('Failed', 1, true)
+    throw e
+  }
+}
+
+/** Create any registry Steam game server (valheim, 7dtd): SteamCMD download + seeded config. */
+async function createSteamGameServer(
+  opts: CreateServerOptions,
+  source: Extract<ServerSource, { type: 'steamgame' }>
+): Promise<LocalServer> {
+  const spec = STEAM_GAMES[source.game]
+  if (!opts.acceptEula) {
+    throw new Error(`You must accept the ${spec.label} dedicated server terms to run a server.`)
+  }
+  const servers = loadServers()
+  const name = opts.name.trim() || `My ${spec.label} Server`
+  const server: LocalServer = {
+    id: randomUUID(),
+    name,
+    game: source.game,
+    kind: 'vanilla', // placeholder — kind/minecraftVersion/java are minecraft-only fields
+    minecraftVersion: '',
+    port: nextFreePort(servers, source.game),
+    memoryMax: 0,
+    javaComponent: '',
+    eulaAccepted: true,
+    createdAt: Date.now()
+  }
+  const dir = serverDir(server.id)
+  mkdirSync(dir, { recursive: true })
+  try {
+    await installSteamGame(
+      source.game,
       dir,
       { serverName: name, serverPassword: source.serverPassword, maxPlayers: source.maxPlayers, port: server.port },
       (phase, progress) => emitTask(phase, progress)
@@ -993,7 +1051,11 @@ const lastStartAt = new Map<string, number>()
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms))
 
 function saveCommandFor(server: LocalServer): string {
-  return gameOf(server) === 'palworld' ? 'save' : 'save-all'
+  const game = gameOf(server)
+  if (game === 'palworld') return 'save'
+  if (game === 'sdtd') return 'saveworld'
+  if (game === 'valheim') return '' // no console — valheim autosaves on its own schedule
+  return 'save-all'
 }
 
 /** Best-effort console command — the server may have stopped between checks. */
@@ -1080,6 +1142,12 @@ async function backupServer(id: string): Promise<void> {
     if (gameOf(server) === 'palworld') {
       const saves = join(dir, 'Pal', 'Saved', 'SaveGames')
       if (existsSync(saves)) sources.push(saves)
+    } else if (gameOf(server) === 'valheim') {
+      const saves = join(dir, 'save')
+      if (existsSync(saves)) sources.push(saves)
+    } else if (gameOf(server) === 'sdtd') {
+      const saves = join(dir, 'UserData')
+      if (existsSync(saves)) sources.push(saves)
     } else {
       const level = getServerProperties(id)['level-name']?.trim() || 'world'
       for (const suffix of ['', '_nether', '_the_end']) {
@@ -1092,11 +1160,11 @@ async function backupServer(id: string): Promise<void> {
     const running = (states.get(id) ?? 'stopped') === 'running'
     if (running) {
       // flush and pause writes so the copy isn't torn mid-write
-      if (gameOf(server) === 'palworld') {
-        tryCommand(id, 'save')
-      } else {
+      if (gameOf(server) === 'minecraft') {
         tryCommand(id, 'save-off')
         tryCommand(id, 'save-all')
+      } else if (saveCommandFor(server)) {
+        tryCommand(id, saveCommandFor(server))
       }
       await sleep(3_000)
     }
@@ -1105,7 +1173,7 @@ async function backupServer(id: string): Promise<void> {
     try {
       for (const src of sources) await cp(src, join(destRoot, stamp, basename(src)), { recursive: true })
     } finally {
-      if (running && gameOf(server) !== 'palworld') tryCommand(id, 'save-on')
+      if (running && gameOf(server) === 'minecraft') tryCommand(id, 'save-on')
     }
     pushLog(id, `[ELauncher] World backed up to backups/${stamp}`)
 
@@ -1401,6 +1469,14 @@ export function setServerLimits(id: string, limits: PlanLimits | undefined): voi
   saveServers(servers)
 }
 
+/** The per-game settings key that carries the player cap (null = the game has a fixed cap). */
+export function playerCapKey(game: ServerGame): string | null {
+  if (game === 'palworld') return 'ServerPlayerMaxNum'
+  if (game === 'sdtd') return 'ServerMaxPlayerCount'
+  if (game === 'valheim') return null // valheim is hard-capped at 10 by the game itself
+  return 'max-players'
+}
+
 /**
  * Clamp plan-capped settings just before launch. This is the authoritative
  * enforcement point: whatever path an edit took (panel, file manager, desktop,
@@ -1409,8 +1485,8 @@ export function setServerLimits(id: string, limits: PlanLimits | undefined): voi
 function enforcePlanLimits(server: LocalServer): void {
   const limits = server.limits
   if (!limits) return
-  if (limits.maxPlayers && limits.maxPlayers > 0) {
-    const key = gameOf(server) === 'palworld' ? 'ServerPlayerMaxNum' : 'max-players'
+  if (limits.maxPlayers && limits.maxPlayers > 0 && playerCapKey(gameOf(server))) {
+    const key = playerCapKey(gameOf(server))!
     try {
       const current = Number(getServerProperties(server.id)[key])
       if (!Number.isFinite(current) || current > limits.maxPlayers) {
@@ -1421,8 +1497,8 @@ function enforcePlanLimits(server: LocalServer): void {
       // config not readable yet (first boot) — install already seeded the plan value
     }
   }
-  if (limits.memoryMb && gameOf(server) === 'palworld') {
-    // palworld has no heap flag — the memory guard IS the ceiling: restart above the plan
+  if (limits.memoryMb && gameOf(server) !== 'minecraft') {
+    // non-java games have no heap flag — the memory guard IS the ceiling: restart above the plan
     const automation = getServerAutomation(server.id)
     if (!automation.restartAboveMemoryMB || automation.restartAboveMemoryMB > limits.memoryMb) {
       setServerAutomation(server.id, { ...automation, restartAboveMemoryMB: limits.memoryMb })
@@ -1461,6 +1537,7 @@ export async function startServer(id: string): Promise<void> {
   const server = getServer(id)
   enforcePlanLimits(server)
   if (gameOf(server) === 'palworld') return startPalworldServer(server)
+  if (isSteamGame(gameOf(server))) return runSteamGameServer(server)
   const dir = serverDir(id)
   // vanilla/paper/fabric run a jar; modern forge/neoforge run via the installer's @args file
   const hasJar = existsSync(join(dir, 'server.jar'))
@@ -1553,6 +1630,57 @@ export async function startServer(id: string): Promise<void> {
 // ---------- run: palworld ----------
 
 const palworldHandles = new Map<string, PalworldHandle>()
+const steamGameHandles = new Map<string, SteamGameHandle>()
+
+/** Start a registry Steam game (valheim/7dtd) with the shared lifecycle plumbing. */
+async function runSteamGameServer(server: LocalServer): Promise<void> {
+  const id = server.id
+  const game = gameOf(server) as 'valheim' | 'sdtd'
+  const spec = STEAM_GAMES[game]
+  const dir = serverDir(id)
+  logs.set(id, [])
+  players.set(id, new Set())
+  setState(id, 'starting')
+  pushLog(id, `[ELauncher] Starting ${spec.label} server on ${spec.protocol} port ${server.port} — first boot can take a few minutes`)
+  try {
+    const handle = startSteamGame(game, dir, server.port, planCoreList(server), {
+      onLog: (line) => pushLog(id, line),
+      onReady: () => {
+        setState(id, 'running')
+        startAutomation(id)
+        notifyPhones(server.name, `${spec.label} server is online`, `${id}:state`)
+      },
+      onPlayers: (names) => {
+        const before = players.get(id) ?? new Set<string>()
+        const now = new Set(names)
+        for (const n of now) if (!before.has(n)) pushLog(id, `[ELauncher] ${n} joined the game`)
+        for (const n of before) if (!now.has(n)) pushLog(id, `[ELauncher] ${n} left the game`)
+        players.set(id, now)
+      },
+      onExit: (code) => {
+        procs.delete(id)
+        steamGameHandles.delete(id)
+        resourceStats.delete(id)
+        players.set(id, new Set())
+        const wasStopping = states.get(id) === 'stopping'
+        pushLog(id, `[ELauncher] Server exited${code != null ? ` (code ${code})` : ''}`)
+        void closePort(server.port, spec.protocol)
+        stopAutomation(id)
+        const crashed = !wasStopping && code !== 0 && code !== null
+        notifyPhones(server.name, crashed ? `Crashed (exit code ${code}) — check the console` : 'Server stopped', `${id}:state`)
+        if (crashed) handleCrashRestart(id)
+        setState(id, 'stopped', crashed ? `The server crashed (exit code ${code}). Check the console.` : undefined)
+      }
+    })
+    procs.set(id, handle.proc)
+    steamGameHandles.set(id, handle)
+    lastStartAt.set(id, Date.now())
+    ensureFirewallPort(id, server.port, spec.protocol.toLowerCase() as 'tcp' | 'udp')
+  } catch (e) {
+    setState(id, 'stopped', e instanceof Error ? e.message : String(e))
+    throw e
+  }
+}
 
 async function startPalworldServer(server: LocalServer): Promise<void> {
   const id = server.id
@@ -1635,7 +1763,7 @@ async function startPalworldServer(server: LocalServer): Promise<void> {
 
 /** Graceful stop via the server's own `stop` command, with a kill fallback. */
 export function stopServer(id: string): void {
-  const handle = palworldHandles.get(id)
+  const handle = palworldHandles.get(id) ?? steamGameHandles.get(id)
   if (handle) {
     setState(id, 'stopping')
     handle.stop()
@@ -1662,6 +1790,14 @@ export function sendServerCommand(id: string, command: string): void {
   const cmd = command.trim()
   if (!cmd) return
   const record = getServer(id)
+  if (isSteamGame(gameOf(record))) {
+    const handle = steamGameHandles.get(id)
+    if (!handle || (states.get(id) ?? 'stopped') !== 'running') throw new Error('The server is not running.')
+    if (!handle.command) throw new Error(`${STEAM_GAMES[gameOf(record) as 'valheim' | 'sdtd'].label} has no admin console — manage it through Settings.`)
+    pushLog(id, `> ${cmd}`)
+    handle.command(cmd)
+    return
+  }
   if (gameOf(record) === 'palworld') {
     if ((states.get(id) ?? 'stopped') !== 'running') throw new Error('The server is not running.')
     pushLog(id, `> ${cmd}`)
@@ -1680,6 +1816,7 @@ export function sendServerCommand(id: string, command: string): void {
 
 export function getServerProperties(id: string): Record<string, string> {
   const record = getServer(id)
+  if (isSteamGame(gameOf(record))) return getSteamGameSettings(gameOf(record) as 'valheim' | 'sdtd', serverDir(id))
   if (gameOf(record) === 'palworld') return getPalworldSettings(serverDir(id))
   const file = join(serverDir(id), 'server.properties')
   const entries: Record<string, string> = {}
@@ -1696,6 +1833,9 @@ export function getServerProperties(id: string): Record<string, string> {
 /** Merge-write properties, preserving comments and unknown keys (mirrors gameOptions.setGameOptions). */
 export function setServerProperties(id: string, updates: Record<string, string>): Record<string, string> {
   const palworldRecord = getServer(id)
+  if (isSteamGame(gameOf(palworldRecord))) {
+    return setSteamGameSettings(gameOf(palworldRecord) as 'valheim' | 'sdtd', serverDir(id), updates)
+  }
   if (gameOf(palworldRecord) === 'palworld') {
     const entries = setPalworldSettings(serverDir(id), updates)
     // keep the record's port in sync so UPnP mappings point at the right place

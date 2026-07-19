@@ -18,6 +18,7 @@ import {
   listServerMods,
   restoreServer,
   palworldModerate,
+  playerCapKey,
   readServerFile,
   rebuildServer,
   removeServerMod,
@@ -501,8 +502,8 @@ function guardCustomerLimits(serverId: string, action: string, params: Record<st
   const record = listLocalServers().find((s) => s.id === serverId)
   const limits = record?.limits
   if (!record || !limits) return
-  if (action === 'setProps' && limits.maxPlayers) {
-    const key = (record.game ?? 'minecraft') === 'palworld' ? 'ServerPlayerMaxNum' : 'max-players'
+  if (action === 'setProps' && limits.maxPlayers && playerCapKey(record.game ?? 'minecraft')) {
+    const key = playerCapKey(record.game ?? 'minecraft')!
     const updates = (params.updates as Record<string, string>) ?? {}
     if (key in updates) {
       const wanted = Number(updates[key])
@@ -511,7 +512,7 @@ function guardCustomerLimits(serverId: string, action: string, params: Record<st
       }
     }
   }
-  if (action === 'setAutomation' && limits.memoryMb && (record.game ?? 'minecraft') === 'palworld') {
+  if (action === 'setAutomation' && limits.memoryMb && (record.game ?? 'minecraft') !== 'minecraft') {
     // the memory guard is the plan's RAM ceiling — customers can tighten it, never lift it
     const automation = (params.automation as ServerAutomation) ?? {}
     if (!automation.restartAboveMemoryMB || automation.restartAboveMemoryMB > limits.memoryMb) {
@@ -520,7 +521,12 @@ function guardCustomerLimits(serverId: string, action: string, params: Record<st
   }
   if (action === 'writeFile') {
     const target = String(params.path ?? '').replace(/\\/g, '/').toLowerCase()
-    if (target.endsWith('palworldsettings.ini') || target.endsWith('server.properties')) {
+    if (
+      target.endsWith('palworldsettings.ini') ||
+      target.endsWith('server.properties') ||
+      target.endsWith('serverconfig.xml') ||
+      target.endsWith('elauncher-valheim.json')
+    ) {
       throw new Error('Game settings on hosted servers are edited in the Settings tab, where plan limits apply.')
     }
   }
