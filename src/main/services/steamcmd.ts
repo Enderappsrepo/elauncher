@@ -1,6 +1,7 @@
 import { spawn } from 'child_process'
-import { chmodSync, existsSync, mkdirSync, rmSync } from 'fs'
-import { join } from 'path'
+import { chmodSync, copyFileSync, existsSync, mkdirSync, rmSync } from 'fs'
+import { homedir } from 'os'
+import { dirname, join } from 'path'
 import { app } from 'electron'
 import AdmZip from 'adm-zip'
 import { downloadToFile } from './mods'
@@ -18,13 +19,67 @@ const STEAMCMD_URL = IS_WIN
   ? 'https://steamcdn-a.akamaihd.net/client/installer/steamcmd.zip'
   : 'https://steamcdn-a.akamaihd.net/client/installer/steamcmd_linux.tar.gz'
 
-const steamcmdDir = join(app.getPath('userData'), 'steamcmd')
+export const steamcmdDir = join(app.getPath('userData'), 'steamcmd')
 const steamcmdExe = join(steamcmdDir, IS_WIN ? 'steamcmd.exe' : 'steamcmd.sh')
+
+/** The 32-bit dynamic loader steamcmd's binary needs — absent on fresh 64-bit Linux installs. */
+const LINUX_32BIT_LOADER = '/lib/ld-linux.so.2'
+
+function runQuiet(cmd: string, args: string[]): Promise<number> {
+  return new Promise((resolve) => {
+    const proc = spawn(cmd, args, { stdio: 'ignore', env: { ...process.env, DEBIAN_FRONTEND: 'noninteractive' } })
+    proc.on('error', () => resolve(-1))
+    proc.on('exit', (code) => resolve(code ?? -1))
+  })
+}
+
+/**
+ * steamcmd ships a 32-bit binary, so on a fresh 64-bit box steamcmd.sh dies
+ * with a bare exit 127 ("command not found"). The documented VPS setup runs
+ * as root, so install lib32gcc-s1 (which pulls in the loader) ourselves;
+ * anywhere we can't, fail with the exact command to run.
+ */
+async function ensureLinux32BitRuntime(onProgress?: (phase: string, progress: number) => void): Promise<void> {
+  if (existsSync(LINUX_32BIT_LOADER)) return
+  const install = ['-o', 'DPkg::Lock::Timeout=120', '-y', 'install', 'lib32gcc-s1']
+  if (process.getuid?.() === 0) {
+    onProgress?.('Installing 32-bit libraries for SteamCMD', -1)
+    if ((await runQuiet('apt-get', install)) !== 0) {
+      // stale or empty package lists on a fresh box — refresh once and retry
+      await runQuiet('apt-get', ['-o', 'DPkg::Lock::Timeout=120', 'update'])
+      await runQuiet('apt-get', install)
+    }
+  }
+  if (!existsSync(LINUX_32BIT_LOADER)) {
+    throw new Error(
+      'This Linux host is missing the 32-bit libraries SteamCMD needs. Run "sudo apt-get install -y lib32gcc-s1" on it, then retry.'
+    )
+  }
+}
+
+/**
+ * 64-bit Steam game servers (Palworld's PalServer included) dlopen
+ * ~/.steam/sdk64/steamclient.so at boot; steamcmd downloads that lib but
+ * never places it. Same link-up LinuxGSM performs — best-effort, servers
+ * only degrade without it.
+ */
+function placeSteamClientLib(): void {
+  try {
+    const source = join(steamcmdDir, 'linux64', 'steamclient.so')
+    const target = join(homedir(), '.steam', 'sdk64', 'steamclient.so')
+    if (!existsSync(source) || existsSync(target)) return
+    mkdirSync(dirname(target), { recursive: true })
+    copyFileSync(source, target)
+  } catch {
+    // cosmetic-path failure only — the server reports S_API warnings but runs
+  }
+}
 
 async function ensureSteamCmd(onProgress?: (phase: string, progress: number) => void): Promise<string> {
   if (process.platform === 'darwin') {
     throw new Error('Hosting SteamCMD dedicated servers is supported on Windows and Linux, not macOS.')
   }
+  if (!IS_WIN) await ensureLinux32BitRuntime(onProgress)
   if (existsSync(steamcmdExe)) return steamcmdExe
   mkdirSync(steamcmdDir, { recursive: true })
   onProgress?.('Downloading SteamCMD', -1)
@@ -132,7 +187,14 @@ export async function installSteamApp(
       clearInterval(heartbeat)
       // steamcmd exit codes are unreliable; trust its own success line first
       if (sawSuccess || code === 0) resolve()
+      else if (!IS_WIN && code === 127)
+        reject(
+          new Error(
+            'SteamCMD exited with code 127 — the host is missing 32-bit libraries. Run "sudo apt-get install -y lib32gcc-s1" on it, then retry.'
+          )
+        )
       else reject(new Error(`SteamCMD exited with code ${code}. Check your connection and disk space, then retry.`))
     })
   })
+  if (!IS_WIN) placeSteamClientLib()
 }

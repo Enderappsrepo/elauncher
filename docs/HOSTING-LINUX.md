@@ -40,6 +40,11 @@ apt install -y nodejs
 apt install -y libnss3 libatk1.0-0 libatk-bridge2.0-0 libcups2 libgbm1 \
   libgtk-3-0 libasound2t64 libxshmfence1 libxdamage1 libxrandr2 libxcomposite1
 
+# SteamCMD's 32-bit runtime (Palworld and other Steam servers), plus ACL tools
+# ELauncher uses to run game servers as an unprivileged user. ELauncher also
+# installs these itself when provisioning as root, so this line is belt-and-braces.
+apt install -y lib32gcc-s1 acl
+
 # a JRE is only needed if you skip ELauncher's managed Java; it downloads its own
 ```
 
@@ -156,8 +161,19 @@ cd /root/elauncher && git pull && npm ci && npm run build && systemctl restart e
 ## 8. Notes & gotchas
 
 - **Palworld on Linux** installs the Linux depot via SteamCMD (`steamcmd_linux.tar.gz`)
-  and launches `PalServer.sh`. If it fails to start, the usual cause is missing
-  32/64-bit libs — install `lib32gcc-s1` and the Steam runtime deps and retry.
+  and launches `PalServer.sh`. SteamCMD's binary is 32-bit — without `lib32gcc-s1`
+  it dies with exit 127 ("provisioning failed: SteamCMD exited with code 127").
+  ELauncher now installs `lib32gcc-s1` itself when it runs as root and pre-places
+  `~/.steam/sdk64/steamclient.so` for the game server; on a non-root or non-apt
+  host, install `lib32gcc-s1` manually and retry.
+- **Palworld refuses to run as root** (`Refusing to run with the root privileges.`
+  in the console). ELauncher handles this on root hosts automatically: it creates
+  a system user `elauncher-game` (home `/var/lib/elauncher-game`), chowns the
+  server's folder to it, grants it traverse-only ACLs down through
+  `/root/.config/elauncher-data`, and starts the game via `setpriv` as that user.
+  The host itself stays root (firewall + apt still work). Needs `setpriv`
+  (util-linux, preinstalled) and `setfacl` (`acl` package — auto-installed via
+  apt when missing).
 - **Minecraft** is pure Java and the most reliable to start with — prove the whole
   pipeline (order → provision → manage → play) with a Minecraft server first.
 - **Security:** don't run as root long-term for a real business; create a dedicated

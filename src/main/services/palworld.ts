@@ -3,6 +3,7 @@ import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'f
 import { dirname, join } from 'path'
 import { randomBytes } from 'crypto'
 import { installSteamApp } from './steamcmd'
+import { ensureSteamGameUser, prepareServerDirForGameUser } from './gameuser'
 
 /**
  * Palworld dedicated server provider. Pocketpair ships the server free via
@@ -275,12 +276,12 @@ export interface PalworldLaunchOptions {
   publicIp: string | null
 }
 
-export function startPalworld(
+export async function startPalworld(
   dir: string,
   port: number,
   launch: PalworldLaunchOptions,
   cb: PalworldRunCallbacks
-): PalworldHandle {
+): Promise<PalworldHandle> {
   // keep ports and the REST API pinned to the record, even if the ini was hand-edited;
   // community servers also announce their WAN address to the lobby
   setPalworldSettings(dir, {
@@ -311,8 +312,21 @@ export function startPalworld(
       // already executable, or permission handled by steamcmd
     }
   }
+  // PalServer refuses to start as uid 0, so root hosts (the documented VPS
+  // setup) hand the game to a dedicated unprivileged user
+  const gameUser = await ensureSteamGameUser()
+  if (gameUser) {
+    cb.onLog(`[ELauncher] Palworld refuses to run as root — running it as the "${gameUser.user}" user instead`)
+    await prepareServerDirForGameUser(gameUser, dir, cb.onLog)
+  }
+  const [spawnExe, spawnArgs] = gameUser ? gameUser.wrap(exe, args) : [exe, args]
   // linux: detached so the whole process group (PalServer.sh + the UE binary) can be killed together
-  const proc = spawn(exe, args, { cwd: dir, windowsHide: true, detached: !IS_WIN })
+  const proc = spawn(spawnExe, spawnArgs, {
+    cwd: dir,
+    windowsHide: true,
+    detached: !IS_WIN,
+    env: gameUser ? gameUser.env(process.env) : process.env
+  })
 
   let exited = false
   const timers: NodeJS.Timeout[] = []

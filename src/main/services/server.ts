@@ -1406,7 +1406,7 @@ async function startPalworldServer(server: LocalServer): Promise<void> {
     )
   }
   try {
-    const handle = startPalworld(dir, server.port, { publicLobby: community, publicIp }, {
+    const handle = await startPalworld(dir, server.port, { publicLobby: community, publicIp }, {
       onLog: (line) => pushLog(id, line),
       onReady: (version) => {
         if (version) serverVersions.set(id, version)
