@@ -14,6 +14,7 @@ import {
   getServerPublicAddress,
   listLocalServers,
   setServerAutomation,
+  setServerLimits,
   setServerProperties,
   startServer,
   stopServer
@@ -40,6 +41,17 @@ interface PlanRow {
   game: 'minecraft' | 'palworld'
   max_players: number
   memory_mb: number
+  /** optional CPU core cap (column may not exist on older clouds) */
+  cpu_cores?: number | null
+}
+
+/** The resource caps a plan buys — stamped onto the server record and enforced at start. */
+function planLimits(plan: PlanRow): { memoryMb?: number; maxPlayers?: number; cpuCores?: number } {
+  return {
+    ...(plan.memory_mb > 0 ? { memoryMb: plan.memory_mb } : {}),
+    ...(plan.max_players > 0 ? { maxPlayers: plan.max_players } : {}),
+    ...(plan.cpu_cores && plan.cpu_cores > 0 ? { cpuCores: plan.cpu_cores } : {})
+  }
 }
 
 interface OrderRow {
@@ -183,6 +195,8 @@ async function provision(order: OrderRow, plan: PlanRow, me: string): Promise<vo
   if (plan.game === 'minecraft') {
     setServerProperties(server.id, { 'max-players': String(plan.max_players) })
   }
+  // plan caps ride on the record: enforced at every start, guarded over the relay
+  setServerLimits(server.id, planLimits(plan))
   // hosted servers take care of themselves
   setServerAutomation(server.id, {
     restartMode: 'off',
@@ -294,6 +308,13 @@ async function tick(): Promise<void> {
             .eq('id', order.id)
           notifyPhones('Hosting', `Order ${order.reference} is past due — server suspended`, 'hosting')
         } else if (localById.has(order.server_id)) {
+          // keep the record's plan caps honest (plan changes, upgrades, old servers
+          // provisioned before limits existed) — applied on the next start
+          const record = localById.get(order.server_id)!
+          const wanted = planLimits(plan)
+          if (JSON.stringify(record.limits ?? {}) !== JSON.stringify(wanted)) {
+            setServerLimits(order.server_id, wanted)
+          }
           // heal the share for healthy orders (covers re-approvals after past_due)
           await supabase
             .from('server_shares')

@@ -424,6 +424,16 @@ export type ServerGame = 'minecraft' | 'palworld'
 export type LocalServerState = 'stopped' | 'starting' | 'running' | 'stopping'
 
 /** A dedicated game server managed by the launcher, running on this PC. */
+/** Hosted-plan resource caps, stamped by the provisioner and enforced at every start. */
+export interface PlanLimits {
+  /** RAM ceiling in MiB — minecraft: hard Xmx cap; palworld: forced memory-guard restart */
+  memoryMb?: number
+  /** player-slot cap the customer cannot raise */
+  maxPlayers?: number
+  /** CPU core cap — Linux hosts pin the server's process tree to this many cores */
+  cpuCores?: number
+}
+
 export interface LocalServer {
   id: string
   name: string
@@ -447,6 +457,8 @@ export interface LocalServer {
   eulaAccepted: boolean
   /** palworld: list in the official community server browser (-publiclobby) */
   communityServer?: boolean
+  /** present only on plan-bound hosted servers; absent = unrestricted */
+  limits?: PlanLimits
   /** scheduled saves/restarts/backups + lifecycle switches */
   automation?: ServerAutomation
   createdAt: number

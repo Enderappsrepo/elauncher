@@ -3,147 +3,205 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <meta name="theme-color" content="#0a0a0f" />
+  <meta name="theme-color" content="#07070c" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <title>ELauncher — Remote</title>
   <link rel="icon" href="../icon.png" />
   <link rel="manifest" href="manifest.webmanifest" />
   <link rel="apple-touch-icon" href="icon-192.png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400..900&display=swap" />
   <style>
+    /* ============================================================
+       ELauncher Remote — obsidian aurora design system
+       Layers: tokens → base → shell → cards → sheet/tabs → forms →
+       lists → console → files → settings → states → desktop deck
+       ============================================================ */
     * { box-sizing: border-box; margin: 0; -webkit-tap-highlight-color: transparent; }
     [hidden] { display: none !important; }
     :root {
-      --bg: #0a0a0f;
-      --card: #121218;
-      --card-2: #16161d;
-      --line: rgba(255, 255, 255, 0.07);
-      --line-strong: rgba(255, 255, 255, 0.12);
-      --text: #f4f5fa;
-      --dim: #a0a3b6;
-      --faint: #64677a;
-      --accent: #7c6cff;
-      --accent-2: #22d3ee;
-      --accent-soft: rgba(124, 108, 255, 0.14);
+      --bg: #07070c;
+      --bg-soft: #0c0c14;
+      --card: #10101a;
+      --card-2: #181826;
+      --glass: rgba(13, 13, 21, 0.72);
+      --line: rgba(255, 255, 255, 0.06);
+      --line-strong: rgba(255, 255, 255, 0.13);
+      --text: #f5f6fb;
+      --dim: #a3a7bd;
+      --faint: #676b82;
+      --accent: #8b7cff;
+      --accent-2: #2fd9f7;
+      --accent-3: #e879f9;
+      --accent-soft: rgba(139, 124, 255, 0.14);
       --green: #34d399;
-      --green-soft: rgba(52, 211, 153, 0.11);
+      --green-soft: rgba(52, 211, 153, 0.12);
       --red: #fb7185;
       --red-soft: rgba(251, 113, 133, 0.12);
       --amber: #fbbf24;
       --amber-soft: rgba(251, 191, 36, 0.12);
-      --radius: 18px;
+      --radius: 20px;
+      --radius-sm: 13px;
+      --mono: ui-monospace, 'Cascadia Code', Menlo, Consolas, monospace;
+      --ease: cubic-bezier(0.22, 1, 0.36, 1);
+      --shadow-1: 0 18px 50px rgba(0, 0, 0, 0.45);
+      --shadow-2: 0 8px 24px rgba(0, 0, 0, 0.35);
     }
-    html { background: var(--bg); }
+    html { background: var(--bg); scrollbar-color: #2a2a3a var(--bg); }
     body {
-      background:
-        radial-gradient(52% 34% at 18% -6%, rgba(124, 108, 255, 0.16), transparent 70%),
-        radial-gradient(44% 30% at 88% -4%, rgba(34, 211, 238, 0.1), transparent 70%),
-        radial-gradient(38% 26% at 55% -8%, rgba(217, 70, 239, 0.07), transparent 70%),
-        var(--bg);
-      background-attachment: fixed;
+      background: var(--bg);
       color: var(--text);
       min-height: 100dvh;
       font: 15px/1.5 'Inter', -apple-system, 'Segoe UI', Roboto, sans-serif;
+      font-optical-sizing: auto;
       -webkit-font-smoothing: antialiased;
+      overflow-x: hidden;
     }
+    /* aurora backdrop: two drifting light fields behind everything */
+    body::before, body::after {
+      content: ''; position: fixed; z-index: -1; pointer-events: none;
+      width: 82vmax; height: 82vmax; border-radius: 50%;
+      filter: blur(70px); opacity: 0.55; will-change: transform;
+    }
+    body::before {
+      top: -46vmax; left: -18vmax;
+      background: radial-gradient(closest-side, rgba(139, 124, 255, 0.20), rgba(232, 121, 249, 0.06) 55%, transparent 72%);
+      animation: drift-a 26s ease-in-out infinite alternate;
+    }
+    body::after {
+      top: -50vmax; right: -30vmax;
+      background: radial-gradient(closest-side, rgba(47, 217, 247, 0.13), rgba(139, 124, 255, 0.05) 55%, transparent 72%);
+      animation: drift-b 32s ease-in-out infinite alternate;
+    }
+    @keyframes drift-a { to { transform: translate(9vmax, 7vmax) scale(1.08); } }
+    @keyframes drift-b { to { transform: translate(-8vmax, 9vmax) scale(0.94); } }
+    ::selection { background: rgba(139, 124, 255, 0.35); }
     button { font: inherit; cursor: pointer; border: 0; background: none; color: inherit; }
-    input { font: inherit; }
-    .shell { max-width: 540px; margin: 0 auto; padding: 0 16px calc(40px + env(safe-area-inset-bottom)); }
+    input, select, textarea { font: inherit; }
+    :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 6px; }
+    ::-webkit-scrollbar { width: 10px; height: 10px; }
+    ::-webkit-scrollbar-thumb { background: #23233370; border: 3px solid transparent; border-radius: 99px; background-clip: content-box; }
+    ::-webkit-scrollbar-thumb:hover { background: #32324890; background-clip: content-box; border: 3px solid transparent; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    .shell { max-width: 560px; margin: 0 auto; padding: 0 16px calc(44px + env(safe-area-inset-bottom)); }
+    .row { display: flex; align-items: center; }
+    .faint { color: var(--faint); }
 
-    /* ---------- header ---------- */
+    /* ---------- top bar ---------- */
     .top {
       position: sticky; top: 0; z-index: 20;
       display: flex; align-items: center; gap: 11px;
       padding: calc(12px + env(safe-area-inset-top)) 2px 12px;
-      margin: 0 -16px 18px; padding-left: 18px; padding-right: 14px;
-      background: rgba(10, 10, 15, 0.72);
-      backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px);
+      margin: 0 -16px 20px; padding-left: 18px; padding-right: 12px;
+      background: var(--glass);
+      backdrop-filter: blur(22px) saturate(1.5); -webkit-backdrop-filter: blur(22px) saturate(1.5);
       border-bottom: 1px solid var(--line);
     }
-    .top img { width: 30px; height: 30px; border-radius: 9px; }
-    .wordmark { font-weight: 800; font-size: 16.5px; letter-spacing: -0.02em; white-space: nowrap; }
-    @media (max-width: 360px) { .live { display: none; } }
+    .top img { width: 32px; height: 32px; border-radius: 10px; box-shadow: 0 4px 14px rgba(139, 124, 255, 0.3); }
+    .wordmark { font-weight: 800; font-size: 17px; letter-spacing: -0.03em; white-space: nowrap; }
     .wordmark span {
       background: linear-gradient(90deg, var(--accent), var(--accent-2));
       -webkit-background-clip: text; background-clip: text; color: transparent;
     }
-    .live { margin-left: auto; display: flex; align-items: center; gap: 7px; font-size: 11.5px; color: var(--faint); }
-    .live .dot { width: 6px; height: 6px; border-radius: 99px; background: var(--green); animation: pulse 2s infinite; }
+    .live {
+      margin-left: auto; display: flex; align-items: center; gap: 7px;
+      font-size: 11px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; color: var(--green);
+      padding: 6px 11px; border-radius: 99px;
+      background: var(--green-soft); border: 1px solid rgba(52, 211, 153, 0.25);
+    }
+    .live .dot { width: 6px; height: 6px; border-radius: 99px; background: var(--green); animation: pulse 2s infinite; box-shadow: 0 0 10px var(--green); }
+    .live.poll { color: var(--dim); background: var(--card-2); border-color: var(--line); }
+    .live.poll .dot { background: var(--dim); box-shadow: none; }
+    @media (max-width: 380px) { .live { display: none; } }
     .iconbtn {
       display: grid; place-items: center; width: 38px; height: 38px; border-radius: 12px;
-      color: var(--dim); border: 1px solid transparent; transition: 0.15s;
+      color: var(--dim); border: 1px solid transparent; transition: all 0.16s var(--ease);
     }
-    .iconbtn:active { background: var(--card-2); border-color: var(--line); transform: scale(0.94); }
-    .iconbtn.on { color: var(--accent); }
+    .iconbtn:hover { color: var(--text); background: var(--card-2); border-color: var(--line); }
+    .iconbtn:active { transform: scale(0.92); }
+    .iconbtn.on { color: var(--accent); background: var(--accent-soft); }
 
     /* ---------- login ---------- */
-    .login { padding-top: 9dvh; display: flex; flex-direction: column; align-items: center; text-align: center; }
-    .halo { position: relative; width: 92px; height: 92px; margin-bottom: 22px; }
+    .login { padding-top: 8dvh; display: flex; flex-direction: column; align-items: center; text-align: center; }
+    .halo { position: relative; width: 96px; height: 96px; margin-bottom: 24px; }
     .halo::before {
-      content: ''; position: absolute; inset: -26px;
-      background: radial-gradient(closest-side, rgba(124, 108, 255, 0.4), rgba(34, 211, 238, 0.12), transparent);
-      filter: blur(14px); border-radius: 50%;
+      content: ''; position: absolute; inset: -34px;
+      background: radial-gradient(closest-side, rgba(139, 124, 255, 0.45), rgba(47, 217, 247, 0.14), transparent);
+      filter: blur(16px); border-radius: 50%; animation: pulse 4s ease-in-out infinite;
     }
-    .halo img { position: relative; width: 92px; height: 92px; border-radius: 24px; }
-    .login h1 { font-size: 27px; font-weight: 800; letter-spacing: -0.03em; }
+    .halo img { position: relative; width: 96px; height: 96px; border-radius: 26px; box-shadow: var(--shadow-2); }
+    .login h1 { font-size: 30px; font-weight: 800; letter-spacing: -0.04em; line-height: 1.15; }
     .login h1 span {
-      background: linear-gradient(90deg, var(--accent), var(--accent-2));
+      background: linear-gradient(90deg, var(--accent), var(--accent-3) 55%, var(--accent-2));
       -webkit-background-clip: text; background-clip: text; color: transparent;
     }
-    .login p { color: var(--dim); font-size: 13.5px; margin: 8px 0 26px; max-width: 300px; }
+    .login p { color: var(--dim); font-size: 14px; margin: 10px 0 28px; max-width: 320px; line-height: 1.55; }
     .panel {
       width: 100%; background: var(--card); border: 1px solid var(--line);
-      border-radius: var(--radius); padding: 20px; text-align: left;
-      box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45);
+      border-radius: var(--radius); padding: 22px; text-align: left;
+      box-shadow: var(--shadow-1);
+      position: relative; overflow: hidden;
+    }
+    .panel::before {
+      content: ''; position: absolute; inset: 0 0 auto; height: 1px;
+      background: linear-gradient(90deg, transparent, rgba(139, 124, 255, 0.5), rgba(47, 217, 247, 0.4), transparent);
     }
     .field { margin-bottom: 14px; }
-    .field label { display: block; font-size: 11.5px; font-weight: 650; color: var(--faint); letter-spacing: 0.04em; text-transform: uppercase; margin-bottom: 7px; }
+    .field label { display: block; font-size: 11px; font-weight: 700; color: var(--faint); letter-spacing: 0.06em; text-transform: uppercase; margin-bottom: 7px; }
     .field input {
-      width: 100%; padding: 13px 14px; border-radius: 13px;
-      background: var(--card-2); border: 1px solid var(--line); color: var(--text); outline: none;
+      width: 100%; padding: 13px 15px; border-radius: var(--radius-sm);
+      background: var(--bg-soft); border: 1px solid var(--line); color: var(--text); outline: none;
       transition: border-color 0.15s, box-shadow 0.15s;
     }
-    .field input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+    .field input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); outline: none; }
     .cta {
-      width: 100%; padding: 14px; border-radius: 13px; font-weight: 700; color: #fff;
+      width: 100%; padding: 14px; border-radius: var(--radius-sm); font-weight: 750; color: #fff; letter-spacing: 0.01em;
       background: linear-gradient(135deg, var(--accent), #5f8bff 55%, var(--accent-2));
-      box-shadow: 0 10px 26px rgba(124, 108, 255, 0.35);
-      transition: 0.15s;
+      background-size: 150% 100%;
+      box-shadow: 0 10px 30px rgba(139, 124, 255, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.22);
+      transition: all 0.2s var(--ease);
     }
-    .cta:active { transform: translateY(1px) scale(0.99); }
-    .cta:disabled { opacity: 0.55; }
+    .cta:hover { background-position: 100% 0; box-shadow: 0 12px 36px rgba(139, 124, 255, 0.48), inset 0 1px 0 rgba(255, 255, 255, 0.22); transform: translateY(-1px); }
+    .cta:active { transform: translateY(0) scale(0.99); }
+    .cta:disabled { opacity: 0.55; transform: none; }
     .err { color: var(--red); font-size: 13px; min-height: 18px; margin: 10px 2px 2px; }
 
-    /* ---------- server cards ---------- */
+    /* ---------- server cards (mobile) ---------- */
     .card {
-      background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);
-      padding: 16px; margin-bottom: 14px; box-shadow: 0 14px 40px rgba(0, 0, 0, 0.35);
+      position: relative;
+      background: linear-gradient(180deg, rgba(255, 255, 255, 0.02), transparent 40%), var(--card);
+      border: 1px solid var(--line); border-radius: var(--radius);
+      padding: 17px; margin-bottom: 14px; box-shadow: var(--shadow-2);
+      transition: border-color 0.2s var(--ease), transform 0.2s var(--ease);
     }
-    .card.offline { opacity: 0.78; }
+    .card.offline { opacity: 0.72; filter: saturate(0.7); }
     .head { display: flex; align-items: center; gap: 13px; }
     .tile {
-      position: relative; width: 46px; height: 46px; border-radius: 14px; flex: none;
-      display: grid; place-items: center; font-weight: 800; font-size: 19px; color: #fff;
-      text-shadow: 0 1px 6px rgba(0, 0, 0, 0.4);
+      position: relative; width: 48px; height: 48px; border-radius: 15px; flex: none;
+      display: grid; place-items: center; font-weight: 800; font-size: 20px; color: #fff;
+      text-shadow: 0 1px 6px rgba(0, 0, 0, 0.45);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.25), 0 6px 18px rgba(0, 0, 0, 0.35);
     }
     .tile .st {
-      position: absolute; right: -3px; bottom: -3px; width: 13px; height: 13px; border-radius: 99px;
+      position: absolute; right: -3px; bottom: -3px; width: 14px; height: 14px; border-radius: 99px;
       border: 3px solid var(--card); background: var(--faint);
     }
-    .tile .st.on { background: var(--green); animation: pulse 2s infinite; }
-    .tile .st.warm { background: var(--amber); }
+    .tile .st.on { background: var(--green); box-shadow: 0 0 10px rgba(52, 211, 153, 0.8); animation: pulse 2s infinite; }
+    .tile .st.warm { background: var(--amber); box-shadow: 0 0 10px rgba(251, 191, 36, 0.6); }
     .tile .st.dead { background: var(--red); }
     .who { min-width: 0; flex: 1; }
-    .who .nm { font-weight: 750; font-size: 16.5px; letter-spacing: -0.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .who .nm { font-weight: 750; font-size: 17px; letter-spacing: -0.015em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .who .ln { font-size: 12.5px; color: var(--dim); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .chip {
-      flex: none; font-size: 11px; font-weight: 700; letter-spacing: 0.03em;
-      padding: 5px 10px; border-radius: 99px; border: 1px solid var(--line-strong); color: var(--dim);
+      flex: none; font-size: 10.5px; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase;
+      padding: 5px 11px; border-radius: 99px; border: 1px solid var(--line-strong); color: var(--dim);
     }
-    .chip.on { color: var(--green); border-color: rgba(52, 211, 153, 0.35); background: var(--green-soft); }
-    .chip.warm { color: var(--amber); border-color: rgba(251, 191, 36, 0.35); background: var(--amber-soft); }
-    .chip.dead { color: var(--red); border-color: rgba(251, 113, 133, 0.3); background: var(--red-soft); }
-    .chip.acc { color: var(--accent); border-color: rgba(124, 108, 255, 0.35); background: var(--accent-soft); }
+    .chip.on { color: var(--green); border-color: rgba(52, 211, 153, 0.4); background: var(--green-soft); text-shadow: 0 0 12px rgba(52, 211, 153, 0.5); }
+    .chip.warm { color: var(--amber); border-color: rgba(251, 191, 36, 0.4); background: var(--amber-soft); }
+    .chip.dead { color: var(--red); border-color: rgba(251, 113, 133, 0.35); background: var(--red-soft); }
+    .chip.acc { color: var(--accent); border-color: rgba(139, 124, 255, 0.4); background: var(--accent-soft); }
 
     .pills { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 13px; }
     .pill {
@@ -156,139 +214,207 @@
 
     .addr {
       display: flex; align-items: center; gap: 9px; width: 100%;
-      margin-top: 12px; padding: 11px 13px; border-radius: 13px;
-      background: rgba(124, 108, 255, 0.07); border: 1px dashed rgba(124, 108, 255, 0.35);
-      color: var(--text); font: 12.5px ui-monospace, Menlo, Consolas, monospace;
+      margin-top: 12px; padding: 12px 14px; border-radius: var(--radius-sm);
+      background: linear-gradient(90deg, rgba(139, 124, 255, 0.10), rgba(47, 217, 247, 0.06));
+      border: 1px dashed rgba(139, 124, 255, 0.4);
+      color: var(--text); font: 12.5px var(--mono);
+      transition: border-color 0.16s;
     }
+    .addr:hover { border-color: rgba(139, 124, 255, 0.7); }
     .addr svg { width: 14px; height: 14px; color: var(--accent); flex: none; }
     .addr .a { flex: 1; min-width: 0; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .addr .c { color: var(--faint); font-size: 11px; font-family: 'Inter', -apple-system, sans-serif; }
+    .addr .c { color: var(--faint); font-size: 10.5px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; font-family: 'Inter', sans-serif; }
 
     .acts { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; margin-top: 13px; }
     .acts.single { grid-template-columns: 1fr; }
     .btn {
       display: flex; align-items: center; justify-content: center; gap: 8px;
-      padding: 13px; border-radius: 13px; font-weight: 700; font-size: 14px;
+      padding: 13px; border-radius: var(--radius-sm); font-weight: 700; font-size: 14px;
       border: 1px solid var(--line-strong); background: var(--card-2); color: var(--text);
-      transition: 0.15s;
+      transition: all 0.16s var(--ease);
     }
-    .btn:active { transform: scale(0.98); }
-    .btn:disabled { opacity: 0.5; }
+    .btn:active { transform: scale(0.97); }
+    .btn:disabled { opacity: 0.45; }
     .btn svg { width: 15px; height: 15px; }
-    .btn.start { background: var(--green-soft); border-color: rgba(52, 211, 153, 0.4); color: var(--green); }
-    .btn.stop { background: var(--red-soft); border-color: rgba(251, 113, 133, 0.35); color: var(--red); }
+    .btn.start { background: var(--green-soft); border-color: rgba(52, 211, 153, 0.45); color: var(--green); }
+    .btn.stop { background: var(--red-soft); border-color: rgba(251, 113, 133, 0.4); color: var(--red); }
+    .btn.manage {
+      margin-top: 10px; width: 100%;
+      background: var(--accent-soft); border-color: rgba(139, 124, 255, 0.35); color: var(--accent);
+    }
 
     .conbtn {
       width: 100%; display: flex; align-items: center; gap: 8px; margin-top: 12px;
       color: var(--faint); font-size: 12.5px; font-weight: 650; padding: 4px 2px;
+      transition: color 0.15s;
     }
+    .conbtn:hover { color: var(--dim); }
     .conbtn svg { width: 13px; height: 13px; transition: transform 0.2s; }
     .conbtn.open svg { transform: rotate(90deg); }
+
+    .hintline { margin-top: 11px; font-size: 12px; color: var(--faint); line-height: 1.5; }
+    .hintline b { color: var(--text); }
+    .home-head {
+      display: flex; align-items: center; gap: 8px;
+      font-size: 11px; font-weight: 800; letter-spacing: 0.09em; text-transform: uppercase;
+      color: var(--faint); margin: 26px 2px 11px;
+    }
+    .home-head::after { content: ''; flex: 1; height: 1px; background: linear-gradient(90deg, var(--line-strong), transparent); }
+
+    /* ---------- control-panel sheet ---------- */
+    .sheet-bg { position: fixed; inset: 0; z-index: 40; background: rgba(4, 4, 8, 0.6);
+      backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); animation: fade 0.2s; }
+    @keyframes fade { from { opacity: 0; } }
+    .sheet { position: fixed; left: 0; right: 0; bottom: 0; z-index: 41; max-height: 94dvh;
+      background: linear-gradient(180deg, var(--bg-soft), var(--bg) 120px);
+      border-top-left-radius: 24px; border-top-right-radius: 24px;
+      border-top: 1px solid var(--line-strong); box-shadow: 0 -24px 70px rgba(0, 0, 0, 0.65);
+      display: flex; flex-direction: column; animation: slideup 0.3s var(--ease);
+      max-width: 560px; margin: 0 auto; }
+    @keyframes slideup { from { transform: translateY(100%); } }
+    .sheet-grip { width: 40px; height: 4px; border-radius: 99px; background: var(--line-strong); margin: 10px auto 5px; flex: none; }
+    .sheet-top { display: flex; align-items: center; gap: 11px; padding: 4px 16px 13px; border-bottom: 1px solid var(--line); }
+    .sheet-top .tile { width: 40px; height: 40px; border-radius: 12px; font-size: 17px; }
+    .sheet-top .nm { font-weight: 750; font-size: 16.5px; letter-spacing: -0.01em; }
+    .sheet-top .sub { font-size: 12px; color: var(--faint); margin-top: 1px; }
+    .sheet-tabs { display: flex; gap: 5px; padding: 11px 14px; overflow-x: auto; border-bottom: 1px solid var(--line); flex: none; scrollbar-width: none; }
+    .sheet-tabs::-webkit-scrollbar { display: none; }
+    .sheet-tabs button {
+      flex: none; display: inline-flex; align-items: center; gap: 7px;
+      padding: 9px 14px; border-radius: 11px; font-size: 13px; font-weight: 650; color: var(--dim);
+      white-space: nowrap; border: 1px solid transparent; transition: all 0.15s var(--ease);
+    }
+    .sheet-tabs button svg { width: 14px; height: 14px; opacity: 0.8; }
+    .sheet-tabs button.on { background: var(--accent-soft); color: var(--accent); border-color: rgba(139, 124, 255, 0.25); }
+    .sheet-body { padding: 16px; overflow-y: auto; flex: 1; overscroll-behavior: contain; }
+
+    /* ---------- forms ---------- */
+    .frow { margin-bottom: 15px; }
+    .frow label { display: block; font-size: 12px; font-weight: 650; color: var(--faint); margin-bottom: 6px; }
+    .frow input, .frow select {
+      width: 100%; padding: 11px 13px; border-radius: 11px; background: var(--card-2);
+      border: 1px solid var(--line); color: var(--text); outline: none; transition: border-color 0.15s, box-shadow 0.15s;
+    }
+    .frow input:focus, .frow select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+    .frow .hint2 { font-size: 11.5px; color: var(--faint); margin-top: 5px; line-height: 1.5; }
+    .frow.check { display: flex; align-items: center; gap: 10px; }
+    .frow.check input { width: auto; accent-color: var(--accent); }
+    .frow.check label { margin: 0; color: var(--text); font-size: 13.5px; font-weight: 500; }
+    .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    input[type='checkbox'] { accent-color: var(--accent); width: 17px; height: 17px; }
+    .savebar {
+      position: sticky; bottom: -16px; z-index: 5; margin: 10px -16px -16px;
+      padding: 14px 16px calc(15px + env(safe-area-inset-bottom));
+      background: linear-gradient(transparent, var(--bg) 34%);
+      display: flex; gap: 10px; align-items: center;
+    }
+    .savebar .cta { flex: 1; padding: 13px; }
+
+    /* ---------- lists ---------- */
+    .plister .prow {
+      display: flex; align-items: center; gap: 11px; padding: 11px 10px; margin: 0 -10px;
+      border-top: 1px solid var(--line); transition: background 0.14s;
+    }
+    .plister .prow:first-child { border-top: 0; }
+    .plister .prow:hover { background: rgba(255, 255, 255, 0.025); }
+    .plister .pn { font-weight: 650; }
+    .plister .pm { font-size: 12px; color: var(--faint); }
+    .avatar {
+      width: 34px; height: 34px; border-radius: 11px; flex: none;
+      display: grid; place-items: center; font-weight: 800; font-size: 14px; color: #fff;
+      text-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+    }
+    .minibtn {
+      padding: 8px 13px; border-radius: 10px; font-size: 12.5px; font-weight: 650;
+      border: 1px solid var(--line-strong); background: var(--card-2); color: var(--text);
+      transition: all 0.15s var(--ease);
+    }
+    .minibtn:active { transform: scale(0.96); }
+    .minibtn.red { color: var(--red); border-color: rgba(251, 113, 133, 0.35); background: var(--red-soft); }
+    .minibtn.acc { color: var(--accent); border-color: rgba(139, 124, 255, 0.4); background: var(--accent-soft); }
+    .searchbar {
+      display: flex; align-items: center; gap: 9px; padding: 11px 13px; margin-bottom: 12px;
+      border-radius: var(--radius-sm); background: var(--card-2); border: 1px solid var(--line);
+      transition: border-color 0.15s, box-shadow 0.15s;
+    }
+    .searchbar:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+    .searchbar input { flex: 1; background: none; border: 0; color: var(--text); outline: none; }
+    .searchbar svg { width: 15px; height: 15px; color: var(--faint); }
+    .grouphead { font-size: 11px; font-weight: 800; letter-spacing: 0.07em; text-transform: uppercase; color: var(--faint); margin: 18px 0 9px; }
+    .loadrow { text-align: center; color: var(--faint); padding: 30px 0; font-size: 13px; }
+    .dangerzone { border: 1px solid rgba(251, 113, 133, 0.35); background: rgba(251, 113, 133, 0.05); border-radius: 14px; padding: 15px; margin-bottom: 8px; }
+    .p-tile { display: grid; place-items: center; border-radius: 9px; background: var(--card-2); color: var(--faint); font-weight: 700; }
+
+    /* ---------- console: terminal treatment ---------- */
+    .con-wrap { border: 1px solid var(--line-strong); border-radius: 14px; overflow: hidden; background: #060609; box-shadow: inset 0 2px 18px rgba(0, 0, 0, 0.5); }
+    .con-head {
+      display: flex; align-items: center; gap: 8px; padding: 9px 13px;
+      background: rgba(255, 255, 255, 0.028); border-bottom: 1px solid var(--line);
+      font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--faint);
+    }
+    .con-head .cdot { width: 8px; height: 8px; border-radius: 99px; background: var(--faint); }
+    .con-head .cdot.on { background: var(--green); box-shadow: 0 0 8px rgba(52, 211, 153, 0.8); animation: pulse 2s infinite; }
     .console {
-      display: none; margin-top: 10px; padding: 12px; border-radius: 13px;
-      background: #0a0a10; border: 1px solid var(--line);
-      font: 11px/1.55 ui-monospace, Menlo, Consolas, monospace; color: #b9c0d4;
+      display: none; padding: 13px 14px;
+      font: 11.5px/1.6 var(--mono); color: #c2c8dc;
       max-height: 250px; overflow-y: auto; white-space: pre-wrap; word-break: break-word;
     }
     .console.open { display: block; }
-    .cmdrow { display: none; gap: 8px; margin-top: 9px; }
+    .con-wrap .console { display: block; max-height: 44dvh; }
+    .cmdrow { display: none; gap: 8px; margin-top: 10px; }
     .cmdrow.open { display: flex; }
     .cmdrow input {
-      flex: 1; min-width: 0; padding: 11px 13px; border-radius: 12px;
+      flex: 1; min-width: 0; padding: 12px 14px; border-radius: 12px;
       background: var(--card-2); border: 1px solid var(--line); color: var(--text); outline: none;
-      font: 12.5px ui-monospace, Menlo, Consolas, monospace;
+      font: 12.5px var(--mono); transition: border-color 0.15s, box-shadow 0.15s;
     }
-    .cmdrow input:focus { border-color: var(--accent); }
+    .cmdrow input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
     .cmdrow button {
-      display: grid; place-items: center; width: 44px; border-radius: 12px;
-      background: var(--accent-soft); border: 1px solid rgba(124, 108, 255, 0.35); color: var(--accent);
+      display: grid; place-items: center; width: 46px; border-radius: 12px;
+      background: linear-gradient(135deg, var(--accent), #5f8bff); color: #fff;
+      box-shadow: 0 6px 18px rgba(139, 124, 255, 0.35); transition: all 0.15s var(--ease);
     }
+    .cmdrow button:active { transform: scale(0.94); }
+    .cmdrow button:disabled { opacity: 0.4; }
     .cmdrow button svg { width: 15px; height: 15px; }
+    .qchips { display: flex; gap: 7px; flex-wrap: wrap; margin-top: 10px; }
+    .qchips button {
+      font: 11.5px var(--mono); color: var(--dim); padding: 6px 11px; border-radius: 99px;
+      background: var(--card-2); border: 1px solid var(--line); transition: all 0.14s;
+    }
+    .qchips button:hover { color: var(--accent); border-color: rgba(139, 124, 255, 0.4); background: var(--accent-soft); }
 
-    .hintline { margin-top: 11px; font-size: 12px; color: var(--faint); }
-    .hintline b { color: var(--text); }
-    .home-head { font-size: 12px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase;
-      color: var(--faint); margin: 22px 2px 10px; }
-
-    /* ---------- control-panel sheet ---------- */
-    .sheet-bg { position: fixed; inset: 0; z-index: 40; background: rgba(0,0,0,.55);
-      backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px); animation: fade .2s; }
-    @keyframes fade { from { opacity: 0; } }
-    .sheet { position: fixed; left: 0; right: 0; bottom: 0; z-index: 41; max-height: 92dvh;
-      background: var(--bg); border-top-left-radius: 22px; border-top-right-radius: 22px;
-      border-top: 1px solid var(--line-strong); box-shadow: 0 -20px 60px rgba(0,0,0,.6);
-      display: flex; flex-direction: column; animation: slideup .26s cubic-bezier(.22,1,.36,1);
-      max-width: 540px; margin: 0 auto; }
-    @keyframes slideup { from { transform: translateY(100%); } }
-    .sheet-grip { width: 38px; height: 4px; border-radius: 99px; background: var(--line-strong); margin: 9px auto 4px; flex: none; }
-    .sheet-top { display: flex; align-items: center; gap: 10px; padding: 4px 16px 12px; border-bottom: 1px solid var(--line); }
-    .sheet-top .tile { width: 38px; height: 38px; border-radius: 11px; font-size: 16px; }
-    .sheet-top .nm { font-weight: 750; font-size: 16px; }
-    .sheet-top .sub { font-size: 12px; color: var(--faint); }
-    .sheet-tabs { display: flex; gap: 4px; padding: 10px 12px; overflow-x: auto; border-bottom: 1px solid var(--line); flex: none; }
-    .sheet-tabs button { flex: none; padding: 8px 14px; border-radius: 10px; font-size: 13px; font-weight: 650; color: var(--dim); white-space: nowrap; }
-    .sheet-tabs button.on { background: var(--accent-soft); color: var(--accent); }
-    .sheet-body { padding: 16px; overflow-y: auto; flex: 1; }
-    .frow { margin-bottom: 15px; }
-    .frow label { display: block; font-size: 12px; font-weight: 650; color: var(--faint); margin-bottom: 6px; }
-    .frow input, .frow select { width: 100%; padding: 11px 12px; border-radius: 11px; background: var(--card-2);
-      border: 1px solid var(--line); color: var(--text); outline: none; }
-    .frow input:focus, .frow select:focus { border-color: var(--accent); }
-    .frow .hint2 { font-size: 11.5px; color: var(--faint); margin-top: 5px; }
-    .frow.check { display: flex; align-items: center; gap: 10px; }
-    .frow.check input { width: auto; }
-    .frow.check label { margin: 0; color: var(--text); font-size: 13.5px; font-weight: 500; }
-    .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-    .rateseg { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
-    .rateseg .seg { display: inline-flex; background: var(--card-2); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
-    .rateseg .seg button { padding: 8px 11px; font-size: 12.5px; color: var(--dim); }
-    .rateseg .seg button.on { background: var(--accent-soft); color: var(--accent); }
-    .rateseg input { width: 72px; }
-    .savebar { position: sticky; bottom: -16px; margin: 8px -16px -16px; padding: 12px 16px calc(14px + env(safe-area-inset-bottom));
-      background: linear-gradient(transparent, var(--bg) 30%); display: flex; gap: 10px; align-items: center; }
-    .savebar .cta { flex: 1; padding: 13px; }
-    .plister .prow { display: flex; align-items: center; gap: 10px; padding: 9px 0; border-top: 1px solid var(--line); }
-    .plister .prow:first-child { border-top: 0; }
-    .plister .pn { font-weight: 650; }
-    .plister .pm { font-size: 12px; color: var(--faint); }
-    .minibtn { padding: 7px 12px; border-radius: 9px; font-size: 12.5px; font-weight: 650; border: 1px solid var(--line-strong); background: var(--card-2); color: var(--text); }
-    .minibtn.red { color: var(--red); border-color: rgba(251,113,133,.35); background: var(--red-soft); }
-    .searchbar { display: flex; align-items: center; gap: 9px; padding: 10px 12px; margin-bottom: 12px; border-radius: 12px; background: var(--card-2); border: 1px solid var(--line); }
-    .searchbar input { flex: 1; background: none; border: 0; color: var(--text); outline: none; }
-    .searchbar svg { width: 15px; height: 15px; color: var(--faint); }
-    .grouphead { font-size: 11px; font-weight: 700; letter-spacing: .4px; text-transform: uppercase; color: var(--faint); margin: 16px 0 8px; }
-    .loadrow { text-align: center; color: var(--faint); padding: 28px 0; font-size: 13px; }
-    .dangerzone { border: 1px solid rgba(251,113,133,.35); background: rgba(251,113,133,.05); border-radius: 13px; padding: 14px; margin-bottom: 8px; }
-
-    /* ---------- revamped settings ---------- */
+    /* ---------- settings (grouped) ---------- */
     .set-hero { margin-bottom: 18px; }
-    .set-hero h3 { font-size: 15px; font-weight: 750; margin-bottom: 3px; }
-    .set-hero p { font-size: 12.5px; color: var(--faint); }
+    .set-hero h3 { font-size: 16px; font-weight: 780; letter-spacing: -0.01em; margin-bottom: 4px; }
+    .set-hero p { font-size: 12.5px; color: var(--faint); line-height: 1.5; }
     .essgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
     .essgrid .full { grid-column: 1 / -1; }
     @media (max-width: 560px) { .essgrid { grid-template-columns: 1fr; } }
-    .setgroup { border: 1px solid var(--line); border-radius: 14px; margin-bottom: 10px; overflow: hidden; background: var(--card); }
-    .setgroup > .gh { display: flex; align-items: center; gap: 11px; padding: 14px 15px; cursor: pointer; user-select: none; font-weight: 650; font-size: 14px; }
+    .setgroup { border: 1px solid var(--line); border-radius: 15px; margin-bottom: 10px; overflow: hidden; background: var(--card); transition: border-color 0.2s; }
+    .setgroup.open { border-color: var(--line-strong); }
+    .setgroup > .gh { display: flex; align-items: center; gap: 11px; padding: 14px 15px; cursor: pointer; user-select: none; font-weight: 650; font-size: 14px; transition: background 0.14s; }
     .setgroup > .gh:hover { background: var(--card-2); }
-    .setgroup > .gh .gi { width: 30px; height: 30px; border-radius: 9px; display: grid; place-items: center; background: var(--accent-soft); color: var(--accent); flex: none; }
-    .setgroup > .gh .cnt { margin-left: auto; font-size: 12px; color: var(--faint); font-weight: 500; }
-    .setgroup > .gh .chev { color: var(--faint); transition: transform .2s; }
+    .setgroup > .gh .gi { width: 32px; height: 32px; border-radius: 10px; display: grid; place-items: center; background: var(--accent-soft); flex: none; font-size: 15px; }
+    .setgroup > .gh .cnt { margin-left: auto; font-size: 11.5px; color: var(--faint); font-weight: 650; padding: 3px 9px; border-radius: 99px; background: var(--card-2); border: 1px solid var(--line); }
+    .setgroup > .gh .chev { color: var(--faint); transition: transform 0.2s; display: grid; place-items: center; }
+    .setgroup > .gh .chev svg { width: 14px; height: 14px; }
     .setgroup.open > .gh .chev { transform: rotate(90deg); }
     .setgroup > .body { display: none; padding: 2px 15px 10px; }
     .setgroup.open > .body { display: block; }
     .setrow { padding: 13px 0; border-top: 1px solid var(--line); }
     .setrow:first-child { border-top: 0; }
     .setrow > label { display: block; font-size: 13.5px; font-weight: 600; margin-bottom: 7px; }
-    .setrow .h { font-size: 12px; color: var(--faint); margin-top: 6px; line-height: 1.45; }
-    .setrow input, .setrow select { width: 100%; padding: 10px 12px; border-radius: 10px; background: var(--card-2); border: 1px solid var(--line); color: var(--text); outline: none; }
-    .setrow input:focus, .setrow select:focus { border-color: var(--accent); }
+    .setrow .h { font-size: 12px; color: var(--faint); margin-top: 6px; line-height: 1.5; }
+    .setrow input, .setrow select { width: 100%; padding: 10px 12px; border-radius: 10px; background: var(--card-2); border: 1px solid var(--line); color: var(--text); outline: none; transition: border-color 0.15s, box-shadow 0.15s; }
+    .setrow input:focus, .setrow select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
     .setrow.check { display: flex; align-items: flex-start; gap: 11px; }
     .setrow.check input { width: auto; margin-top: 2px; }
     .setrow.check > div { flex: 1; }
     .setrow.check label { display: block; font-size: 13.5px; font-weight: 600; margin: 0; }
     .rate { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
     .rate .seg { display: inline-flex; background: var(--card-2); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
-    .rate .seg button { padding: 9px 13px; font-size: 12.5px; color: var(--dim); border: 0; background: none; }
+    .rate .seg button { padding: 9px 13px; font-size: 12.5px; color: var(--dim); border: 0; background: none; transition: all 0.13s; }
     .rate .seg button.on { background: var(--accent-soft); color: var(--accent); }
     .rate input { width: 88px; }
     .platgrid { display: flex; gap: 16px; flex-wrap: wrap; }
@@ -297,19 +423,24 @@
     .nores { text-align: center; color: var(--faint); padding: 22px; font-size: 13px; }
 
     /* ---------- file manager ---------- */
-    .crumbs { display: flex; flex-wrap: wrap; gap: 2px; align-items: center; margin-bottom: 10px; font-size: 12.5px; color: var(--faint); }
-    .crumbs button { color: var(--accent); font-weight: 650; padding: 4px 7px; border-radius: 8px; max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .crumbs { display: flex; flex-wrap: wrap; gap: 2px; align-items: center; margin-bottom: 11px; font-size: 12.5px; color: var(--faint); }
+    .crumbs button { color: var(--accent); font-weight: 650; padding: 5px 8px; border-radius: 8px; max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; transition: background 0.13s; }
     .crumbs button:hover { background: var(--accent-soft); }
-    .ficon { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 8px; background: var(--card-2); color: var(--dim); flex: none; }
+    .ficon { display: grid; place-items: center; width: 32px; height: 32px; border-radius: 9px; background: var(--card-2); border: 1px solid var(--line); color: var(--dim); flex: none; }
+    .ficon.fold { color: var(--accent); background: var(--accent-soft); border-color: rgba(139, 124, 255, 0.25); }
     .ficon svg { width: 15px; height: 15px; }
     .filebar { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; flex-wrap: wrap; }
-    .filebar .fname { flex: 1; min-width: 130px; font: 12px ui-monospace, Menlo, Consolas, monospace; color: var(--dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .fileedit { width: 100%; min-height: 44dvh; padding: 12px; border-radius: 13px; background: #0a0a10; border: 1px solid var(--line);
-      color: #d7dbea; font: 12px/1.55 ui-monospace, Menlo, Consolas, monospace; outline: none; resize: vertical; }
+    .filebar .fname { flex: 1; min-width: 130px; font: 12px var(--mono); color: var(--dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .fileedit {
+      width: 100%; min-height: 44dvh; padding: 13px 14px; border-radius: 14px;
+      background: #060609; border: 1px solid var(--line-strong);
+      color: #d7dbea; font: 12px/1.6 var(--mono); outline: none; resize: vertical;
+      box-shadow: inset 0 2px 18px rgba(0, 0, 0, 0.5); transition: border-color 0.15s;
+    }
     .fileedit:focus { border-color: var(--accent); }
 
     /* ---------- skeletons / empty / toasts ---------- */
-    .skel { height: 132px; border-radius: var(--radius); margin-bottom: 14px; border: 1px solid var(--line);
+    .skel { height: 138px; border-radius: var(--radius); margin-bottom: 14px; border: 1px solid var(--line);
       background: linear-gradient(100deg, var(--card) 40%, var(--card-2) 50%, var(--card) 60%);
       background-size: 200% 100%; animation: shimmer 1.4s infinite linear; }
     @keyframes shimmer { to { background-position: -200% 0; } }
@@ -320,85 +451,129 @@
     #toasts { position: fixed; left: 0; right: 0; bottom: calc(18px + env(safe-area-inset-bottom)); z-index: 50;
       display: flex; flex-direction: column; align-items: center; gap: 8px; pointer-events: none; }
     .toast {
-      max-width: 86vw; padding: 11px 18px; border-radius: 99px; font-size: 13px; font-weight: 600;
-      background: #1b1b24; color: var(--text); border: 1px solid var(--line-strong);
-      box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5); animation: rise 0.22s ease-out;
+      display: flex; align-items: center; gap: 9px;
+      max-width: 86vw; padding: 12px 19px; border-radius: 99px; font-size: 13px; font-weight: 600;
+      background: rgba(24, 24, 36, 0.92); color: var(--text); border: 1px solid var(--line-strong);
+      backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+      box-shadow: 0 14px 38px rgba(0, 0, 0, 0.55); animation: rise 0.24s var(--ease);
     }
+    .toast::before { content: ''; width: 7px; height: 7px; border-radius: 99px; background: var(--green); flex: none; box-shadow: 0 0 8px rgba(52, 211, 153, 0.7); }
     .toast.bad { border-color: rgba(251, 113, 133, 0.4); color: var(--red); }
-    @keyframes rise { from { opacity: 0; transform: translateY(10px); } }
-    @keyframes pulse { 50% { opacity: 0.35; } }
+    .toast.bad::before { background: var(--red); box-shadow: 0 0 8px rgba(251, 113, 133, 0.7); }
+    @keyframes rise { from { opacity: 0; transform: translateY(12px); } }
+    @keyframes pulse { 50% { opacity: 0.4; } }
 
-    /* ---------- mobile polish ---------- */
+    /* ---------- responsive & motion ---------- */
     @media (max-width: 899px) {
       .card { padding: 15px 15px 16px; }
       .btn { min-height: 46px; }
       #dapp { display: none !important; }
     }
     @media (hover: hover) {
-      .btn:hover, .minibtn:hover, .conbtn:hover { filter: brightness(1.12); }
-      .card { transition: border-color 0.18s ease; }
+      .btn:hover, .minibtn:hover { filter: brightness(1.14); }
+      .card:hover { border-color: var(--line-strong); }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { animation-duration: 0.001s !important; transition-duration: 0.001s !important; }
     }
 
-    /* ============ desktop: a real two-pane control panel ============ */
+    /* ============ desktop: the control deck ============ */
     #dapp { display: none; }
     @media (min-width: 900px) {
-      .shell { max-width: 1320px; padding: 0 26px 24px; }
-      .top { margin: 0 0 18px; padding: calc(14px + env(safe-area-inset-top)) 4px 14px; }
-      .wordmark { font-size: 18px; }
-      .login { max-width: 440px; margin: 0 auto; padding-top: 9vh; }
+      .shell { max-width: 1360px; padding: 0 26px 26px; }
+      .top { margin: 0 0 20px; padding: calc(14px + env(safe-area-inset-top)) 6px 14px; background: transparent; backdrop-filter: none; -webkit-backdrop-filter: none; border-bottom-color: transparent; }
+      .wordmark { font-size: 19px; }
+      .login { max-width: 460px; margin: 0 auto; padding-top: 9vh; }
 
       body.desk #app { display: none; }
       body.desk #dapp { display: flex; }
-      #dapp { gap: 18px; height: calc(100dvh - 92px); align-items: stretch; }
+      #dapp { gap: 18px; height: calc(100dvh - 96px); align-items: stretch; }
 
       /* sidebar */
-      .dside { width: 306px; flex: none; display: flex; flex-direction: column;
-        background: var(--card); border: 1px solid var(--line); border-radius: 20px; overflow: hidden; }
-      .dside-title { padding: 16px 18px 10px; font-size: 11.5px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--faint); }
+      .dside {
+        width: 312px; flex: none; display: flex; flex-direction: column;
+        background: linear-gradient(180deg, rgba(255, 255, 255, 0.02), transparent 30%), var(--card);
+        border: 1px solid var(--line); border-radius: 22px; overflow: hidden; box-shadow: var(--shadow-2);
+      }
+      .dside-title { padding: 18px 19px 10px; font-size: 11px; font-weight: 800; letter-spacing: 0.09em; text-transform: uppercase; color: var(--faint); }
       #dsideList { flex: 1; overflow-y: auto; padding: 0 9px 9px; }
-      .dsrow { display: flex; align-items: center; gap: 12px; padding: 11px 11px; border-radius: 13px; cursor: pointer; margin-bottom: 3px; transition: background 0.14s; }
+      .dsrow {
+        position: relative; display: flex; align-items: center; gap: 12px;
+        padding: 11px 12px; border-radius: 14px; cursor: pointer; margin-bottom: 3px;
+        border: 1px solid transparent; transition: all 0.16s var(--ease);
+      }
       .dsrow:hover { background: var(--card-2); }
-      .dsrow.sel { background: var(--accent-soft); box-shadow: inset 0 0 0 1px rgba(124,108,255,.25); }
-      .dsrow .tile { width: 36px; height: 36px; border-radius: 11px; font-size: 15px; position: relative; }
+      .dsrow.sel { background: var(--accent-soft); border-color: rgba(139, 124, 255, 0.28); }
+      .dsrow.sel::before {
+        content: ''; position: absolute; left: -9px; top: 22%; bottom: 22%; width: 3px; border-radius: 0 4px 4px 0;
+        background: linear-gradient(180deg, var(--accent), var(--accent-2)); box-shadow: 0 0 12px rgba(139, 124, 255, 0.8);
+      }
+      .dsrow .tile { width: 38px; height: 38px; border-radius: 12px; font-size: 16px; position: relative; }
       .dsrow .dsn { font-weight: 650; font-size: 14.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-      .dsrow .dsm { font-size: 11.5px; color: var(--faint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-      .dside-foot { padding: 11px; border-top: 1px solid var(--line); }
-      .dside-foot button { width: 100%; padding: 12px; border-radius: 13px; background: var(--card-2); border: 1px solid var(--line); color: var(--text); font-weight: 650; font-size: 13.5px; }
-      .dside-foot button.sel { background: var(--accent-soft); border-color: rgba(124,108,255,.3); color: var(--accent); }
+      .dsrow .dsm { font-size: 11.5px; color: var(--faint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 1px; }
+      .dside-foot { padding: 12px; border-top: 1px solid var(--line); }
+      .dside-foot button {
+        width: 100%; padding: 13px; border-radius: 14px; font-weight: 700; font-size: 13.5px;
+        background: var(--card-2); border: 1px solid var(--line-strong); color: var(--text);
+        transition: all 0.16s var(--ease);
+      }
+      .dside-foot button:hover { border-color: rgba(139, 124, 255, 0.4); color: var(--accent); background: var(--accent-soft); }
+      .dside-foot button.sel { background: var(--accent-soft); border-color: rgba(139, 124, 255, 0.35); color: var(--accent); }
 
       /* detail pane */
-      .dmain { flex: 1; min-width: 0; background: var(--card); border: 1px solid var(--line); border-radius: 20px; overflow: hidden; display: flex; flex-direction: column; }
-      .dhero { padding: 20px 24px 0; flex: none; }
-      .dhero-row { display: flex; align-items: center; gap: 14px; }
-      .dhero .tile { width: 52px; height: 52px; border-radius: 15px; font-size: 22px; }
-      .dhero h2 { font-size: 21px; font-weight: 780; letter-spacing: -0.02em; }
+      .dmain {
+        flex: 1; min-width: 0; display: flex; flex-direction: column; overflow: hidden;
+        background: linear-gradient(180deg, rgba(255, 255, 255, 0.018), transparent 26%), var(--card);
+        border: 1px solid var(--line); border-radius: 22px; box-shadow: var(--shadow-2);
+      }
+      .dhero { padding: 24px 26px 0; flex: none; position: relative; }
+      .dhero::before {
+        content: ''; position: absolute; inset: 0 0 auto; height: 120px; pointer-events: none;
+        background: radial-gradient(60% 100% at 30% 0%, rgba(139, 124, 255, 0.09), transparent 70%);
+      }
+      .dhero-row { display: flex; align-items: center; gap: 16px; position: relative; }
+      .dhero .tile { width: 56px; height: 56px; border-radius: 17px; font-size: 24px; }
+      .dhero h2 { font-size: 23px; font-weight: 800; letter-spacing: -0.03em; }
       .dhero .dhsub { color: var(--dim); font-size: 13px; margin-top: 3px; }
       .dhero-acts { margin-left: auto; display: flex; gap: 9px; }
-      .dbtn { display: inline-flex; align-items: center; gap: 8px; padding: 11px 18px; border-radius: 12px; font-weight: 700; font-size: 14px; border: 1px solid var(--line-strong); background: var(--card-2); color: var(--text); }
-      .dbtn.start { background: var(--green-soft); border-color: rgba(52,211,153,.4); color: var(--green); }
-      .dbtn.stop { background: var(--red-soft); border-color: rgba(251,113,133,.35); color: var(--red); }
+      .dbtn {
+        display: inline-flex; align-items: center; gap: 8px; padding: 12px 19px; border-radius: 13px;
+        font-weight: 700; font-size: 14px; border: 1px solid var(--line-strong); background: var(--card-2); color: var(--text);
+        transition: all 0.16s var(--ease);
+      }
+      .dbtn:hover { filter: brightness(1.15); transform: translateY(-1px); }
+      .dbtn:active { transform: scale(0.97); }
+      .dbtn.start { background: var(--green-soft); border-color: rgba(52, 211, 153, 0.45); color: var(--green); box-shadow: 0 6px 22px rgba(52, 211, 153, 0.15); }
+      .dbtn.stop { background: var(--red-soft); border-color: rgba(251, 113, 133, 0.4); color: var(--red); }
       .dbtn svg { width: 15px; height: 15px; }
-      .dstats { display: flex; gap: 20px; margin: 16px 0 6px; flex-wrap: wrap; }
-      .dstat { }
-      .dstat .v { font-size: 17px; font-weight: 750; }
-      .dstat .l { font-size: 11.5px; color: var(--faint); }
-      .dtabs { display: flex; gap: 4px; padding: 8px 20px 0; border-bottom: 1px solid var(--line); flex: none; }
-      .dtabs button { padding: 11px 16px; font-size: 13.5px; font-weight: 650; color: var(--dim); border-bottom: 2px solid transparent; margin-bottom: -1px; }
-      .dtabs button.on { color: var(--accent); border-bottom-color: var(--accent); }
-      .dbody { flex: 1; overflow-y: auto; padding: 22px 24px; }
+      .dstats { display: flex; gap: 10px; margin: 18px 0 8px; flex-wrap: wrap; position: relative; }
+      .dstat {
+        min-width: 118px; padding: 11px 14px; border-radius: 14px;
+        background: var(--card-2); border: 1px solid var(--line);
+      }
+      .dstat .v { font-size: 16.5px; font-weight: 780; letter-spacing: -0.01em; }
+      .dstat .l { font-size: 11px; color: var(--faint); font-weight: 650; letter-spacing: 0.04em; text-transform: uppercase; margin-top: 2px; }
+      .dtabs { display: flex; gap: 2px; padding: 10px 22px 0; border-bottom: 1px solid var(--line); flex: none; }
+      .dtabs button {
+        display: inline-flex; align-items: center; gap: 8px;
+        padding: 11px 16px; font-size: 13.5px; font-weight: 650; color: var(--dim);
+        border-bottom: 2px solid transparent; margin-bottom: -1px; transition: color 0.15s;
+      }
+      .dtabs button svg { width: 14px; height: 14px; opacity: 0.85; }
+      .dtabs button:hover { color: var(--text); }
+      .dtabs button.on { color: var(--accent); border-image: linear-gradient(90deg, var(--accent), var(--accent-2)) 1; }
+      .dbody { flex: 1; overflow-y: auto; padding: 24px 26px; }
       .dbody .grouphead:first-child { margin-top: 0; }
-      .dbody .savebar { position: sticky; bottom: -22px; margin: 10px -24px -22px; padding: 14px 24px; background: linear-gradient(transparent, var(--card) 40%); }
+      .dbody .savebar { position: sticky; bottom: -24px; margin: 10px -26px -24px; padding: 14px 26px 18px; background: linear-gradient(transparent, var(--card) 40%); }
       .dwelcome { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; color: var(--faint); text-align: center; padding: 40px; }
-      .dwelcome .halo { width: 74px; height: 74px; margin-bottom: 18px; }
-      .dwelcome .halo img { width: 74px; height: 74px; border-radius: 20px; }
+      .dwelcome .halo { width: 78px; height: 78px; margin-bottom: 20px; }
+      .dwelcome .halo img { width: 78px; height: 78px; border-radius: 22px; }
       .dwelcome b { color: var(--dim); font-size: 16px; display: block; margin-bottom: 6px; }
-      /* store view inside detail reuses the card look */
-      #dmain #dHost, #dmain #dHosting { max-width: 640px; }
-      /* the server control sheet is replaced by inline panels on desktop, but
-         ordering (renderOrder) still opens #sheet — show it as a centered dialog */
-      .sheet { bottom: auto; top: 50%; transform: translateY(-50%); border-radius: 22px;
-        border: 1px solid var(--line-strong); box-shadow: 0 30px 90px rgba(0,0,0,.55);
-        max-height: 84dvh; animation: fade .2s; }
+      #dmain #dHost, #dmain #dHosting { max-width: 660px; }
+      /* ordering still opens #sheet on desktop — show it as a centered dialog */
+      .sheet { bottom: auto; top: 50%; transform: translateY(-50%); border-radius: 24px;
+        border: 1px solid var(--line-strong); box-shadow: 0 34px 100px rgba(0, 0, 0, 0.6);
+        max-height: 86dvh; animation: fade 0.2s; }
     }
   </style>
 </head>
@@ -407,7 +582,7 @@
     <div class="top" id="topbar" hidden>
       <img src="../icon.png" alt="" />
       <div class="wordmark">ELauncher <span>Remote</span></div>
-      <div class="live"><span class="dot"></span>live</div>
+      <div class="live poll" id="livePill" title="Connection to your cloud"><span class="dot"></span><span id="liveTxt">sync</span></div>
       <button class="iconbtn" id="bell" title="Enable notifications" aria-label="Notifications" hidden>
         <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
       </button>
@@ -418,8 +593,8 @@
 
     <div class="login" id="login" hidden>
       <div class="halo"><img src="../icon.png" alt="ELauncher" /></div>
-      <h1>ELauncher <span>Remote</span></h1>
-      <p>Your servers in your pocket — live status, console, and controls through the cloud relay.</p>
+      <h1>Your servers,<br /><span>anywhere</span></h1>
+      <p>Live consoles, one-tap controls, mods, files, and billing for every ELauncher server you run — from any phone or browser.</p>
       <div class="panel">
         <div class="field" id="userField" hidden>
           <label>Username</label>
@@ -493,6 +668,11 @@
       clock: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>',
       chipIc: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><line x1="9" y1="1" x2="9" y2="4"/><line x1="15" y1="1" x2="15" y2="4"/><line x1="9" y1="20" x2="9" y2="23"/><line x1="15" y1="20" x2="15" y2="23"/><line x1="20" y1="9" x2="23" y2="9"/><line x1="20" y1="14" x2="23" y2="14"/><line x1="1" y1="9" x2="4" y2="9"/><line x1="1" y1="14" x2="4" y2="14"/></svg>',
       tag: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>',
+      folder: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>',
+      file: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>',
+      term: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>',
+      puzzle: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19.5 12.5c0-.83.67-1.5 1.5-1.5s1.5-.67 1.5-1.5S21.83 8 21 8h-1V6a2 2 0 0 0-2-2h-2V3c0-.83-.67-1.5-1.5-1.5S13 2.17 13 3s-.67 1.5-1.5 1.5S10 3.83 10 3s-.67-1.5-1.5-1.5S7 2.17 7 3v1H5a2 2 0 0 0-2 2v2H2c-.83 0-1.5.67-1.5 1.5S1.17 11 2 11s1.5.67 1.5 1.5S2.83 14 2 14s-1.5.67-1.5 1.5S1.17 17 2 17h1v2a2 2 0 0 0 2 2h2v1c0 .83.67 1.5 1.5 1.5S10 22.83 10 22s.67-1.5 1.5-1.5 1.5.67 1.5 1.5.67 1.5 1.5 1.5S16 22.83 16 22v-1h2a2 2 0 0 0 2-2v-2h1c.83 0 1.5-.67 1.5-1.5s-.67-1.5-1.5-1.5-1.5-.67-1.5-1.5z"/></svg>',
+      zap: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>',
       sliders: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></svg>',
       x: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>'
     }
@@ -684,15 +864,18 @@
         const state = fresh ? row.state : 'offline'
         const busy = restarting.has(row.server_id)
         const running = state === 'running'
+        const archived = state === 'archived'
         const transit = state === 'starting' || state === 'stopping'
         const stClass = running ? 'on' : transit ? 'warm' : state === 'offline' ? 'dead' : ''
-        const chipText = running ? 'Online' : state === 'starting' ? 'Starting…' : state === 'stopping' ? 'Stopping…' : state === 'offline' ? 'PC offline' : 'Stopped'
+        const chipText = archived ? 'Archived' : running ? 'Online' : state === 'starting' ? 'Starting…' : state === 'stopping' ? 'Stopping…' : state === 'offline' ? 'PC offline' : 'Stopped'
         const players = fresh ? (row.players ?? []) : []
         const line = state === 'offline'
           ? 'Open ELauncher on your PC to reconnect'
-          : running
-            ? (players.length ? `${players.length} playing — ${players.join(', ')}` : 'Online — nobody on yet')
-            : state === 'stopped' ? 'Ready when you are' : 'Working on it…'
+          : archived
+            ? 'In cold storage — the world and files are kept'
+            : running
+              ? (players.length ? `${players.length} playing — ${players.join(', ')}` : 'Online — nobody on yet')
+              : state === 'stopped' ? 'Ready when you are' : 'Working on it…'
 
         const perf = perfOf(row)
         const pills = []
@@ -701,6 +884,7 @@
         if (fresh && row.started_at && running) pills.push(pill(icons.clock, `<b>${fmtUptime(Date.now() - new Date(row.started_at).getTime())}</b>`))
         if (fresh && row.memory_mb != null && running) pills.push(pill(icons.chipIc, `<b>${(row.memory_mb / 1024).toFixed(1)} GB</b>${row.cpu_percent != null ? ` · ${row.cpu_percent}%` : ''}`))
         if (fresh && running) pills.push(pill(icons.users, `<b>${players.length}</b> online`))
+        if (row.community) pills.push(`<span class="pill" style="color:var(--accent);border-color:rgba(139,124,255,.35);background:var(--accent-soft)">${icons.globe}Community</span>`)
         if (row.version) pills.push(pill(icons.tag, esc(row.version)))
 
         const addr = fresh && row.address
@@ -709,17 +893,24 @@
 
         const acts = state === 'offline'
           ? ''
-          : running || transit
-            ? `<div class="acts">
-                <button class="btn stop" onclick="act('${row.server_id}','stop')" ${busy || transit ? 'disabled' : ''}>${icons.stop} Stop</button>
-                <button class="btn" onclick="act('${row.server_id}','restart')" ${busy || transit ? 'disabled' : ''}>${icons.redo} ${busy ? 'Restarting…' : 'Restart'}</button>
-              </div>`
-            : `<div class="acts single">
-                <button class="btn start" onclick="act('${row.server_id}','start')" ${busy ? 'disabled' : ''}>${icons.play} Start server</button>
-              </div>`
+          : archived
+            ? (canManage(row.server_id)
+              ? `<div class="acts">
+                  <button class="btn start" onclick="restoreServer('${row.server_id}')">${icons.play} Restore server</button>
+                  <button class="btn stop" onclick="deleteArchived('${row.server_id}')">Delete</button>
+                </div>`
+              : '')
+            : running || transit
+              ? `<div class="acts">
+                  <button class="btn stop" onclick="act('${row.server_id}','stop')" ${busy || transit ? 'disabled' : ''}>${icons.stop} Stop</button>
+                  <button class="btn" onclick="act('${row.server_id}','restart')" ${busy || transit ? 'disabled' : ''}>${icons.redo} ${busy ? 'Restarting…' : 'Restart'}</button>
+                </div>`
+              : `<div class="acts single">
+                  <button class="btn start" onclick="act('${row.server_id}','start')" ${busy ? 'disabled' : ''}>${icons.play} Start server</button>
+                </div>`
 
-        const manage = state === 'offline' ? '' :
-          `<button class="conbtn" onclick="openSheet('${row.server_id}')">${icons.sliders} Open control panel</button>`
+        const manage = state === 'offline' || archived ? '' :
+          `<button class="btn manage" onclick="openSheet('${row.server_id}')">${icons.sliders} Open control panel</button>`
 
         return `<div class="card${state === 'offline' ? ' offline' : ''}">
           <div class="head">
@@ -762,6 +953,21 @@
       sheetInfo = { game, kind, minecraftVersion: '1.21.1', port: 25565, automation: {} }
       renderSettings($('servers'), props)
     }
+    // design/debug: open the control panel for a mock server (tabs render; relay calls fail offline)
+    window.__previewSheet = (row, info) => {
+      window.__renderPreview([row])
+      rowsById.set(row.server_id, row)
+      ownerOf.set(row.server_id, me) // previews act as the owner so owner-only controls render
+      sheetId = row.server_id; sheetInfo = info; sheetTab = 'console'; dirty = {}; filesRel = ''; fileView = null
+      infoCache.set(row.server_id, info)
+      if (DESK()) {
+        document.body.classList.add('desk')
+        $('dapp').hidden = false
+        deskSel = row.server_id
+        renderDeskList([row])
+      }
+      renderTab()
+    }
 
     // ---------- control-panel sheet (settings, players, automation over the relay) ----------
     const rowsById = new Map()
@@ -769,22 +975,53 @@
     const DESK = () => matchMedia('(min-width:900px)').matches
     let deskSel = null // selected server id, or 'store', on desktop
 
-    // two-way request: queue it, wait for the launcher to answer
+    // two-way request: queue it, wait for the launcher to answer. Realtime settles
+    // it the moment the PC replies; the poll only backstops clouds without realtime.
+    const pendingReqs = new Map() // request id -> { resolve, reject }
+    function settleRequest(row) {
+      if (!row?.done) return
+      const p = pendingReqs.get(row.id)
+      if (!p) return
+      pendingReqs.delete(row.id)
+      if (row.error) p.reject(new Error(row.error))
+      else p.resolve(row.response)
+    }
     async function request(serverId, action, params = {}, timeoutMs = 22000) {
+      // design/debug hook (same family as __renderPreview): lets every tab render offline
+      if (window.__mockRelay && action in window.__mockRelay) {
+        const mock = window.__mockRelay[action]
+        return typeof mock === 'function' ? mock(params) : structuredClone(mock)
+      }
       const ownerId = ownerOf.get(serverId) ?? me
       const { data, error } = await supabase.from('server_requests')
         .insert({ server_id: serverId, owner_id: ownerId, requester_id: me, action, params }).select('id').single()
       if (error) throw new Error(error.message)
-      const until = Date.now() + timeoutMs
-      while (Date.now() < until) {
-        await new Promise((r) => setTimeout(r, 1200))
-        const { data: row } = await supabase.from('server_requests').select('done,response,error').eq('id', data.id).maybeSingle()
-        if (row?.done) {
-          if (row.error) throw new Error(row.error)
-          return row.response
+      return await new Promise((resolve, reject) => {
+        pendingReqs.set(data.id, { resolve, reject })
+        const poll = async () => {
+          if (!pendingReqs.has(data.id)) return
+          const { data: row } = await supabase.from('server_requests').select('id,done,response,error').eq('id', data.id).maybeSingle()
+          if (row?.done) return settleRequest(row)
+          setTimeout(poll, rtLive ? 3000 : 1100)
         }
+        setTimeout(poll, rtLive ? 2600 : 900)
+        setTimeout(() => {
+          if (pendingReqs.delete(data.id)) reject(new Error('The PC did not answer — is the launcher running?'))
+        }, timeoutMs)
+      })
+    }
+
+    // per-server info cache: reopening a control panel is instant; freshness heals in the background
+    const infoCache = new Map()
+    async function loadInfo(serverId) {
+      const cached = infoCache.get(serverId)
+      if (cached) {
+        void request(serverId, 'info').then((i) => infoCache.set(serverId, i)).catch(() => {})
+        return cached
       }
-      throw new Error('The PC did not answer — is the launcher running?')
+      const info = await request(serverId, 'info')
+      infoCache.set(serverId, info)
+      return info
     }
 
     // ---------- settings knowledge base (labels, explanations, groups) ----------
@@ -888,24 +1125,30 @@
       ['Network & performance', '🌐', /port|server-ip|network|rate-limit|tick|entity-broadcast|sync-chunk|native|compression|status/i]
     ]
     const isPal = () => sheetInfo?.game === 'palworld'
+    /** Destructive lifecycle controls (archive/delete/restore) are owner-or-admin only; the host enforces this too. */
+    const canManage = (serverId) => isAdmin || ownerOf.get(serverId) === me
     const boolTrue = (v) => /^true$/i.test(v)
     const boolStr = (on) => (isPal() ? (on ? 'True' : 'False') : (on ? 'true' : 'false'))
 
     window.openSheet = async (serverId) => {
-      sheetId = serverId; sheetTab = 'console'; dirty = {}; sheetInfo = null
+      sheetId = serverId; sheetTab = 'console'; dirty = {}; sheetInfo = null; filesRel = ''; fileView = null
       paintSheet('<div class="loadrow">Loading control panel…</div>')
-      try { sheetInfo = await request(serverId, 'info') } catch (e) { toast(e.message, true); return closeSheet() }
+      try { sheetInfo = await loadInfo(serverId) } catch (e) { toast(e.message, true); return closeSheet() }
       renderTab()
     }
     window.closeSheet = () => { sheetId = null; $('sheet').innerHTML = '' }
-    window.sheetGo = (tab) => { if (Object.keys(dirty).length && !confirm('Discard unsaved changes?')) return; sheetTab = tab; dirty = {}; renderTab() }
+    window.sheetGo = (tab) => { if (Object.keys(dirty).length && !confirm('Discard unsaved changes?')) return; sheetTab = tab; dirty = {}; fileView = null; renderTab() }
     window.setDirty = (k, v) => { dirty[k] = v }
 
-    const isModdable = () => sheetInfo && sheetInfo.game === 'minecraft' && ['fabric', 'forge', 'neoforge'].includes(sheetInfo.kind)
+    const isModdable = () => sheetInfo && sheetInfo.game === 'minecraft' && ['paper', 'fabric', 'forge', 'neoforge'].includes(sheetInfo.kind)
+    const tabList = () => ['console', 'settings', 'players', ...(isModdable() ? ['mods'] : []), 'files', 'automation']
+    const tabLabels = () => ({ console: 'Console', settings: 'Settings', players: 'Players', mods: sheetInfo?.kind === 'paper' ? 'Plugins' : 'Mods', files: 'Files', automation: 'Automation' })
+    const tabIcons = () => ({ console: icons.term, settings: icons.sliders, players: icons.users, mods: icons.puzzle, files: icons.folder, automation: icons.zap })
     function paintSheet(bodyHtml) {
       const row = rowsById.get(sheetId) || {}
-      const tabs = ['console', 'settings', 'players', ...(isModdable() ? ['mods'] : []), 'automation']
-      const label = { console: 'Console', settings: 'Settings', players: 'Players', mods: 'Mods', automation: 'Automation' }
+      const tabs = tabList()
+      const label = tabLabels()
+      const tico = tabIcons()
       $('sheet').innerHTML = `<div class="sheet-bg" onclick="closeSheet()"></div>
         <div class="sheet">
           <div class="sheet-grip"></div>
@@ -915,7 +1158,7 @@
               <div class="sub">${sheetInfo ? (isPal() ? 'Palworld' : 'Minecraft ' + esc(sheetInfo.minecraftVersion || '')) + ' · port ' + sheetInfo.port : ''}</div></div>
             <button class="iconbtn" onclick="closeSheet()">${icons.x}</button>
           </div>
-          <div class="sheet-tabs">${tabs.map((t) => `<button class="${t === sheetTab ? 'on' : ''}" onclick="sheetGo('${t}')">${label[t]}</button>`).join('')}</div>
+          <div class="sheet-tabs">${tabs.map((t) => `<button class="${t === sheetTab ? 'on' : ''}" onclick="sheetGo('${t}')">${tico[t]}<span>${label[t]}</span></button>`).join('')}</div>
           <div class="sheet-body" id="sheetBody">${bodyHtml}</div>
         </div>`
     }
@@ -928,6 +1171,7 @@
         if (sheetTab === 'settings') return renderSettings(body, await request(sheetId, 'getProps'))
         if (sheetTab === 'players') return isPal() ? renderPalPlayers(body, await request(sheetId, 'players')) : renderMcPlayers(body)
         if (sheetTab === 'mods') return renderMods(body, await request(sheetId, 'mods'))
+        if (sheetTab === 'files') return renderFiles(body)
         if (sheetTab === 'automation') return renderAutomation(body, sheetInfo.automation || {})
       } catch (e) {
         body.innerHTML = `<div class="loadrow" style="color:var(--red)">${esc(e.message)}</div>`
@@ -942,14 +1186,25 @@
     function renderConsole(body) {
       const row = rowsById.get(sheetId) || {}
       const running = row.state === 'running'
-      body.innerHTML = `<div class="console open" style="max-height:46dvh">${esc(row.console || 'No output yet.')}</div>
-        <div class="cmdrow open" style="margin-top:10px">
-          <input id="sheetCmd" placeholder="${running ? 'say hi · save · kick <id>' : 'start the server to send commands'}" ${running ? '' : 'disabled'}
-            onkeydown="if(event.key==='Enter')sendCmd('${sheetId}','sheetCmd')" />
-          <button onclick="sendCmd('${sheetId}','sheetCmd')" ${running ? '' : 'disabled'}>${icons.send}</button>
+      const quick = isPal() ? ['save', 'players', 'say Welcome!'] : ['list', 'say Welcome!', 'time set day', 'weather clear']
+      body.innerHTML = `<div class="con-wrap">
+          <div class="con-head"><span class="cdot ${running ? 'on' : ''}"></span>Server console<span style="margin-left:auto">${running ? 'streaming' : 'offline'}</span></div>
+          <div class="console open">${esc(row.console || 'No output yet.')}</div>
         </div>
-        <div class="frow" style="margin-top:8px"><div class="hint2">The console refreshes every few seconds while this panel is open.</div></div>`
+        <div class="cmdrow open" style="margin-top:10px">
+          <input id="sheetCmd" placeholder="${running ? 'Type a command…' : 'start the server to send commands'}" ${running ? '' : 'disabled'}
+            onkeydown="if(event.key==='Enter')sendCmd('${sheetId}','sheetCmd')" />
+          <button onclick="sendCmd('${sheetId}','sheetCmd')" ${running ? '' : 'disabled'} aria-label="Send command">${icons.send}</button>
+        </div>
+        ${running ? `<div class="qchips">${quick.map((q) => `<button onclick="qcmd(this.textContent)">${esc(q)}</button>`).join('')}</div>` : ''}
+        <div class="frow" style="margin-top:10px"><div class="hint2">The console updates live while this panel is open.</div></div>`
       const con = body.querySelector('.console'); if (con) con.scrollTop = con.scrollHeight
+    }
+    window.qcmd = (cmd) => {
+      const input = $('sheetCmd')
+      if (!input) return
+      input.value = cmd
+      input.focus()
     }
 
     const trimNum = (v) => { const n = Number(v); return Number.isFinite(n) ? String(n) : v }
@@ -989,6 +1244,13 @@
       const label = forcedLabel || labelFor(key)
       const hint = HINTS[key] ? `<div class="h">${esc(HINTS[key])}</div>` : ''
       const dk = esc((key + ' ' + label + ' ' + (HINTS[key] || '')).toLowerCase())
+      // plan-locked player slots: hosted customers see the cap, not an editor
+      const planMax = sheetInfo?.limits?.maxPlayers
+      if (planMax && !sheetInfo?.owner && (key === 'ServerPlayerMaxNum' || key === 'max-players')) {
+        return `<div class="setrow" data-k="${dk}"><label>${label}</label>
+          <input value="${planMax}" disabled style="opacity:.55;cursor:not-allowed">
+          <div class="h">🔒 Your plan includes <b>${planMax} player slots</b>. Upgrade your plan to change this.</div></div>`
+      }
       if (/^(true|false)$/i.test(value)) {
         return `<div class="setrow check" data-k="${dk}"><input type="checkbox" ${boolTrue(value) ? 'checked' : ''}
           onchange="setDirty('${key}',this.checked?'${boolStr(true)}':'${boolStr(false)}')"><div><label>${label}</label>${hint}</div></div>`
@@ -1023,7 +1285,7 @@
         </div>`
       }).join('')
 
-      const danger = isPal() ? '' : `<div class="grouphead" style="color:var(--red);margin-top:24px">Change loader &amp; version</div>
+      const rebuildZone = isPal() ? '' : `<div class="grouphead" style="color:var(--red);margin-top:24px">Change loader &amp; version</div>
         <div class="dangerzone">
           <div class="hint2" style="color:var(--red);margin-bottom:10px">⚠ Rebuilding wipes the world, mods, and every file on this server, then reinstalls it fresh. There is no undo.</div>
           <div class="grid2">
@@ -1032,9 +1294,35 @@
           </div>
           <button class="minibtn red" onclick="rebuildServer()">Rebuild server — delete all files</button>
         </div>`
+      // archive/delete are owner-or-admin only (the host enforces it server-side too);
+      // no sheetId means a design preview, which renders as the owner
+      const showLifecycle = !sheetId || canManage(sheetId)
+      const lifecycleZones = `<div class="grouphead" style="color:var(--amber);margin-top:24px">Archive this server</div>
+        <div class="dangerzone" style="border-color:rgba(251,191,36,.35);background:rgba(251,191,36,.05)">
+          <div class="hint2" style="margin-bottom:10px">Stops the server and puts it in cold storage on the host. The world and every file are kept, and it can be restored any time — use this when a customer stops paying. Anyone it was shared with loses panel access until you share it again.</div>
+          <button class="minibtn" style="border-color:rgba(251,191,36,.45);color:var(--amber)" onclick="archiveServer()">Archive server</button>
+        </div>
+        <div class="grouphead" style="color:var(--red);margin-top:24px">Delete this server</div>
+        <div class="dangerzone">
+          <div class="hint2" style="color:var(--red);margin-bottom:10px">⚠ Deleting stops the server and removes it from the host — the world and every file go with it. There is no undo.</div>
+          <button class="minibtn red" onclick="deleteServer()">Delete server permanently</button>
+        </div>`
+      const danger = `${rebuildZone}${showLifecycle ? lifecycleZones : ''}`
+
+      // palworld visibility: -publiclobby is a launch flag on the record, not an ini
+      // setting, so it gets its own always-open block above the ini essentials
+      const community = isPal() ? `<div class="setgroup open" style="margin-bottom:16px">
+          <div class="gh" style="cursor:default"><span class="gi">🌐</span>Community server browser<span class="cnt">${sheetInfo.communityServer ? 'Listed' : 'Private'}</span></div>
+          <div class="body"><div class="setrow check">
+            <input type="checkbox" id="cm-toggle" ${sheetInfo.communityServer ? 'checked' : ''} onchange="setCommunity(this.checked)">
+            <div><label for="cm-toggle">List this server in Palworld's official community browser</label>
+            <div class="h">Players can find and join it from the in-game server list — no address needed. The host announces its public address automatically; make sure UDP port ${sheetInfo.port} is reachable. Applies on the next restart.</div></div>
+          </div></div>
+        </div>` : ''
 
       body.innerHTML = `
         <div class="set-hero"><h3>${isPal() ? 'Palworld' : 'Minecraft'} settings</h3><p>The essentials are up top; every other option is grouped below with a plain-English note. Changes apply on the next server restart.</p></div>
+        ${community}
         <div class="essgrid">${essHtml}</div>
         <div class="grouphead" style="margin-top:22px">Advanced settings</div>
         <div class="searchbar">${icons.chipIc}<input placeholder="Search every setting…" oninput="filterSettings(this.value)"></div>
@@ -1066,6 +1354,17 @@
       try { await request(sheetId, 'setProps', { updates: dirty }); dirty = {}; toast('Saved — applies on next restart') }
       catch (e) { toast(e.message, true) }
     }
+    window.setCommunity = async (on) => {
+      try {
+        await request(sheetId, 'setCommunity', { on })
+        sheetInfo.communityServer = on
+        infoCache.set(sheetId, { ...sheetInfo })
+        toast(on ? 'Community listing on — applies on the next restart' : 'Community listing off — applies on the next restart')
+      } catch (e) {
+        toast(e.message, true)
+      }
+      renderTab()
+    }
     window.rebuildServer = async () => {
       const loader = $('rbLoader').value, version = $('rbVersion').value
       const name = (rowsById.get(sheetId) || {}).name || 'this server'
@@ -1074,7 +1373,68 @@
       toast('Rebuilding — this downloads a fresh server, give it a few minutes')
       try {
         await request(sheetId, 'rebuild', { loader, version }, 60000)
-        sheetInfo = null; toast('Server rebuilt — it is starting fresh'); renderTab()
+        infoCache.delete(sheetId); sheetInfo = null; toast('Server rebuilt — it is starting fresh'); renderTab()
+      } catch (e) { toast(e.message, true) }
+    }
+    window.deleteServer = async () => {
+      const id = sheetId
+      const name = (rowsById.get(id) || {}).name || 'this server'
+      if (!confirm(`Delete "${name}"?\n\nThis stops the server and permanently deletes its world and every file from the host. There is no undo.`)) return
+      if (prompt('This permanently deletes the server and all of its files. Type DELETE to confirm.') !== 'DELETE') return toast('Delete cancelled')
+      toast('Deleting the server — stopping it first can take a minute')
+      try {
+        await request(id, 'delete', {}, 90000) // a graceful stop alone can take up to a minute
+        infoCache.delete(id); rowsById.delete(id); ownerOf.delete(id)
+        sheetInfo = null; dirty = {}
+        closeSheet()
+        schedulePaint()
+        toast('Server deleted')
+        void refresh()
+      } catch (e) { toast(e.message, true) }
+    }
+    window.archiveServer = async () => {
+      const id = sheetId
+      const name = (rowsById.get(id) || {}).name || 'this server'
+      if (!confirm(`Archive "${name}"?\n\nThis stops the server and takes it offline. The world and every file are kept, and you can restore it any time. Anyone it was shared with loses panel access.`)) return
+      toast('Archiving — stopping the server first can take a minute')
+      try {
+        await request(id, 'archive', {}, 90000)
+        infoCache.delete(id); sheetInfo = null; dirty = {}
+        const row = rowsById.get(id)
+        if (row) { row.state = 'archived'; row.updated_at = new Date().toISOString() }
+        closeSheet()
+        schedulePaint()
+        if (DESK()) deskSelect(id) // swap the stale settings pane for the archived view
+        toast('Server archived — restore it from its card any time')
+        void refresh()
+      } catch (e) { toast(e.message, true) }
+    }
+    window.restoreServer = async (id) => {
+      const name = (rowsById.get(id) || {}).name || 'this server'
+      if (!confirm(`Restore "${name}" from the archive?\n\nIt returns to the server list stopped, ready to start. Re-share it to give a customer access again.`)) return
+      toast('Restoring the server…')
+      try {
+        await request(id, 'restore', {}, 60000)
+        const row = rowsById.get(id)
+        if (row) { row.state = 'stopped'; row.updated_at = new Date().toISOString() }
+        schedulePaint()
+        if (DESK() && deskSel === id) deskSelect(id) // bring the control-panel tabs back
+        toast('Server restored')
+        refreshSoon(); void refresh()
+      } catch (e) { toast(e.message, true) }
+    }
+    window.deleteArchived = async (id) => {
+      const name = (rowsById.get(id) || {}).name || 'this server'
+      if (!confirm(`Delete the archived server "${name}" permanently?\n\nThis destroys the stored world and files. There is no undo.`)) return
+      if (prompt('This permanently deletes the archived server. Type DELETE to confirm.') !== 'DELETE') return toast('Delete cancelled')
+      toast('Deleting the archive…')
+      try {
+        await request(id, 'delete', {}, 60000)
+        rowsById.delete(id); ownerOf.delete(id); infoCache.delete(id)
+        if (deskSel === id) deskSel = null
+        schedulePaint()
+        toast('Server deleted')
+        void refresh()
       } catch (e) { toast(e.message, true) }
     }
 
@@ -1082,6 +1442,7 @@
       const list = players || []
       body.innerHTML = `<div class="grouphead">Online now (${list.length})</div>
         <div class="plister">${list.length ? list.map((p) => `<div class="prow">
+          <span class="avatar" style="background:${gradOf(p.name)}">${esc((p.name || '?').charAt(0).toUpperCase())}</span>
           <div style="flex:1;min-width:0"><div class="pn">${esc(p.name)}</div><div class="pm">lvl ${p.level ?? '?'} · ${esc(p.userId || 'no id')}</div></div>
           <button class="minibtn" onclick="palMod('kick','${esc(p.userId || '')}','${esc(p.name)}')">Kick</button>
           <button class="minibtn red" onclick="palMod('ban','${esc(p.userId || '')}','${esc(p.name)}')">Ban</button>
@@ -1110,7 +1471,9 @@
       const row = rowsById.get(sheetId) || {}
       const online = (row.players || [])
       body.innerHTML = `<div class="grouphead">Online now (${online.length})</div>
-        <div class="plister">${online.length ? online.map((n) => `<div class="prow"><div class="pn" style="flex:1">${esc(n)}</div>
+        <div class="plister">${online.length ? online.map((n) => `<div class="prow">
+          <span class="avatar" style="background:${gradOf(n)}">${esc(n.charAt(0).toUpperCase())}</span>
+          <div class="pn" style="flex:1;min-width:0">${esc(n)}</div>
           <button class="minibtn" onclick="mcCmd('kick ${esc(n)}')">Kick</button>
           <button class="minibtn" onclick="mcCmd('op ${esc(n)}')">Op</button>
           <button class="minibtn red" onclick="mcCmd('ban ${esc(n)}')">Ban</button></div>`).join('') : '<div class="loadrow">Nobody online.</div>'}</div>
@@ -1123,15 +1486,18 @@
       try { await queue(sheetId, 'command', cmd); toast('Command sent') } catch (e) { toast(e.message, true) }
     }
 
+    // paper servers install Bukkit-family plugins; modded servers install loader mods
+    const modNoun = () => (sheetInfo?.kind === 'paper' ? 'plugin' : 'mod')
     function renderMods(body, installed) {
       const list = installed || []
+      const noun = modNoun()
       body.innerHTML = `<div class="grouphead">Installed (${list.length})</div>
         <div class="plister" id="modInstalled">${list.length ? list.map((m) => `<div class="prow">
           ${m.iconUrl ? `<img src="${esc(m.iconUrl)}" style="width:30px;height:30px;border-radius:7px">` : ''}
           <div style="flex:1;min-width:0"><div class="pn">${esc(m.title || m.fileName)}</div><div class="pm">${esc(m.versionNumber || m.fileName)}</div></div>
-          <button class="minibtn red" onclick="removeMod('${esc(m.fileName)}')">Remove</button></div>`).join('') : '<div class="loadrow">No mods yet — search below.</div>'}</div>
-        <div class="grouphead">Add mods · ${esc(sheetInfo.kind)} ${esc(sheetInfo.minecraftVersion || '')}</div>
-        <div class="searchbar">${icons.chipIc}<input placeholder="Search Modrinth mods…" oninput="modSearch(this.value)"></div>
+          <button class="minibtn red" onclick="removeMod('${esc(m.fileName)}')">Remove</button></div>`).join('') : `<div class="loadrow">No ${noun}s yet — search below.</div>`}</div>
+        <div class="grouphead">Add ${noun}s · ${esc(sheetInfo.kind)} ${esc(sheetInfo.minecraftVersion || '')}</div>
+        <div class="searchbar">${icons.chipIc}<input placeholder="Search Modrinth ${noun}s…" oninput="modSearch(this.value)"></div>
         <div id="modResults" class="plister"><div class="loadrow">Type to search.</div></div>`
     }
     window.modSearch = async (q) => {
@@ -1139,21 +1505,90 @@
       if (!q.trim()) { box.innerHTML = '<div class="loadrow">Type to search.</div>'; return }
       box.innerHTML = '<div class="loadrow">Searching…</div>'
       try {
-        const hits = await modrinthSearch(q, 'mod', sheetInfo.minecraftVersion, sheetInfo.kind)
+        const hits = await modrinthSearch(q, modNoun() === 'plugin' ? 'plugin' : 'mod', sheetInfo.minecraftVersion, sheetInfo.kind)
         box.innerHTML = hits.map((h) => `<div class="prow">
           ${h.icon_url ? `<img src="${esc(h.icon_url)}" style="width:30px;height:30px;border-radius:7px">` : ''}
           <div style="flex:1;min-width:0"><div class="pn">${esc(h.title)}</div><div class="pm">${(h.downloads || 0).toLocaleString()} downloads</div></div>
-          <button class="minibtn" onclick="installMod('${h.project_id}', this)">Install</button></div>`).join('') || '<div class="loadrow">No mods found.</div>'
+          <button class="minibtn" onclick="installMod('${h.project_id}', this)">Install</button></div>`).join('') || `<div class="loadrow">No ${modNoun()}s found.</div>`
       } catch { box.innerHTML = '<div class="loadrow" style="color:var(--red)">Search failed.</div>' }
     }
     window.installMod = async (projectId, btn) => {
       if (btn) { btn.disabled = true; btn.textContent = 'Installing…' }
-      try { await request(sheetId, 'installMod', { projectId }, 40000); toast('Mod installed — restart to apply'); renderTab() }
+      try { await request(sheetId, 'installMod', { projectId }, 40000); toast('Installed — restart the server to apply'); renderTab() }
       catch (e) { toast(e.message, true); if (btn) { btn.disabled = false; btn.textContent = 'Install' } }
     }
     window.removeMod = async (fileName) => {
-      if (!confirm('Remove this mod?')) return
+      if (!confirm(`Remove this ${modNoun()}?`)) return
       try { await request(sheetId, 'removeMod', { fileName }); toast('Removed'); renderTab() } catch (e) { toast(e.message, true) }
+    }
+
+    // ---------- files tab (browse, view, edit over the relay) ----------
+    let filesRel = ''
+    let fileView = null // { rel, content } while a file is open in the editor
+    const fmtBytes = (n) => (n >= 1048576 ? (n / 1048576).toFixed(1) + ' MB' : n >= 1024 ? (n / 1024).toFixed(0) + ' KB' : n + ' B')
+
+    async function renderFiles(body) {
+      if (fileView) return renderFileEditor(body)
+      const entries = (await request(sheetId, 'files', { path: filesRel })) || []
+      window.__fileEntries = entries
+      const segs = filesRel ? filesRel.split('/') : []
+      window.__crumbRels = segs.map((_, i) => segs.slice(0, i + 1).join('/'))
+      const crumbs = `<div class="crumbs"><button onclick="fileCrumb(-1)">${esc((rowsById.get(sheetId) || {}).name || 'server')}</button>` +
+        segs.map((s, i) => `<span>›</span><button onclick="fileCrumb(${i})">${esc(s)}</button>`).join('') + `</div>`
+      body.innerHTML = crumbs + `<div class="plister">${entries.length ? entries.map((e, i) => `
+        <div class="prow" style="cursor:pointer" onclick="fileTap(${i})">
+          <span class="ficon${e.isDir ? ' fold' : ''}">${e.isDir ? icons.folder : icons.file}</span>
+          <div style="flex:1;min-width:0"><div class="pn">${esc(e.name)}</div>
+            <div class="pm">${e.isDir ? 'Folder' : fmtBytes(e.sizeBytes)} · ${new Date(e.modifiedAt).toLocaleString()}</div></div>
+          ${e.isDir ? icons.chev : ''}
+        </div>`).join('') : '<div class="loadrow">Empty folder.</div>'}</div>
+        <div class="frow" style="margin-top:8px"><div class="hint2">Tap a text file to view or edit it — configs, logs, whitelists. Binary files (worlds, jars) can't be opened here.</div></div>`
+    }
+    window.fileCrumb = (i) => { filesRel = i < 0 ? '' : window.__crumbRels[i]; fileView = null; renderTab() }
+    window.fileTap = async (i) => {
+      const e = window.__fileEntries?.[i]
+      if (!e) return
+      const rel = filesRel ? `${filesRel}/${e.name}` : e.name
+      if (e.isDir) { filesRel = rel; return renderTab() }
+      const body = $('dbody') || $('sheetBody')
+      if (body) body.innerHTML = '<div class="loadrow">Opening…</div>'
+      try {
+        const res = await request(sheetId, 'readFile', { path: rel })
+        fileView = { rel, content: res?.content ?? '' }
+      } catch (err) {
+        toast(err.message, true)
+        fileView = null
+      }
+      renderTab()
+    }
+    function renderFileEditor(body) {
+      body.innerHTML = `
+        <div class="filebar">
+          <button class="minibtn" onclick="fileBack()">← Back</button>
+          <div class="fname">${esc(fileView.rel)}</div>
+          <button class="minibtn" onclick="fileDownload()">Download</button>
+          <button class="minibtn red" onclick="fileDelete()">Delete</button>
+        </div>
+        <textarea id="fileText" class="fileedit" spellcheck="false">${esc(fileView.content)}</textarea>
+        <div class="savebar"><button class="cta" onclick="fileSave()">Save file</button></div>`
+    }
+    window.fileBack = () => { fileView = null; renderTab() }
+    window.fileSave = async () => {
+      try { await request(sheetId, 'writeFile', { path: fileView.rel, content: $('fileText').value }); toast('Saved') }
+      catch (e) { toast(e.message, true) }
+    }
+    window.fileDownload = () => {
+      const blob = new Blob([$('fileText').value], { type: 'text/plain' })
+      const a = document.createElement('a')
+      a.href = URL.createObjectURL(blob)
+      a.download = fileView.rel.split('/').pop()
+      a.click()
+      URL.revokeObjectURL(a.href)
+    }
+    window.fileDelete = async () => {
+      if (!confirm(`Delete ${fileView.rel}? This cannot be undone.`)) return
+      try { await request(sheetId, 'deleteFile', { path: fileView.rel }); toast('Deleted'); window.fileBack() }
+      catch (e) { toast(e.message, true) }
     }
 
     function autoRow(html) { return `<div class="frow">${html}</div>` }
@@ -1207,24 +1642,30 @@
     window.deskSelect = (id) => {
       if (Object.keys(dirty).length && !confirm('Discard unsaved changes?')) return
       deskSel = id; dirty = {}
-      if (id !== 'store') { sheetId = id; sheetInfo = null; sheetTab = 'console' }
+      if (id !== 'store') { sheetId = id; sheetInfo = null; sheetTab = 'console'; filesRel = ''; fileView = null }
       renderDeskList([...rowsById.values()])
       deskRenderDetail()
     }
     window.deskTabGo = (tab) => {
       if (Object.keys(dirty).length && !confirm('Discard unsaved changes?')) return
-      sheetTab = tab; dirty = {}
+      sheetTab = tab; dirty = {}; fileView = null
       document.querySelectorAll('.dtabs button').forEach((b) => b.classList.toggle('on', b.dataset.t === tab))
       const body = $('dbody'); if (body) runTab(body)
     }
     function deskHero(row) {
       const fresh = Date.now() - new Date(row.updated_at).getTime() < HEARTBEAT_MS * 4
       const running = fresh && row.state === 'running'
+      const archived = fresh && row.state === 'archived'
       const transit = fresh && (row.state === 'starting' || row.state === 'stopping')
-      const power = running || transit
-        ? `<button class="dbtn stop" onclick="act('${row.server_id}','stop')" ${transit ? 'disabled' : ''}>${icons.stop} Stop</button>
-           <button class="dbtn" onclick="act('${row.server_id}','restart')" ${transit ? 'disabled' : ''}>${icons.redo} Restart</button>`
-        : `<button class="dbtn start" onclick="act('${row.server_id}','start')">${icons.play} Start</button>`
+      const power = archived
+        ? (canManage(row.server_id)
+          ? `<button class="dbtn start" onclick="restoreServer('${row.server_id}')">${icons.play} Restore</button>
+             <button class="dbtn stop" onclick="deleteArchived('${row.server_id}')">Delete</button>`
+          : '')
+        : running || transit
+          ? `<button class="dbtn stop" onclick="act('${row.server_id}','stop')" ${transit ? 'disabled' : ''}>${icons.stop} Stop</button>
+             <button class="dbtn" onclick="act('${row.server_id}','restart')" ${transit ? 'disabled' : ''}>${icons.redo} Restart</button>`
+          : `<button class="dbtn start" onclick="act('${row.server_id}','start')">${icons.play} Start</button>`
       const perf = perfOf(row)
       const stats = []
       if (perf) stats.push(`<div class="dstat"><div class="v" style="color:${perf[2]}">${perf[1]}</div><div class="l">Performance</div></div>`)
@@ -1232,8 +1673,8 @@
       if (running && row.memory_mb != null) stats.push(`<div class="dstat"><div class="v">${(row.memory_mb / 1024).toFixed(1)} GB</div><div class="l">Memory${row.cpu_percent != null ? ` · ${row.cpu_percent}% CPU` : ''}</div></div>`)
       stats.push(`<div class="dstat"><div class="v">${running ? (row.players?.length || 0) : '—'}</div><div class="l">Players</div></div>`)
       if (fresh && row.address) stats.push(`<div class="dstat"><div class="v" style="font-family:ui-monospace,Consolas,monospace;font-size:14px;cursor:pointer" onclick="copyAddr('${esc(row.address)}')">${esc(row.address)}</div><div class="l">Public address · copy</div></div>`)
-      const label = running ? 'Online' : transit ? (row.state === 'starting' ? 'Starting…' : 'Stopping…') : !fresh ? 'PC offline' : 'Stopped'
-      const chip = `<span class="chip ${stClassOf(row)}">${label}</span>`
+      const label = archived ? 'Archived' : running ? 'Online' : transit ? (row.state === 'starting' ? 'Starting…' : 'Stopping…') : !fresh ? 'PC offline' : 'Stopped'
+      const chip = `<span class="chip ${stClassOf(row)}">${label}</span>${row.community ? '<span class="chip acc">Community</span>' : ''}`
       return `<div class="dhero"><div class="dhero-row">
         <span class="tile" style="background:${gradOf(row.server_id)}">${esc((row.name || '?').charAt(0).toUpperCase())}</span>
         <div style="min-width:0"><div class="row" style="gap:10px"><h2>${esc(row.name || 'Server')}</h2>${chip}</div>
@@ -1242,9 +1683,10 @@
         <div class="dstats">${stats.join('')}</div></div>`
     }
     function deskTabsBar() {
-      const tabs = ['console', 'settings', 'players', ...(isModdable() ? ['mods'] : []), 'automation']
-      const label = { console: 'Console', settings: 'Settings', players: 'Players', mods: 'Mods', automation: 'Automation' }
-      return `<div class="dtabs">${tabs.map((t) => `<button data-t="${t}" class="${t === sheetTab ? 'on' : ''}" onclick="deskTabGo('${t}')">${label[t]}</button>`).join('')}</div>`
+      const tabs = tabList()
+      const label = tabLabels()
+      const tico = tabIcons()
+      return `<div class="dtabs">${tabs.map((t) => `<button data-t="${t}" class="${t === sheetTab ? 'on' : ''}" onclick="deskTabGo('${t}')">${tico[t]}<span>${label[t]}</span></button>`).join('')}</div>`
     }
     async function deskRenderDetail() {
       const main = $('dmain'); if (!main) return
@@ -1258,9 +1700,15 @@
         return
       }
       const row = rowsById.get(deskSel) || {}
+      const rowFresh = Date.now() - new Date(row.updated_at).getTime() < HEARTBEAT_MS * 4
+      if (rowFresh && row.state === 'archived') {
+        // no live server behind it — the control-panel tabs would all error
+        main.innerHTML = deskHero(row) + `<div class="dbody"><div class="loadrow">This server is archived — its world and files are kept safe on the host. Restore it to manage it again.</div></div>`
+        return
+      }
       main.innerHTML = deskHero(row) + `<div class="dtabs"></div><div class="dbody" id="dbody"><div class="loadrow">Loading control panel…</div></div>`
       try {
-        if (!sheetInfo) { sheetId = deskSel; sheetInfo = await request(deskSel, 'info') }
+        if (!sheetInfo) { sheetId = deskSel; sheetInfo = await loadInfo(deskSel) }
         main.innerHTML = deskHero(row) + deskTabsBar() + '<div class="dbody" id="dbody"></div>'
         await runTab($('dbody'))
       } catch (e) {
@@ -1331,7 +1779,7 @@
       paintQueued = true
       setTimeout(() => {
         paintQueued = false
-        if (!me || document.hidden) return
+        if (document.hidden) return
         applyLayout([...rowsById.values()].sort((a, b) => (a.name || '').localeCompare(b.name || '')))
         paintMobileConsole()
       }, 120)
@@ -1358,6 +1806,10 @@
           .on('postgres_changes', { event: '*', schema: 'public', table: 'hosting_orders' }, scheduleHosting)
           .subscribe((status) => {
             rtLive = status === 'SUBSCRIBED'
+            // the top-bar pill tells the truth: pushed updates vs. polling
+            $('livePill')?.classList.toggle('poll', !rtLive)
+            const t = $('liveTxt')
+            if (t) t.textContent = rtLive ? 'live' : 'sync'
           })
       } catch {
         // realtime not enabled on this cloud — the polls above keep everything working
@@ -1420,6 +1872,8 @@
       const facets = [[`project_type:${type}`]]
       if (mcVer) facets.push([`versions:${mcVer}`])
       if (loader && type === 'mod') facets.push([`categories:${loader}`])
+      // paper runs the whole Bukkit plugin family — match any of them
+      if (type === 'plugin') facets.push(['categories:paper', 'categories:spigot', 'categories:bukkit', 'categories:purpur'])
       const url = `https://api.modrinth.com/v2/search?limit=12&index=relevance&query=${encodeURIComponent(query || '')}&facets=${encodeURIComponent(JSON.stringify(facets))}`
       const r = await fetch(url)
       return (await r.json()).hits || []
@@ -1625,6 +2079,7 @@
       $('app').hidden = false
       $('dapp').hidden = false
       $('servers').innerHTML = '<div class="skel"></div><div class="skel"></div>'
+      startRealtime()
       void refresh()
       void refreshBell()
       clearInterval(timer)

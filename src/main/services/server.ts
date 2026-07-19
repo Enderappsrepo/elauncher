@@ -1,5 +1,5 @@
 import { spawn, type ChildProcess } from 'child_process'
-import { chmodSync, copyFileSync, cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'fs'
+import { chmodSync, copyFileSync, cpSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'fs'
 import { cp } from 'fs/promises'
 import { basename, dirname, join, relative, resolve, sep } from 'path'
 import { cpus, tmpdir } from 'os'
@@ -13,6 +13,7 @@ import type {
   LocalServerState,
   PalworldModerationAction,
   PalworldPlayerDetail,
+  PlanLimits,
   PlayerListEntry,
   ServerAutomation,
   ServerFileEntry,
@@ -23,7 +24,7 @@ import type {
   ServerStateEvent,
   ServerTaskEvent
 } from '@shared/types'
-import { instanceDir, javaDir, serverDir, serversFile } from '../paths'
+import { archivedServersFile, instanceDir, javaDir, serverArchivesDir, serverDir, serversFile } from '../paths'
 import { readJson, writeJson } from '../store'
 import { downloadAgent, withRetries } from '../net'
 import { downloadToFile, listInstalledMods, modrinthFetch, readModsMeta } from './mods'
@@ -825,6 +826,106 @@ async function createPalworldServer(
   }
 }
 
+async function ensureStopped(id: string): Promise<void> {
+  if ((states.get(id) ?? 'stopped') !== 'stopped') {
+    stopServer(id)
+    if (!(await waitForState(id, 'stopped', 60_000))) throw new Error('The server would not stop — try again.')
+    await sleep(1_000)
+  }
+}
+
+/**
+ * Panel-initiated delete: stop the server first if it's running, then remove
+ * it. Also purges archived servers. (The launcher UI calls removeServer
+ * directly — its flow asks the user to stop the server themselves.)
+ */
+export async function deleteServer(id: string): Promise<LocalServer[]> {
+  const archived = loadArchivedServers()
+  if (archived.some((a) => a.id === id)) {
+    rmSync(archiveDirOf(id), { recursive: true, force: true })
+    writeJson(
+      archivedServersFile,
+      archived.filter((a) => a.id !== id)
+    )
+    return listLocalServers()
+  }
+  await ensureStopped(id)
+  return removeServer(id)
+}
+
+// ---------- archive (suspended hosting — e.g. a customer's payment lapsed) ----------
+
+export interface ArchivedServer extends LocalServer {
+  archivedAt: number
+}
+
+function archiveDirOf(id: string): string {
+  return join(serverArchivesDir, id)
+}
+
+function loadArchivedServers(): ArchivedServer[] {
+  return readJson<ArchivedServer[]>(archivedServersFile, [])
+}
+
+export function listArchivedServers(): ArchivedServer[] {
+  return loadArchivedServers()
+}
+
+/**
+ * Take a server out of the active pool but keep it restorable: its folder
+ * moves to server-archives/ and its record to servers-archived.json. The port
+ * and pool hostname free up right away — an archive costs only disk space.
+ */
+export async function archiveServer(id: string): Promise<void> {
+  const servers = loadServers()
+  const record = servers.find((s) => s.id === id)
+  if (!record) throw new Error('Server not found')
+  await ensureStopped(id)
+  void closePort(record.port, gameOf(record) === 'palworld' ? 'UDP' : 'TCP')
+  releaseHost(id)
+  mkdirSync(serverArchivesDir, { recursive: true })
+  renameSync(serverDir(id), archiveDirOf(id))
+  saveServers(servers.filter((s) => s.id !== id))
+  writeJson(archivedServersFile, [
+    ...loadArchivedServers().filter((a) => a.id !== id),
+    { ...record, archivedAt: Date.now() }
+  ])
+  logs.delete(id)
+  players.delete(id)
+}
+
+/**
+ * Bring an archived server back into the active pool. If its old port was
+ * handed to another server meanwhile, it gets the next free one.
+ */
+export async function restoreServer(id: string): Promise<LocalServer> {
+  const archived = loadArchivedServers()
+  const entry = archived.find((a) => a.id === id)
+  if (!entry) throw new Error('No archive exists for that server.')
+  if (!existsSync(archiveDirOf(id))) throw new Error('The archived files are missing from server-archives/.')
+  if (existsSync(serverDir(id))) throw new Error('An active server folder with this id already exists.')
+  const servers = loadServers()
+  const { archivedAt: _archivedAt, ...record } = entry
+  renameSync(archiveDirOf(id), serverDir(id))
+  if (servers.some((s) => s.port === record.port)) {
+    record.port = nextFreePort(servers, gameOf(record))
+    // palworld needs nothing here — startPalworld pins the ini ports on every launch
+    if (gameOf(record) !== 'palworld') {
+      try {
+        setServerProperties(id, { 'server-port': String(record.port) })
+      } catch {
+        // no server.properties in the archive — the next start seeds it
+      }
+    }
+  }
+  saveServers([...servers, record])
+  writeJson(
+    archivedServersFile,
+    archived.filter((a) => a.id !== id)
+  )
+  return record
+}
+
 export function removeServer(id: string): LocalServer[] {
   const state = states.get(id) ?? 'stopped'
   if (state !== 'stopped') throw new Error('Stop the server before deleting it.')
@@ -1287,10 +1388,78 @@ function ensureFirewallPort(id: string, port: number, protocol: 'tcp' | 'udp'): 
   }
 }
 
+// ---------- hosted-plan limits (stamped by the provisioner, enforced here) ----------
+
+/** Stamp (or clear) plan resource caps on a server record; clamps the heap allocation immediately. */
+export function setServerLimits(id: string, limits: PlanLimits | undefined): void {
+  const servers = loadServers()
+  const record = servers.find((s) => s.id === id)
+  if (!record) return
+  record.limits = limits
+  // the minecraft heap allocation is plan-priced — keep the record itself inside it
+  if (limits?.memoryMb && record.memoryMax > limits.memoryMb) record.memoryMax = limits.memoryMb
+  saveServers(servers)
+}
+
+/**
+ * Clamp plan-capped settings just before launch. This is the authoritative
+ * enforcement point: whatever path an edit took (panel, file manager, desktop,
+ * hand-edited config), the values in force never exceed the purchased plan.
+ */
+function enforcePlanLimits(server: LocalServer): void {
+  const limits = server.limits
+  if (!limits) return
+  if (limits.maxPlayers && limits.maxPlayers > 0) {
+    const key = gameOf(server) === 'palworld' ? 'ServerPlayerMaxNum' : 'max-players'
+    try {
+      const current = Number(getServerProperties(server.id)[key])
+      if (!Number.isFinite(current) || current > limits.maxPlayers) {
+        setServerProperties(server.id, { [key]: String(limits.maxPlayers) })
+        pushLog(server.id, `[ELauncher] Player slots set to ${limits.maxPlayers} — the plan's included amount`)
+      }
+    } catch {
+      // config not readable yet (first boot) — install already seeded the plan value
+    }
+  }
+  if (limits.memoryMb && gameOf(server) === 'palworld') {
+    // palworld has no heap flag — the memory guard IS the ceiling: restart above the plan
+    const automation = getServerAutomation(server.id)
+    if (!automation.restartAboveMemoryMB || automation.restartAboveMemoryMB > limits.memoryMb) {
+      setServerAutomation(server.id, { ...automation, restartAboveMemoryMB: limits.memoryMb })
+      pushLog(server.id, `[ELauncher] Memory guard pinned to the plan's ${(limits.memoryMb / 1024).toFixed(1)} GB`)
+    }
+  }
+}
+
+/**
+ * Linux: pin a plan-capped server onto its first N cores (children inherit the
+ * affinity, so the whole tree is capped). Windows has no dependency-free hard
+ * cap — there the memory guard and priority of the game itself still apply.
+ */
+function cpuWrap(server: LocalServer, exe: string, args: string[]): [string, string[]] {
+  const list = planCoreList(server)
+  if (list) return ['taskset', ['-c', list, exe, ...args]]
+  return [exe, args]
+}
+
+/**
+ * The core list a plan-capped server is pinned to. Each server starts at a
+ * stable id-derived offset and wraps around the box, so capped servers spread
+ * across all cores instead of piling onto core 0 together.
+ */
+export function planCoreList(server: LocalServer): string | null {
+  const cores = server.limits?.cpuCores
+  const total = cpus().length
+  if (process.platform !== 'linux' || !cores || cores <= 0 || cores >= total) return null
+  const offset = [...server.id].reduce((a, c) => (a * 31 + c.charCodeAt(0)) >>> 0, 7) % total
+  return Array.from({ length: cores }, (_, i) => (offset + i) % total).join(',')
+}
+
 export async function startServer(id: string): Promise<void> {
   const current = states.get(id) ?? 'stopped'
   if (current !== 'stopped') throw new Error('This server is already running.')
   const server = getServer(id)
+  enforcePlanLimits(server)
   if (gameOf(server) === 'palworld') return startPalworldServer(server)
   const dir = serverDir(id)
   // vanilla/paper/fabric run a jar; modern forge/neoforge run via the installer's @args file
@@ -1303,19 +1472,21 @@ export async function startServer(id: string): Promise<void> {
   setState(id, 'starting')
   try {
     const java = await ensureServerJava(server.javaComponent)
-    pushLog(id, `[ELauncher] Starting ${server.kind} server on port ${server.port} (${server.memoryMax} MiB) — optimized GC flags on`)
+    // the heap never exceeds the plan even if the record drifted
+    const heap = server.limits?.memoryMb ? Math.min(server.memoryMax || server.limits.memoryMb, server.limits.memoryMb) : server.memoryMax
+    pushLog(id, `[ELauncher] Starting ${server.kind} server on port ${server.port} (${heap} MiB) — optimized GC flags on`)
+    if (server.limits?.cpuCores && process.platform === 'linux') {
+      pushLog(id, `[ELauncher] CPU pinned to ${server.limits.cpuCores} core${server.limits.cpuCores === 1 ? '' : 's'} (plan limit)`)
+    }
 
-    const proc = spawn(
-      java,
-      [
-        `-Xms${server.memoryMax}M`,
-        `-Xmx${server.memoryMax}M`,
-        ...aikarFlags(server.memoryMax),
-        ...(argsFile ? [`@${argsFile}`] : ['-jar', 'server.jar']),
-        'nogui'
-      ],
-      { cwd: dir, windowsHide: true }
-    )
+    const [launchExe, launchArgs] = cpuWrap(server, java, [
+      `-Xms${heap}M`,
+      `-Xmx${heap}M`,
+      ...aikarFlags(heap),
+      ...(argsFile ? [`@${argsFile}`] : ['-jar', 'server.jar']),
+      'nogui'
+    ])
+    const proc = spawn(launchExe, launchArgs, { cwd: dir, windowsHide: true })
     procs.set(id, proc)
     lastStartAt.set(id, Date.now())
     lagEvents.delete(id)
@@ -1406,7 +1577,7 @@ async function startPalworldServer(server: LocalServer): Promise<void> {
     )
   }
   try {
-    const handle = await startPalworld(dir, server.port, { publicLobby: community, publicIp }, {
+    const handle = await startPalworld(dir, server.port, { publicLobby: community, publicIp, cpuList: planCoreList(server) }, {
       onLog: (line) => pushLog(id, line),
       onReady: (version) => {
         if (version) serverVersions.set(id, version)

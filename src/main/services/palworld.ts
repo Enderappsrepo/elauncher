@@ -274,6 +274,8 @@ export interface PalworldLaunchOptions {
   publicLobby: boolean
   /** WAN address announced to the lobby — behind NAT the auto-detect can pick the wrong one */
   publicIp: string | null
+  /** plan CPU cap — taskset core list ("4,5,6,7") the Linux process tree is pinned to */
+  cpuList?: string | null
 }
 
 export async function startPalworld(
@@ -319,7 +321,14 @@ export async function startPalworld(
     cb.onLog(`[ELauncher] Palworld refuses to run as root — running it as the "${gameUser.user}" user instead`)
     await prepareServerDirForGameUser(gameUser, dir, cb.onLog)
   }
-  const [spawnExe, spawnArgs] = gameUser ? gameUser.wrap(exe, args) : [exe, args]
+  let [spawnExe, spawnArgs] = gameUser ? gameUser.wrap(exe, args) : [exe, args]
+  // plan CPU cap: taskset execs the command with a trimmed affinity mask, which the
+  // whole tree inherits (outermost wrapper so sudo/PalServer.sh children stay pinned)
+  if (!IS_WIN && launch.cpuList) {
+    const count = launch.cpuList.split(',').length
+    cb.onLog(`[ELauncher] CPU pinned to ${count} core${count === 1 ? '' : 's'} (plan limit)`)
+    ;[spawnExe, spawnArgs] = ['taskset', ['-c', launch.cpuList, spawnExe, ...spawnArgs]]
+  }
   // linux: detached so the whole process group (PalServer.sh + the UE binary) can be killed together
   const proc = spawn(spawnExe, spawnArgs, {
     cwd: dir,

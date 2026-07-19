@@ -13,9 +13,12 @@ export const javaDir = join(dataRoot, 'java')
 export const skinsDir = join(dataRoot, 'skins')
 /** Locally-hosted dedicated servers, one folder per server. */
 export const serversDir = join(dataRoot, 'servers')
+/** Archived servers (e.g. lapsed subscriptions) — out of the active pool, kept restorable. */
+export const serverArchivesDir = join(dataRoot, 'server-archives')
 
 export const instancesFile = join(dataRoot, 'instances.json')
 export const serversFile = join(dataRoot, 'servers.json')
+export const archivedServersFile = join(dataRoot, 'servers-archived.json')
 /** saved entries for the server browser (address book with live pings) */
 export const serverBrowserFile = join(dataRoot, 'server-browser.json')
 export const accountsFile = join(dataRoot, 'accounts.json')

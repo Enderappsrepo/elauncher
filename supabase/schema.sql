@@ -1,10 +1,11 @@
 -- ELauncher cloud schema.
--- Paste this whole file into the Supabase SQL editor (Dashboard -> SQL Editor -> New query) and run it once.
+-- Paste this whole file into the Supabase SQL editor (Dashboard -> SQL Editor -> New query) and run it.
+-- The whole file is idempotent — re-run it any time to pick up new blocks.
 
 -- ============================================================
 -- Profiles: one row per account, created automatically on signup
 -- ============================================================
-create table public.profiles (
+create table if not exists public.profiles (
   id uuid primary key references auth.users (id) on delete cascade,
   username text not null,
   is_admin boolean not null default false,
@@ -13,12 +14,14 @@ create table public.profiles (
 
 alter table public.profiles enable row level security;
 
+drop policy if exists "signed-in users can read profiles" on public.profiles;
 create policy "signed-in users can read profiles"
   on public.profiles for select to authenticated using (true);
 
 -- Rows are created by the signup trigger below. Admins can update profiles
 -- (used by the in-app admin panel to grant/revoke admin); the first admin is
 -- bootstrapped from the SQL editor (see README).
+drop policy if exists "admins can update profiles" on public.profiles;
 create policy "admins can update profiles"
   on public.profiles for update to authenticated
   using (public.is_admin()) with check (public.is_admin());
@@ -38,6 +41,7 @@ begin
 end;
 $$;
 
+drop trigger if exists on_auth_user_created on auth.users;
 create trigger on_auth_user_created
   after insert on auth.users
   for each row execute procedure public.handle_new_user();
@@ -54,7 +58,7 @@ $$;
 -- ============================================================
 -- Modpacks and their versions
 -- ============================================================
-create table public.modpacks (
+create table if not exists public.modpacks (
   id uuid primary key default gen_random_uuid(),
   name text not null,
   description text not null default '',
@@ -65,7 +69,7 @@ create table public.modpacks (
   updated_at timestamptz not null default now()
 );
 
-create table public.modpack_versions (
+create table if not exists public.modpack_versions (
   id uuid primary key default gen_random_uuid(),
   modpack_id uuid not null references public.modpacks (id) on delete cascade,
   version text not null,
@@ -81,32 +85,42 @@ create table public.modpack_versions (
 alter table public.modpacks enable row level security;
 alter table public.modpack_versions enable row level security;
 
+drop policy if exists "signed-in users can read modpacks" on public.modpacks;
 create policy "signed-in users can read modpacks"
   on public.modpacks for select to authenticated using (true);
+drop policy if exists "anyone can read modpack metadata" on public.modpacks;
 create policy "anyone can read modpack metadata"
   on public.modpacks for select to anon, authenticated using (true);
+drop policy if exists "admins can insert modpacks" on public.modpacks;
 create policy "admins can insert modpacks"
   on public.modpacks for insert to authenticated with check (public.is_admin());
+drop policy if exists "admins can update modpacks" on public.modpacks;
 create policy "admins can update modpacks"
   on public.modpacks for update to authenticated using (public.is_admin());
+drop policy if exists "admins can delete modpacks" on public.modpacks;
 create policy "admins can delete modpacks"
   on public.modpacks for delete to authenticated using (public.is_admin());
 
+drop policy if exists "signed-in users can read modpack versions" on public.modpack_versions;
 create policy "signed-in users can read modpack versions"
   on public.modpack_versions for select to authenticated using (true);
+drop policy if exists "anyone can read modpack version metadata" on public.modpack_versions;
 create policy "anyone can read modpack version metadata"
   on public.modpack_versions for select to anon, authenticated using (true);
+drop policy if exists "admins can insert modpack versions" on public.modpack_versions;
 create policy "admins can insert modpack versions"
   on public.modpack_versions for insert to authenticated with check (public.is_admin());
+drop policy if exists "admins can update modpack versions" on public.modpack_versions;
 create policy "admins can update modpack versions"
   on public.modpack_versions for update to authenticated using (public.is_admin());
+drop policy if exists "admins can delete modpack versions" on public.modpack_versions;
 create policy "admins can delete modpack versions"
   on public.modpack_versions for delete to authenticated using (public.is_admin());
 
 -- ============================================================
 -- Launcher news: admin-authored articles shown on the Home page
 -- ============================================================
-create table public.launcher_news (
+create table if not exists public.launcher_news (
   id uuid primary key default gen_random_uuid(),
   title text not null,
   body text not null default '',
@@ -123,30 +137,39 @@ create table public.launcher_news (
 alter table public.launcher_news enable row level security;
 
 -- News is public content: everyone (even signed-out launcher users) can read it
+drop policy if exists "anyone can read launcher news" on public.launcher_news;
 create policy "anyone can read launcher news"
   on public.launcher_news for select to anon, authenticated using (true);
+drop policy if exists "admins can insert launcher news" on public.launcher_news;
 create policy "admins can insert launcher news"
   on public.launcher_news for insert to authenticated with check (public.is_admin());
+drop policy if exists "admins can update launcher news" on public.launcher_news;
 create policy "admins can update launcher news"
   on public.launcher_news for update to authenticated
   using (public.is_admin()) with check (public.is_admin());
+drop policy if exists "admins can delete launcher news" on public.launcher_news;
 create policy "admins can delete launcher news"
   on public.launcher_news for delete to authenticated using (public.is_admin());
 
 -- ============================================================
 -- Storage bucket for the .mrpack files
 -- ============================================================
-insert into storage.buckets (id, name, public) values ('modpacks', 'modpacks', false);
+insert into storage.buckets (id, name, public) values ('modpacks', 'modpacks', false)
+  on conflict (id) do nothing;
 
+drop policy if exists "signed-in users can download modpack files" on storage.objects;
 create policy "signed-in users can download modpack files"
   on storage.objects for select to authenticated
   using (bucket_id = 'modpacks');
+drop policy if exists "admins can upload modpack files" on storage.objects;
 create policy "admins can upload modpack files"
   on storage.objects for insert to authenticated
   with check (bucket_id = 'modpacks' and public.is_admin());
+drop policy if exists "admins can overwrite modpack files" on storage.objects;
 create policy "admins can overwrite modpack files"
   on storage.objects for update to authenticated
   using (bucket_id = 'modpacks' and public.is_admin());
+drop policy if exists "admins can delete modpack files" on storage.objects;
 create policy "admins can delete modpack files"
   on storage.objects for delete to authenticated
   using (bucket_id = 'modpacks' and public.is_admin());
@@ -182,8 +205,10 @@ create table if not exists public.sessions (
 alter table public.sessions enable row level security;
 
 -- everyone signed in can see who's hosting; you can only create/update/delete your own
+drop policy if exists "signed-in users can read sessions" on public.sessions;
 create policy "signed-in users can read sessions"
   on public.sessions for select to authenticated using (true);
+drop policy if exists "users manage their own session" on public.sessions;
 create policy "users manage their own session"
   on public.sessions for all to authenticated
   using (host_id = auth.uid()) with check (host_id = auth.uid());
@@ -220,6 +245,8 @@ alter table public.server_status add column if not exists memory_mb integer;
 alter table public.server_status add column if not exists cpu_percent integer;
 alter table public.server_status add column if not exists started_at timestamptz;
 alter table public.server_status add column if not exists version text;
+-- palworld: whether the server lists itself in the official community browser
+alter table public.server_status add column if not exists community boolean;
 
 -- phone notifications (web push). The launcher generates a per-account VAPID
 -- keypair; the dashboard registers each phone's push subscription.
@@ -294,6 +321,9 @@ create policy "requesters queue requests"
     requester_id = auth.uid()
     and (
       owner_id = auth.uid()
+      -- admins may queue requests for any host (archive/restore/delete on lapsed
+      -- customers' servers); the host re-checks is_admin before executing
+      or public.is_admin()
       or exists (
         select 1 from public.server_shares s
         where s.server_id = server_requests.server_id and s.grantee_id = auth.uid()
@@ -327,6 +357,8 @@ create table if not exists public.hosting_plans (
   active boolean not null default true,
   sort integer not null default 0
 );
+-- optional per-plan CPU core cap (Linux hosts pin the server to this many cores)
+alter table public.hosting_plans add column if not exists cpu_cores integer;
 
 create table if not exists public.hosting_settings (
   id integer primary key default 1 check (id = 1),
@@ -470,6 +502,28 @@ create policy "owners manage commands for their servers"
 drop policy if exists "senders see their own commands" on public.server_commands;
 create policy "senders see their own commands"
   on public.server_commands for select to authenticated using (sender_id = auth.uid());
+
+-- ============================================================
+-- Instant relay (realtime)
+-- ============================================================
+-- Adds the relay tables to Supabase's realtime publication so the web panel
+-- and the hosting launcher get pushed changes instead of waiting on polls:
+-- commands execute the moment you tap Start, status/console updates stream
+-- back live, and billing cards refresh on approval. Both sides keep polling
+-- as a fallback, so skipping this block only costs latency, not correctness.
+-- Idempotent — safe to re-run.
+do $$
+declare t text;
+begin
+  foreach t in array array['server_status', 'server_commands', 'server_requests', 'hosting_orders'] loop
+    if not exists (
+      select 1 from pg_publication_tables
+      where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = t
+    ) then
+      execute format('alter publication supabase_realtime add table public.%I', t);
+    end if;
+  end loop;
+end $$;
 
 -- make PostgREST pick the new tables up immediately
 notify pgrst, 'reload schema';
