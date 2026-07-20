@@ -17,8 +17,11 @@
     "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
     "start": "electron-vite preview",
     "icon": "node scripts/make-ico.mjs",
+    "docs": "node scripts/serve-docs.mjs",
+    "sync:tokens": "node scripts/sync-tokens.mjs",
     "dist": "electron-vite build && electron-builder --win",
-    "release": "electron-vite build && electron-builder --win --publish always"
+    "release": "electron-vite build && electron-builder --win --publish always",
+    "version": "node scripts/sync-tokens.mjs && git add docs/"
   },
   "devDependencies": {
     "@types/adm-zip": "^0.5.8",

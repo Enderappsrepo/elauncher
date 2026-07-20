@@ -10,28 +10,190 @@
   <meta property="og:image" content="https://enderappsrepo.github.io/elauncher/icon.png" />
   <link rel="icon" type="image/png" href="icon.png" />
   <style>
-    /* ELauncher "obsidian aurora" — same tokens as the app */
+    /* <tokens:begin> generated from src/shared/tokens.css — do not edit by hand.
+       Edit that file, then run: npm run sync:tokens */
+    /* ---- shared, theme-independent tokens ---- */
     :root {
-      --bg: #0a0a0f;
-      --bg-card: #121218;
-      --bg-elevated: #16161d;
-      --border: rgba(255, 255, 255, 0.08);
-      --border-strong: rgba(255, 255, 255, 0.15);
-      --text: #f4f5fa;
-      --text-dim: #a0a3b6;
-      --text-faint: #64677a;
-      --accent: #7c6cff;
-      --accent-2: #22d3ee;
-      --accent-3: #d946ef;
-      --accent-soft: rgba(124, 108, 255, 0.14);
-      --accent-glow: rgba(124, 108, 255, 0.34);
-      --green: #34d399;
       --radius-lg: 24px;
       --radius: 18px;
       --radius-sm: 11px;
-      --glass: linear-gradient(180deg, rgba(255, 255, 255, 0.045), rgba(255, 255, 255, 0.012) 55%);
+      --radius-xs: 8px;
+      --sidebar-width: 256px;
+      --titlebar-height: 42px;
+
+      /* refined "Nebula" accent — violet → cyan. identical in both themes so the
+         brand reads the same; only surfaces/text/glass/shadow flip per theme. */
+      --accent: #7c6cff;
+      --accent-2: #22d3ee;
+      --accent-hover: #9a8cff;
+      --accent-3: #d946ef; /* fuchsia sparkle used sparingly in ambient art */
+
+      /* type scale */
+      --fs-display: 27px;
+      --fs-h1: 22px;
+      --fs-h2: 16px;
+      --fs-h3: 14.5px;
+      --fs-body: 14px;
+      --fs-small: 12.5px;
+
+      /* the tell that a value came from a machine: addresses, ids, log lines,
+         timestamps, ports, stat micro-labels */
+      --mono: ui-monospace, 'Cascadia Code', 'Cascadia Mono', Menlo, Consolas, monospace;
+
       --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+      --ease-spring: cubic-bezier(0.2, 0.9, 0.3, 1.15);
     }
+
+    /* ---- dark (default) ---- */
+    :root,
+    :root[data-theme='dark'] {
+      color-scheme: dark;
+
+      /* layered surfaces, darkest to lightest */
+      --bg: #0a0a0f;
+      --bg-content: #0b0b11;
+      --bg-elevated: #16161d;
+      --bg-card: #121218;
+      --bg-hover: #1d1d26;
+      --bg-active: #282833;
+
+      --border: rgba(255, 255, 255, 0.08);
+      --border-strong: rgba(255, 255, 255, 0.15);
+
+      --text: #f4f5fa;
+      --text-dim: #a0a3b6;
+      --text-faint: #64677a;
+
+      --accent-soft: rgba(124, 108, 255, 0.14);
+      --accent-glow: rgba(124, 108, 255, 0.34);
+      --accent-line: rgba(124, 108, 255, 0.2);
+      --focus-ring: rgba(124, 108, 255, 0.32);
+
+      --green: #34d399;
+      --green-soft: rgba(52, 211, 153, 0.11);
+      --red: #fb7185;
+      --red-soft: rgba(251, 113, 133, 0.12);
+      --yellow: #fbbf24;
+      --yellow-soft: rgba(251, 191, 36, 0.1);
+
+      /* form fields */
+      --input-bg: rgba(0, 0, 0, 0.4);
+      --input-bg-focus: rgba(0, 0, 0, 0.55);
+
+      /* floating popovers (menus, dropdowns, toasts) + inset tracks (tabs, segmented) */
+      --pop-bg: rgba(24, 24, 29, 0.96);
+      --track-bg: rgba(0, 0, 0, 0.35);
+
+      /* translucent side panel over the content */
+      --sidebar-bg:
+        linear-gradient(180deg, rgba(124, 108, 255, 0.07), transparent 240px),
+        linear-gradient(0deg, rgba(34, 211, 238, 0.035), transparent 200px),
+        rgba(11, 11, 17, 0.82);
+
+      /* ambient aurora blobs */
+      --aurora-1: rgba(124, 108, 255, 0.16);
+      --aurora-2: rgba(34, 211, 238, 0.1);
+      --aurora-3: rgba(217, 70, 239, 0.08);
+
+      /* glass: translucent fill + hairline top light. these are OVERLAYS — they
+         layer on top of a surface and have no opacity of their own. */
+      --glass: linear-gradient(180deg, rgba(255, 255, 255, 0.045), rgba(255, 255, 255, 0.012) 55%);
+      --glass-strong: linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.02) 60%);
+      /* ...whereas this one IS the surface: a see-through fill for sticky bars and
+         sheets that sit over content with backdrop-filter. Distinct token because
+         the two are not interchangeable — a gradient here loses the translucency
+         that makes backdrop-filter read as glass at all. */
+      --glass-bg: rgba(13, 13, 21, 0.72);
+
+      --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.03);
+      --shadow-lift: 0 16px 40px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+      --shadow-pop: 0 24px 64px rgba(0, 0, 0, 0.65);
+    }
+
+    /* ---- light ---- */
+    :root[data-theme='light'] {
+      color-scheme: light;
+
+      --bg: #eef0f7;
+      --bg-content: #f5f6fb;
+      --bg-elevated: #ffffff;
+      --bg-card: #ffffff;
+      --bg-hover: #eceef6;
+      --bg-active: #e2e5f0;
+
+      --border: rgba(17, 20, 45, 0.1);
+      --border-strong: rgba(17, 20, 45, 0.18);
+
+      --text: #171a2b;
+      --text-dim: #565b73;
+      --text-faint: #8b8fa6;
+
+      /* deepen accents slightly for contrast on white */
+      --accent: #6d5cf5;
+      --accent-hover: #5b49ec;
+      --accent-2: #0891b2;
+      --accent-soft: rgba(109, 92, 245, 0.1);
+      --accent-glow: rgba(109, 92, 245, 0.22);
+      --accent-line: rgba(109, 92, 245, 0.24);
+      --focus-ring: rgba(109, 92, 245, 0.22);
+
+      --green: #059669;
+      --green-soft: rgba(5, 150, 105, 0.1);
+      --red: #e11d48;
+      --red-soft: rgba(225, 29, 72, 0.1);
+      --yellow: #b45309;
+      --yellow-soft: rgba(180, 83, 9, 0.12);
+
+      --input-bg: rgba(17, 20, 45, 0.02);
+      --input-bg-focus: #ffffff;
+
+      --pop-bg: rgba(255, 255, 255, 0.98);
+      --track-bg: rgba(17, 20, 45, 0.05);
+
+      --sidebar-bg:
+        linear-gradient(180deg, rgba(109, 92, 245, 0.08), transparent 240px),
+        linear-gradient(0deg, rgba(8, 145, 178, 0.05), transparent 200px),
+        rgba(255, 255, 255, 0.72);
+
+      --aurora-1: rgba(109, 92, 245, 0.12);
+      --aurora-2: rgba(8, 145, 178, 0.08);
+      --aurora-3: rgba(217, 70, 239, 0.05);
+
+      --glass: linear-gradient(180deg, rgba(255, 255, 255, 0.55), rgba(255, 255, 255, 0) 60%);
+      --glass-strong: linear-gradient(180deg, rgba(255, 255, 255, 0.75), rgba(255, 255, 255, 0.15) 60%);
+      --glass-bg: rgba(255, 255, 255, 0.72);
+
+      --shadow-card: 0 1px 2px rgba(17, 20, 45, 0.08), 0 1px 3px rgba(17, 20, 45, 0.04);
+      --shadow-lift: 0 16px 40px rgba(17, 20, 45, 0.13);
+      --shadow-pop: 0 24px 60px rgba(17, 20, 45, 0.2);
+    }
+
+    /* ------------------------------------------------------------
+       Legacy aliases for docs/manage/index.html
+       ------------------------------------------------------------
+       The panel grew its own token vocabulary before this file existed.
+       Rather than rename ~2400 lines in one pass (and collide with whatever
+       is in flight), the old names now resolve to the canonical ones, so the
+       VALUES are unified immediately and the names can retire incrementally.
+
+       Retire a legacy name by replacing its uses in the panel, then deleting
+       the alias here. When this block is empty, the drift is fully gone.
+       ------------------------------------------------------------ */
+    :root {
+      --bg-soft: var(--bg-content);
+      --card: var(--bg-card);
+      --card-2: var(--bg-elevated);
+      --line: var(--border);
+      --line-strong: var(--border-strong);
+      --dim: var(--text-dim);
+      --faint: var(--text-faint);
+      --amber: var(--yellow);
+      --amber-soft: var(--yellow-soft);
+      --ease: var(--ease-out);
+      --shadow-1: var(--shadow-lift);
+      --shadow-2: var(--shadow-card);
+    }
+    /* <tokens:end> */
 
     * { box-sizing: border-box; margin: 0; padding: 0; }
 
