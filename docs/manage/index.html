@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <meta name="theme-color" content="#07070c" />
+  <meta name="theme-color" content="#0a0a0f" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <title>ELauncher — Remote</title>
@@ -21,35 +21,191 @@
        ============================================================ */
     * { box-sizing: border-box; margin: 0; -webkit-tap-highlight-color: transparent; }
     [hidden] { display: none !important; }
+    /* <tokens:begin> generated from src/shared/tokens.css — do not edit by hand.
+       Edit that file, then run: npm run sync:tokens */
+    /* ---- shared, theme-independent tokens ---- */
     :root {
-      --bg: #07070c;
-      --bg-soft: #0c0c14;
-      --card: #10101a;
-      --card-2: #181826;
-      --glass: rgba(13, 13, 21, 0.72);
-      --line: rgba(255, 255, 255, 0.06);
-      --line-strong: rgba(255, 255, 255, 0.13);
-      --text: #f5f6fb;
-      --dim: #a3a7bd;
-      --faint: #676b82;
-      --accent: #8b7cff;
-      --accent-2: #2fd9f7;
-      --accent-3: #e879f9;
-      --accent-soft: rgba(139, 124, 255, 0.14);
+      --radius-lg: 24px;
+      --radius: 18px;
+      --radius-sm: 11px;
+      --radius-xs: 8px;
+      --sidebar-width: 256px;
+      --titlebar-height: 42px;
+
+      /* refined "Nebula" accent — violet → cyan. identical in both themes so the
+         brand reads the same; only surfaces/text/glass/shadow flip per theme. */
+      --accent: #7c6cff;
+      --accent-2: #22d3ee;
+      --accent-hover: #9a8cff;
+      --accent-3: #d946ef; /* fuchsia sparkle used sparingly in ambient art */
+
+      /* type scale */
+      --fs-display: 27px;
+      --fs-h1: 22px;
+      --fs-h2: 16px;
+      --fs-h3: 14.5px;
+      --fs-body: 14px;
+      --fs-small: 12.5px;
+
+      /* the tell that a value came from a machine: addresses, ids, log lines,
+         timestamps, ports, stat micro-labels */
+      --mono: ui-monospace, 'Cascadia Code', 'Cascadia Mono', Menlo, Consolas, monospace;
+
+      --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+      --ease-spring: cubic-bezier(0.2, 0.9, 0.3, 1.15);
+    }
+
+    /* ---- dark (default) ---- */
+    :root,
+    :root[data-theme='dark'] {
+      color-scheme: dark;
+
+      /* layered surfaces, darkest to lightest */
+      --bg: #0a0a0f;
+      --bg-content: #0b0b11;
+      --bg-elevated: #16161d;
+      --bg-card: #121218;
+      --bg-hover: #1d1d26;
+      --bg-active: #282833;
+
+      --border: rgba(255, 255, 255, 0.08);
+      --border-strong: rgba(255, 255, 255, 0.15);
+
+      --text: #f4f5fa;
+      --text-dim: #a0a3b6;
+      --text-faint: #64677a;
+
+      --accent-soft: rgba(124, 108, 255, 0.14);
+      --accent-glow: rgba(124, 108, 255, 0.34);
+      --accent-line: rgba(124, 108, 255, 0.2);
+      --focus-ring: rgba(124, 108, 255, 0.32);
+
       --green: #34d399;
-      --green-soft: rgba(52, 211, 153, 0.12);
+      --green-soft: rgba(52, 211, 153, 0.11);
       --red: #fb7185;
       --red-soft: rgba(251, 113, 133, 0.12);
-      --amber: #fbbf24;
-      --amber-soft: rgba(251, 191, 36, 0.12);
-      --radius: 20px;
-      --radius-sm: 13px;
-      --mono: ui-monospace, 'Cascadia Code', Menlo, Consolas, monospace;
-      --ease: cubic-bezier(0.22, 1, 0.36, 1);
-      --shadow-1: 0 18px 50px rgba(0, 0, 0, 0.45);
-      --shadow-2: 0 8px 24px rgba(0, 0, 0, 0.35);
+      --yellow: #fbbf24;
+      --yellow-soft: rgba(251, 191, 36, 0.1);
+
+      /* form fields */
+      --input-bg: rgba(0, 0, 0, 0.4);
+      --input-bg-focus: rgba(0, 0, 0, 0.55);
+
+      /* floating popovers (menus, dropdowns, toasts) + inset tracks (tabs, segmented) */
+      --pop-bg: rgba(24, 24, 29, 0.96);
+      --track-bg: rgba(0, 0, 0, 0.35);
+
+      /* translucent side panel over the content */
+      --sidebar-bg:
+        linear-gradient(180deg, rgba(124, 108, 255, 0.07), transparent 240px),
+        linear-gradient(0deg, rgba(34, 211, 238, 0.035), transparent 200px),
+        rgba(11, 11, 17, 0.82);
+
+      /* ambient aurora blobs */
+      --aurora-1: rgba(124, 108, 255, 0.16);
+      --aurora-2: rgba(34, 211, 238, 0.1);
+      --aurora-3: rgba(217, 70, 239, 0.08);
+
+      /* glass: translucent fill + hairline top light. these are OVERLAYS — they
+         layer on top of a surface and have no opacity of their own. */
+      --glass: linear-gradient(180deg, rgba(255, 255, 255, 0.045), rgba(255, 255, 255, 0.012) 55%);
+      --glass-strong: linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.02) 60%);
+      /* ...whereas this one IS the surface: a see-through fill for sticky bars and
+         sheets that sit over content with backdrop-filter. Distinct token because
+         the two are not interchangeable — a gradient here loses the translucency
+         that makes backdrop-filter read as glass at all. */
+      --glass-bg: rgba(13, 13, 21, 0.72);
+
+      --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.03);
+      --shadow-lift: 0 16px 40px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+      --shadow-pop: 0 24px 64px rgba(0, 0, 0, 0.65);
     }
-    html { background: var(--bg); scrollbar-color: #2a2a3a var(--bg); }
+
+    /* ---- light ---- */
+    :root[data-theme='light'] {
+      color-scheme: light;
+
+      --bg: #eef0f7;
+      --bg-content: #f5f6fb;
+      --bg-elevated: #ffffff;
+      --bg-card: #ffffff;
+      --bg-hover: #eceef6;
+      --bg-active: #e2e5f0;
+
+      --border: rgba(17, 20, 45, 0.1);
+      --border-strong: rgba(17, 20, 45, 0.18);
+
+      --text: #171a2b;
+      --text-dim: #565b73;
+      --text-faint: #8b8fa6;
+
+      /* deepen accents slightly for contrast on white */
+      --accent: #6d5cf5;
+      --accent-hover: #5b49ec;
+      --accent-2: #0891b2;
+      --accent-soft: rgba(109, 92, 245, 0.1);
+      --accent-glow: rgba(109, 92, 245, 0.22);
+      --accent-line: rgba(109, 92, 245, 0.24);
+      --focus-ring: rgba(109, 92, 245, 0.22);
+
+      --green: #059669;
+      --green-soft: rgba(5, 150, 105, 0.1);
+      --red: #e11d48;
+      --red-soft: rgba(225, 29, 72, 0.1);
+      --yellow: #b45309;
+      --yellow-soft: rgba(180, 83, 9, 0.12);
+
+      --input-bg: rgba(17, 20, 45, 0.02);
+      --input-bg-focus: #ffffff;
+
+      --pop-bg: rgba(255, 255, 255, 0.98);
+      --track-bg: rgba(17, 20, 45, 0.05);
+
+      --sidebar-bg:
+        linear-gradient(180deg, rgba(109, 92, 245, 0.08), transparent 240px),
+        linear-gradient(0deg, rgba(8, 145, 178, 0.05), transparent 200px),
+        rgba(255, 255, 255, 0.72);
+
+      --aurora-1: rgba(109, 92, 245, 0.12);
+      --aurora-2: rgba(8, 145, 178, 0.08);
+      --aurora-3: rgba(217, 70, 239, 0.05);
+
+      --glass: linear-gradient(180deg, rgba(255, 255, 255, 0.55), rgba(255, 255, 255, 0) 60%);
+      --glass-strong: linear-gradient(180deg, rgba(255, 255, 255, 0.75), rgba(255, 255, 255, 0.15) 60%);
+      --glass-bg: rgba(255, 255, 255, 0.72);
+
+      --shadow-card: 0 1px 2px rgba(17, 20, 45, 0.08), 0 1px 3px rgba(17, 20, 45, 0.04);
+      --shadow-lift: 0 16px 40px rgba(17, 20, 45, 0.13);
+      --shadow-pop: 0 24px 60px rgba(17, 20, 45, 0.2);
+    }
+
+    /* ------------------------------------------------------------
+       Legacy aliases for docs/manage/index.html
+       ------------------------------------------------------------
+       The panel grew its own token vocabulary before this file existed.
+       Rather than rename ~2400 lines in one pass (and collide with whatever
+       is in flight), the old names now resolve to the canonical ones, so the
+       VALUES are unified immediately and the names can retire incrementally.
+
+       Retire a legacy name by replacing its uses in the panel, then deleting
+       the alias here. When this block is empty, the drift is fully gone.
+       ------------------------------------------------------------ */
+    :root {
+      --bg-soft: var(--bg-content);
+      --card: var(--bg-card);
+      --card-2: var(--bg-elevated);
+      --line: var(--border);
+      --line-strong: var(--border-strong);
+      --dim: var(--text-dim);
+      --faint: var(--text-faint);
+      --amber: var(--yellow);
+      --amber-soft: var(--yellow-soft);
+      --ease: var(--ease-out);
+      --shadow-1: var(--shadow-lift);
+      --shadow-2: var(--shadow-card);
+    }
+    /* <tokens:end> */
+    html { background: var(--bg); scrollbar-color: var(--border-strong) var(--bg); }
     body {
       background: var(--bg);
       color: var(--text);
@@ -67,17 +223,17 @@
     }
     body::before {
       top: -46vmax; left: -18vmax;
-      background: radial-gradient(closest-side, rgba(139, 124, 255, 0.20), rgba(232, 121, 249, 0.06) 55%, transparent 72%);
+      background: radial-gradient(closest-side, var(--aurora-1), var(--aurora-3) 55%, transparent 72%);
       animation: drift-a 26s ease-in-out infinite alternate;
     }
     body::after {
       top: -50vmax; right: -30vmax;
-      background: radial-gradient(closest-side, rgba(47, 217, 247, 0.13), rgba(139, 124, 255, 0.05) 55%, transparent 72%);
+      background: radial-gradient(closest-side, var(--aurora-2), var(--aurora-1) 55%, transparent 72%);
       animation: drift-b 32s ease-in-out infinite alternate;
     }
     @keyframes drift-a { to { transform: translate(9vmax, 7vmax) scale(1.08); } }
     @keyframes drift-b { to { transform: translate(-8vmax, 9vmax) scale(0.94); } }
-    ::selection { background: rgba(139, 124, 255, 0.35); }
+    ::selection { background: color-mix(in srgb, var(--accent) 35%, transparent); }
     button { font: inherit; cursor: pointer; border: 0; background: none; color: inherit; }
     input, select, textarea { font: inherit; }
     :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 6px; }
@@ -95,11 +251,11 @@
       display: flex; align-items: center; gap: 11px;
       padding: calc(12px + env(safe-area-inset-top)) 2px 12px;
       margin: 0 -16px 20px; padding-left: 18px; padding-right: 12px;
-      background: var(--glass);
+      background: var(--glass-bg);
       backdrop-filter: blur(22px) saturate(1.5); -webkit-backdrop-filter: blur(22px) saturate(1.5);
       border-bottom: 1px solid var(--line);
     }
-    .top img { width: 32px; height: 32px; border-radius: 10px; box-shadow: 0 4px 14px rgba(139, 124, 255, 0.3); }
+    .top img { width: 32px; height: 32px; border-radius: 10px; box-shadow: 0 4px 14px rgba(124, 108, 255, 0.3); }
     .wordmark { font-weight: 800; font-size: 17px; letter-spacing: -0.03em; white-space: nowrap; }
     .wordmark span {
       background: linear-gradient(90deg, var(--accent), var(--accent-2));
@@ -128,7 +284,7 @@
     .halo { position: relative; width: 96px; height: 96px; margin-bottom: 24px; }
     .halo::before {
       content: ''; position: absolute; inset: -34px;
-      background: radial-gradient(closest-side, rgba(139, 124, 255, 0.45), rgba(47, 217, 247, 0.14), transparent);
+      background: radial-gradient(closest-side, rgba(124, 108, 255, 0.45), rgba(34, 211, 238, 0.14), transparent);
       filter: blur(16px); border-radius: 50%; animation: pulse 4s ease-in-out infinite;
     }
     .halo img { position: relative; width: 96px; height: 96px; border-radius: 26px; box-shadow: var(--shadow-2); }
@@ -146,7 +302,7 @@
     }
     .panel::before {
       content: ''; position: absolute; inset: 0 0 auto; height: 1px;
-      background: linear-gradient(90deg, transparent, rgba(139, 124, 255, 0.5), rgba(47, 217, 247, 0.4), transparent);
+      background: linear-gradient(90deg, transparent, rgba(124, 108, 255, 0.5), rgba(34, 211, 238, 0.4), transparent);
     }
     .field { margin-bottom: 14px; }
     .field label { display: block; font-size: 11px; font-weight: 700; color: var(--faint); letter-spacing: 0.06em; text-transform: uppercase; margin-bottom: 7px; }
@@ -160,10 +316,10 @@
       width: 100%; padding: 14px; border-radius: var(--radius-sm); font-weight: 750; color: #fff; letter-spacing: 0.01em;
       background: linear-gradient(135deg, var(--accent), #5f8bff 55%, var(--accent-2));
       background-size: 150% 100%;
-      box-shadow: 0 10px 30px rgba(139, 124, 255, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.22);
+      box-shadow: 0 10px 30px rgba(124, 108, 255, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.22);
       transition: all 0.2s var(--ease);
     }
-    .cta:hover { background-position: 100% 0; box-shadow: 0 12px 36px rgba(139, 124, 255, 0.48), inset 0 1px 0 rgba(255, 255, 255, 0.22); transform: translateY(-1px); }
+    .cta:hover { background-position: 100% 0; box-shadow: 0 12px 36px rgba(124, 108, 255, 0.48), inset 0 1px 0 rgba(255, 255, 255, 0.22); transform: translateY(-1px); }
     .cta:active { transform: translateY(0) scale(0.99); }
     .cta:disabled { opacity: 0.55; transform: none; }
     .err { color: var(--red); font-size: 13px; min-height: 18px; margin: 10px 2px 2px; }
@@ -201,7 +357,7 @@
     .chip.on { color: var(--green); border-color: rgba(52, 211, 153, 0.4); background: var(--green-soft); text-shadow: 0 0 12px rgba(52, 211, 153, 0.5); }
     .chip.warm { color: var(--amber); border-color: rgba(251, 191, 36, 0.4); background: var(--amber-soft); }
     .chip.dead { color: var(--red); border-color: rgba(251, 113, 133, 0.35); background: var(--red-soft); }
-    .chip.acc { color: var(--accent); border-color: rgba(139, 124, 255, 0.4); background: var(--accent-soft); }
+    .chip.acc { color: var(--accent); border-color: rgba(124, 108, 255, 0.4); background: var(--accent-soft); }
 
     .pills { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 13px; }
     .pill {
@@ -215,12 +371,12 @@
     .addr {
       display: flex; align-items: center; gap: 9px; width: 100%;
       margin-top: 12px; padding: 12px 14px; border-radius: var(--radius-sm);
-      background: linear-gradient(90deg, rgba(139, 124, 255, 0.10), rgba(47, 217, 247, 0.06));
-      border: 1px dashed rgba(139, 124, 255, 0.4);
+      background: linear-gradient(90deg, rgba(124, 108, 255, 0.10), rgba(34, 211, 238, 0.06));
+      border: 1px dashed rgba(124, 108, 255, 0.4);
       color: var(--text); font: 12.5px var(--mono);
       transition: border-color 0.16s;
     }
-    .addr:hover { border-color: rgba(139, 124, 255, 0.7); }
+    .addr:hover { border-color: rgba(124, 108, 255, 0.7); }
     .addr svg { width: 14px; height: 14px; color: var(--accent); flex: none; }
     .addr .a { flex: 1; min-width: 0; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .addr .c { color: var(--faint); font-size: 10.5px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; font-family: 'Inter', sans-serif; }
@@ -240,7 +396,7 @@
     .btn.stop { background: var(--red-soft); border-color: rgba(251, 113, 133, 0.4); color: var(--red); }
     .btn.manage {
       margin-top: 10px; width: 100%;
-      background: var(--accent-soft); border-color: rgba(139, 124, 255, 0.35); color: var(--accent);
+      background: var(--accent-soft); border-color: rgba(124, 108, 255, 0.35); color: var(--accent);
     }
 
     .conbtn {
@@ -285,7 +441,7 @@
       white-space: nowrap; border: 1px solid transparent; transition: all 0.15s var(--ease);
     }
     .sheet-tabs button svg { width: 14px; height: 14px; opacity: 0.8; }
-    .sheet-tabs button.on { background: var(--accent-soft); color: var(--accent); border-color: rgba(139, 124, 255, 0.25); }
+    .sheet-tabs button.on { background: var(--accent-soft); color: var(--accent); border-color: rgba(124, 108, 255, 0.25); }
     .sheet-body { padding: 16px; overflow-y: auto; flex: 1; overscroll-behavior: contain; }
 
     /* ---------- forms ---------- */
@@ -316,7 +472,7 @@
       border-top: 1px solid var(--line); transition: background 0.14s;
     }
     .plister .prow:first-child { border-top: 0; }
-    .plister .prow:hover { background: rgba(255, 255, 255, 0.025); }
+    .plister .prow:hover { background: var(--bg-hover); }
     .plister .pn { font-weight: 650; }
     .plister .pm { font-size: 12px; color: var(--faint); }
     .avatar {
@@ -331,7 +487,7 @@
     }
     .minibtn:active { transform: scale(0.96); }
     .minibtn.red { color: var(--red); border-color: rgba(251, 113, 133, 0.35); background: var(--red-soft); }
-    .minibtn.acc { color: var(--accent); border-color: rgba(139, 124, 255, 0.4); background: var(--accent-soft); }
+    .minibtn.acc { color: var(--accent); border-color: rgba(124, 108, 255, 0.4); background: var(--accent-soft); }
     .searchbar {
       display: flex; align-items: center; gap: 9px; padding: 11px 13px; margin-bottom: 12px;
       border-radius: var(--radius-sm); background: var(--card-2); border: 1px solid var(--line);
@@ -372,7 +528,7 @@
     .cmdrow button {
       display: grid; place-items: center; width: 46px; border-radius: 12px;
       background: linear-gradient(135deg, var(--accent), #5f8bff); color: #fff;
-      box-shadow: 0 6px 18px rgba(139, 124, 255, 0.35); transition: all 0.15s var(--ease);
+      box-shadow: 0 6px 18px rgba(124, 108, 255, 0.35); transition: all 0.15s var(--ease);
     }
     .cmdrow button:active { transform: scale(0.94); }
     .cmdrow button:disabled { opacity: 0.4; }
@@ -382,7 +538,7 @@
       font: 11.5px var(--mono); color: var(--dim); padding: 6px 11px; border-radius: 99px;
       background: var(--card-2); border: 1px solid var(--line); transition: all 0.14s;
     }
-    .qchips button:hover { color: var(--accent); border-color: rgba(139, 124, 255, 0.4); background: var(--accent-soft); }
+    .qchips button:hover { color: var(--accent); border-color: rgba(124, 108, 255, 0.4); background: var(--accent-soft); }
 
     /* ---------- settings (grouped) ---------- */
     .set-hero { margin-bottom: 18px; }
@@ -427,7 +583,7 @@
     .crumbs button { color: var(--accent); font-weight: 650; padding: 5px 8px; border-radius: 8px; max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; transition: background 0.13s; }
     .crumbs button:hover { background: var(--accent-soft); }
     .ficon { display: grid; place-items: center; width: 32px; height: 32px; border-radius: 9px; background: var(--card-2); border: 1px solid var(--line); color: var(--dim); flex: none; }
-    .ficon.fold { color: var(--accent); background: var(--accent-soft); border-color: rgba(139, 124, 255, 0.25); }
+    .ficon.fold { color: var(--accent); background: var(--accent-soft); border-color: rgba(124, 108, 255, 0.25); }
     .ficon svg { width: 15px; height: 15px; }
     .filebar { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; flex-wrap: wrap; }
     .filebar .fname { flex: 1; min-width: 130px; font: 12px var(--mono); color: var(--dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -453,7 +609,7 @@
     .toast {
       display: flex; align-items: center; gap: 9px;
       max-width: 86vw; padding: 12px 19px; border-radius: 99px; font-size: 13px; font-weight: 600;
-      background: rgba(24, 24, 36, 0.92); color: var(--text); border: 1px solid var(--line-strong);
+      background: var(--pop-bg); color: var(--text); border: 1px solid var(--line-strong);
       backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
       box-shadow: 0 14px 38px rgba(0, 0, 0, 0.55); animation: rise 0.24s var(--ease);
     }
@@ -463,11 +619,34 @@
     @keyframes rise { from { opacity: 0; transform: translateY(12px); } }
     @keyframes pulse { 50% { opacity: 0.4; } }
 
+    /* ---------- fleet health (admin) ---------- */
+    /* deliberately outside the desktop block: the health view renders on phones too */
+    .hstats { display: grid; grid-template-columns: repeat(auto-fit, minmax(96px, 1fr)); gap: 9px; margin-top: 13px; }
+    .hstat { padding: 10px 12px; border-radius: var(--radius-sm); background: var(--card-2); border: 1px solid var(--line); }
+    .hstat .v { font-size: 16px; font-weight: 780; letter-spacing: -0.01em; }
+    .hstat .l { font-size: 10.5px; color: var(--faint); font-weight: 650; letter-spacing: 0.04em; text-transform: uppercase; margin-top: 3px; }
+    .meter { margin-top: 12px; }
+    .meter .mrow { display: flex; align-items: baseline; gap: 8px; font-size: 12.5px; margin-bottom: 6px; }
+    .meter .mrow b { font-weight: 650; }
+    .meter .mrow span { margin-left: auto; color: var(--dim); font-variant-numeric: tabular-nums; }
+    .meter .track { height: 6px; border-radius: 99px; background: var(--track-bg); overflow: hidden; }
+    .meter .fill { height: 100%; border-radius: 99px; background: var(--green); transition: width 0.45s var(--ease); }
+    .meter.warm .fill { background: var(--amber); }
+    .meter.dead .fill { background: var(--red); }
+    .meter.none .fill { background: var(--faint); opacity: 0.45; }
+    .alertrow { display: flex; align-items: center; gap: 9px; padding: 10px 12px; border-radius: var(--radius-sm);
+      background: var(--card-2); border: 1px solid var(--line); font-size: 12.5px; margin-top: 8px; }
+    .alertrow .dot { width: 7px; height: 7px; border-radius: 99px; flex: none; background: var(--amber); }
+    .alertrow.bad { border-color: rgba(251, 113, 133, 0.35); }
+    .alertrow.bad .dot { background: var(--red); box-shadow: 0 0 8px rgba(251, 113, 133, 0.6); }
+    .alertrow .who { flex: 1; min-width: 0; }
+    .alertrow .who b { display: block; font-weight: 700; }
+    .alertrow .who i { font-style: normal; color: var(--dim); font-size: 11.5px; }
+
     /* ---------- responsive & motion ---------- */
     @media (max-width: 899px) {
       .card { padding: 15px 15px 16px; }
       .btn { min-height: 46px; }
-      #dapp { display: none !important; }
     }
     @media (hover: hover) {
       .btn:hover, .minibtn:hover { filter: brightness(1.14); }
@@ -477,105 +656,211 @@
       *, *::before, *::after { animation-duration: 0.001s !important; transition-duration: 0.001s !important; }
     }
 
-    /* ============ desktop: the control deck ============ */
-    #dapp { display: none; }
+    /* ============ the control deck ============ */
+    /* One layout, two presentations. These used to live inside a
+       @media (min-width:900px) block with a whole parallel set of mobile
+       components; now they apply everywhere and only the shell arrangement
+       changes at the breakpoint. */
+
+    #app { display: flex; gap: 18px; align-items: stretch; }
+
+    /* ---------- rail ---------- */
+    .rail {
+      width: 312px; flex: none; display: flex; flex-direction: column; min-height: 0;
+      background: linear-gradient(180deg, rgba(255, 255, 255, 0.02), transparent 30%), var(--card);
+      border: 1px solid var(--line); border-radius: 22px; overflow: hidden; box-shadow: var(--shadow-2);
+    }
+    .rail-head { padding: 18px 19px 10px; font-size: 11px; font-weight: 800; letter-spacing: 0.09em; text-transform: uppercase; color: var(--faint); }
+    .rail-tools { padding: 0 12px 10px; display: flex; flex-direction: column; gap: 9px; }
+    .rail-search {
+      width: 100%; padding: 9px 12px; border-radius: 11px; font-size: 13.5px;
+      background: var(--input-bg); border: 1px solid var(--line); color: var(--text); outline: none;
+      transition: border-color 0.15s var(--ease);
+    }
+    .rail-search::placeholder { color: var(--faint); }
+    .rail-search:focus { border-color: var(--accent-line); background: var(--input-bg-focus); }
+    .rail-chips { display: flex; gap: 5px; flex-wrap: wrap; }
+    .rchip {
+      font-size: 11.5px; font-weight: 650; padding: 4px 10px; border-radius: 99px;
+      background: var(--card-2); border: 1px solid var(--line); color: var(--dim);
+      transition: all 0.15s var(--ease);
+    }
+    .rchip:hover { color: var(--text); border-color: var(--line-strong); }
+    .rchip.on { background: var(--accent-soft); border-color: var(--accent-line); color: var(--accent); }
+
+    .rail-list { flex: 1; overflow-y: auto; padding: 0 9px 9px; min-height: 0; }
+    .grp {
+      display: flex; align-items: center; gap: 8px;
+      padding: 14px 12px 6px; font-size: 10.5px; font-weight: 700;
+      letter-spacing: 0.12em; text-transform: uppercase; color: var(--faint);
+    }
+    .grp .ct { background: var(--card-2); border-radius: 99px; padding: 1px 7px; font-size: 10px; letter-spacing: 0.04em; }
+    .grp::after { content: ''; flex: 1; height: 1px; background: var(--line); }
+
+    .srow {
+      position: relative; display: grid; grid-template-columns: 38px minmax(0, 1fr) auto;
+      align-items: center; gap: 12px; padding: 10px 12px; border-radius: 14px;
+      cursor: pointer; margin-bottom: 3px; border: 1px solid transparent;
+      transition: background 0.16s var(--ease), border-color 0.16s var(--ease);
+    }
+    .srow:hover { background: var(--card-2); }
+    .srow:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+    .srow.stale { opacity: 0.55; }
+    .srow.sel { background: var(--accent-soft); border-color: rgba(124, 108, 255, 0.28); }
+    .srow.sel::before {
+      content: ''; position: absolute; left: -9px; top: 22%; bottom: 22%; width: 3px; border-radius: 0 4px 4px 0;
+      background: linear-gradient(180deg, var(--accent), var(--accent-2)); box-shadow: 0 0 12px rgba(124, 108, 255, 0.8);
+    }
+    .srow .tile { width: 38px; height: 38px; border-radius: 12px; font-size: 16px; position: relative; }
+    .srow-txt { min-width: 0; }
+    .srow .nm { font-weight: 650; font-size: 14.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .srow .sub { font-size: 11.5px; color: var(--faint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 1px; font-family: var(--mono); }
+    /* quick actions: hover on pointer devices, always visible on touch */
+    .srow-acts { display: flex; gap: 5px; opacity: 0; transform: translateX(4px); transition: all 0.16s var(--ease); }
+    .srow:hover .srow-acts, .srow.sel .srow-acts, .srow:focus-within .srow-acts { opacity: 1; transform: none; }
+    @media (hover: none) { .srow-acts { opacity: 1; transform: none; } }
+    .icb {
+      width: 29px; height: 29px; border-radius: 9px; display: grid; place-items: center;
+      border: 1px solid var(--line); background: var(--card); color: var(--dim);
+      transition: all 0.15s var(--ease);
+    }
+    .icb svg { width: 13px; height: 13px; }
+    .icb:hover { color: var(--text); border-color: var(--line-strong); }
+    .icb.go:hover { color: var(--green); border-color: rgba(52, 211, 153, 0.45); background: var(--green-soft); }
+    .icb.no:hover { color: var(--red); border-color: rgba(251, 113, 133, 0.45); background: var(--red-soft); }
+
+    .rail-foot { padding: 12px; border-top: 1px solid var(--line); }
+    .rail-foot button {
+      width: 100%; padding: 13px; border-radius: 14px; font-weight: 700; font-size: 13.5px;
+      background: var(--card-2); border: 1px solid var(--line-strong); color: var(--text);
+      transition: all 0.16s var(--ease);
+    }
+    .rail-foot button:hover { border-color: rgba(124, 108, 255, 0.4); color: var(--accent); background: var(--accent-soft); }
+    .rail-foot button.sel { background: var(--accent-soft); border-color: rgba(124, 108, 255, 0.35); color: var(--accent); }
+    .rail-foot button svg { width: 14px; height: 14px; vertical-align: -2px; margin-right: 5px; }
+    .rail-foot button + button { margin-top: 8px; }
+    .rail-foot .sponsor { display: block; text-align: center; margin-top: 12px; color: var(--faint); font-size: 12px; text-decoration: none; }
+    .rail-foot .sponsor:hover { color: var(--dim); }
+
+    /* ---------- detail pane ---------- */
+    .detail {
+      flex: 1; min-width: 0; display: flex; flex-direction: column; overflow: hidden;
+      background: linear-gradient(180deg, rgba(255, 255, 255, 0.018), transparent 26%), var(--card);
+      border: 1px solid var(--line); border-radius: 22px; box-shadow: var(--shadow-2);
+    }
+    .dhero { padding: 20px 22px 0; flex: none; position: relative; }
+    .dhero::before {
+      content: ''; position: absolute; inset: 0 0 auto; height: 120px; pointer-events: none;
+      background: radial-gradient(60% 100% at 30% 0%, rgba(124, 108, 255, 0.09), transparent 70%);
+    }
+    .dhero-row { display: flex; align-items: center; gap: 14px; position: relative; }
+    .dhero .tile { width: 52px; height: 52px; border-radius: 16px; font-size: 22px; flex: none; }
+    .dhero h2 { font-size: 22px; font-weight: 800; letter-spacing: -0.03em; }
+    .dhero .dhsub { color: var(--dim); font-size: 12.5px; margin-top: 3px; }
+    .dhero-acts { margin-left: auto; display: flex; gap: 9px; flex-wrap: wrap; justify-content: flex-end; }
+    .dhero .addr { margin-top: 14px; }
+    /* only meaningful when the detail is an overlay */
+    .backbtn { display: none; width: 34px; height: 34px; border-radius: 11px; place-items: center; flex: none; border: 1px solid var(--line); background: var(--card-2); color: var(--dim); }
+    .backbtn svg { width: 16px; height: 16px; }
+    .backbtn:hover { color: var(--text); border-color: var(--line-strong); }
+
+    .dbtn {
+      display: inline-flex; align-items: center; gap: 8px; padding: 11px 18px; border-radius: 13px;
+      font-weight: 700; font-size: 13.5px; border: 1px solid var(--line-strong); background: var(--card-2); color: var(--text);
+      transition: all 0.16s var(--ease);
+    }
+    .dbtn:hover { filter: brightness(1.15); transform: translateY(-1px); }
+    .dbtn:active { transform: scale(0.97); }
+    .dbtn[disabled] { opacity: 0.55; pointer-events: none; }
+    .dbtn.start { background: var(--green-soft); border-color: rgba(52, 211, 153, 0.45); color: var(--green); box-shadow: 0 6px 22px rgba(52, 211, 153, 0.15); }
+    .dbtn.stop { background: var(--red-soft); border-color: rgba(251, 113, 133, 0.4); color: var(--red); }
+    .dbtn svg { width: 15px; height: 15px; }
+
+    .dstats { display: flex; gap: 10px; margin: 16px 0 8px; flex-wrap: wrap; position: relative; }
+    .dstat { min-width: 112px; padding: 10px 13px; border-radius: 14px; background: var(--card-2); border: 1px solid var(--line); }
+    .dstat .v { font-size: 16.5px; font-weight: 780; letter-spacing: -0.01em; font-variant-numeric: tabular-nums; }
+    .dstat .v u { font-size: 11.5px; font-weight: 500; color: var(--faint); text-decoration: none; margin-left: 2px; font-family: var(--mono); }
+    .dstat .l { font-size: 10.5px; color: var(--faint); font-weight: 650; letter-spacing: 0.06em; text-transform: uppercase; margin-top: 2px; font-family: var(--mono); }
+    /* a metric this host can't produce says so, in words — never a 0 or a dash
+       that reads as "not measured yet" */
+    .dstat.dead .v { color: var(--faint); font-weight: 600; font-size: 13.5px; }
+    .dstat.dead .why { font-size: 10px; color: var(--faint); opacity: 0.85; margin-top: 4px; line-height: 1.35; }
+
+    .dtabs { display: flex; gap: 2px; padding: 8px 18px 0; border-bottom: 1px solid var(--line); flex: none; overflow-x: auto; scrollbar-width: none; }
+    .dtabs::-webkit-scrollbar { display: none; }
+    .dtabs button {
+      display: inline-flex; align-items: center; gap: 8px; white-space: nowrap;
+      padding: 11px 15px; font-size: 13.5px; font-weight: 650; color: var(--dim);
+      border-bottom: 2px solid transparent; margin-bottom: -1px; transition: color 0.15s;
+    }
+    .dtabs button svg { width: 14px; height: 14px; opacity: 0.85; }
+    .dtabs button:hover { color: var(--text); }
+    .dtabs button.on { color: var(--accent); border-image: linear-gradient(90deg, var(--accent), var(--accent-2)) 1; }
+    .dbody { flex: 1; overflow-y: auto; padding: 22px; min-height: 0; }
+    .dbody .grouphead:first-child { margin-top: 0; }
+    .dbody .savebar { position: sticky; bottom: -22px; margin: 10px -22px -22px; padding: 14px 22px 18px; background: linear-gradient(transparent, var(--card) 40%); }
+    .dwelcome { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; color: var(--faint); text-align: center; padding: 40px; }
+    .dwelcome .halo { width: 78px; height: 78px; margin-bottom: 20px; }
+    .dwelcome .halo img { width: 78px; height: 78px; border-radius: 22px; }
+    .dwelcome b { color: var(--dim); font-size: 16px; display: block; margin-bottom: 6px; }
+    #vHost, #vHosting, #vHealth { max-width: 660px; }
+
+    /* ---------- wide: rail and detail side by side ---------- */
     @media (min-width: 900px) {
       .shell { max-width: 1360px; padding: 0 26px 26px; }
       .top { margin: 0 0 20px; padding: calc(14px + env(safe-area-inset-top)) 6px 14px; background: transparent; backdrop-filter: none; -webkit-backdrop-filter: none; border-bottom-color: transparent; }
       .wordmark { font-size: 19px; }
       .login { max-width: 460px; margin: 0 auto; padding-top: 9vh; }
-
-      body.desk #app { display: none; }
-      body.desk #dapp { display: flex; }
-      #dapp { gap: 18px; height: calc(100dvh - 96px); align-items: stretch; }
-
-      /* sidebar */
-      .dside {
-        width: 312px; flex: none; display: flex; flex-direction: column;
-        background: linear-gradient(180deg, rgba(255, 255, 255, 0.02), transparent 30%), var(--card);
-        border: 1px solid var(--line); border-radius: 22px; overflow: hidden; box-shadow: var(--shadow-2);
-      }
-      .dside-title { padding: 18px 19px 10px; font-size: 11px; font-weight: 800; letter-spacing: 0.09em; text-transform: uppercase; color: var(--faint); }
-      #dsideList { flex: 1; overflow-y: auto; padding: 0 9px 9px; }
-      .dsrow {
-        position: relative; display: flex; align-items: center; gap: 12px;
-        padding: 11px 12px; border-radius: 14px; cursor: pointer; margin-bottom: 3px;
-        border: 1px solid transparent; transition: all 0.16s var(--ease);
-      }
-      .dsrow:hover { background: var(--card-2); }
-      .dsrow.sel { background: var(--accent-soft); border-color: rgba(139, 124, 255, 0.28); }
-      .dsrow.sel::before {
-        content: ''; position: absolute; left: -9px; top: 22%; bottom: 22%; width: 3px; border-radius: 0 4px 4px 0;
-        background: linear-gradient(180deg, var(--accent), var(--accent-2)); box-shadow: 0 0 12px rgba(139, 124, 255, 0.8);
-      }
-      .dsrow .tile { width: 38px; height: 38px; border-radius: 12px; font-size: 16px; position: relative; }
-      .dsrow .dsn { font-weight: 650; font-size: 14.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-      .dsrow .dsm { font-size: 11.5px; color: var(--faint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 1px; }
-      .dside-foot { padding: 12px; border-top: 1px solid var(--line); }
-      .dside-foot button {
-        width: 100%; padding: 13px; border-radius: 14px; font-weight: 700; font-size: 13.5px;
-        background: var(--card-2); border: 1px solid var(--line-strong); color: var(--text);
-        transition: all 0.16s var(--ease);
-      }
-      .dside-foot button:hover { border-color: rgba(139, 124, 255, 0.4); color: var(--accent); background: var(--accent-soft); }
-      .dside-foot button.sel { background: var(--accent-soft); border-color: rgba(139, 124, 255, 0.35); color: var(--accent); }
-
-      /* detail pane */
-      .dmain {
-        flex: 1; min-width: 0; display: flex; flex-direction: column; overflow: hidden;
-        background: linear-gradient(180deg, rgba(255, 255, 255, 0.018), transparent 26%), var(--card);
-        border: 1px solid var(--line); border-radius: 22px; box-shadow: var(--shadow-2);
-      }
-      .dhero { padding: 24px 26px 0; flex: none; position: relative; }
-      .dhero::before {
-        content: ''; position: absolute; inset: 0 0 auto; height: 120px; pointer-events: none;
-        background: radial-gradient(60% 100% at 30% 0%, rgba(139, 124, 255, 0.09), transparent 70%);
-      }
-      .dhero-row { display: flex; align-items: center; gap: 16px; position: relative; }
-      .dhero .tile { width: 56px; height: 56px; border-radius: 17px; font-size: 24px; }
-      .dhero h2 { font-size: 23px; font-weight: 800; letter-spacing: -0.03em; }
-      .dhero .dhsub { color: var(--dim); font-size: 13px; margin-top: 3px; }
-      .dhero-acts { margin-left: auto; display: flex; gap: 9px; }
-      .dbtn {
-        display: inline-flex; align-items: center; gap: 8px; padding: 12px 19px; border-radius: 13px;
-        font-weight: 700; font-size: 14px; border: 1px solid var(--line-strong); background: var(--card-2); color: var(--text);
-        transition: all 0.16s var(--ease);
-      }
-      .dbtn:hover { filter: brightness(1.15); transform: translateY(-1px); }
-      .dbtn:active { transform: scale(0.97); }
-      .dbtn.start { background: var(--green-soft); border-color: rgba(52, 211, 153, 0.45); color: var(--green); box-shadow: 0 6px 22px rgba(52, 211, 153, 0.15); }
-      .dbtn.stop { background: var(--red-soft); border-color: rgba(251, 113, 133, 0.4); color: var(--red); }
-      .dbtn svg { width: 15px; height: 15px; }
-      .dstats { display: flex; gap: 10px; margin: 18px 0 8px; flex-wrap: wrap; position: relative; }
-      .dstat {
-        min-width: 118px; padding: 11px 14px; border-radius: 14px;
-        background: var(--card-2); border: 1px solid var(--line);
-      }
-      .dstat .v { font-size: 16.5px; font-weight: 780; letter-spacing: -0.01em; }
-      .dstat .l { font-size: 11px; color: var(--faint); font-weight: 650; letter-spacing: 0.04em; text-transform: uppercase; margin-top: 2px; }
-      .dtabs { display: flex; gap: 2px; padding: 10px 22px 0; border-bottom: 1px solid var(--line); flex: none; }
-      .dtabs button {
-        display: inline-flex; align-items: center; gap: 8px;
-        padding: 11px 16px; font-size: 13.5px; font-weight: 650; color: var(--dim);
-        border-bottom: 2px solid transparent; margin-bottom: -1px; transition: color 0.15s;
-      }
-      .dtabs button svg { width: 14px; height: 14px; opacity: 0.85; }
-      .dtabs button:hover { color: var(--text); }
-      .dtabs button.on { color: var(--accent); border-image: linear-gradient(90deg, var(--accent), var(--accent-2)) 1; }
-      .dbody { flex: 1; overflow-y: auto; padding: 24px 26px; }
-      .dbody .grouphead:first-child { margin-top: 0; }
-      .dbody .savebar { position: sticky; bottom: -24px; margin: 10px -26px -24px; padding: 14px 26px 18px; background: linear-gradient(transparent, var(--card) 40%); }
-      .dwelcome { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; color: var(--faint); text-align: center; padding: 40px; }
-      .dwelcome .halo { width: 78px; height: 78px; margin-bottom: 20px; }
-      .dwelcome .halo img { width: 78px; height: 78px; border-radius: 22px; }
-      .dwelcome b { color: var(--dim); font-size: 16px; display: block; margin-bottom: 6px; }
-      #dmain #dHost, #dmain #dHosting { max-width: 660px; }
-      /* ordering still opens #sheet on desktop — show it as a centered dialog */
-      .sheet { bottom: auto; top: 50%; transform: translateY(-50%); border-radius: 24px;
+      #app { height: calc(100dvh - 96px); }
+      .dhero { padding: 24px 26px 0; }
+      .dbody { padding: 24px 26px; }
+      .dbody .savebar { bottom: -24px; margin: 10px -26px -24px; padding: 14px 26px 18px; }
+      /* ordering opens #sheet as a centred dialog here */
+      .sheet {
+        bottom: auto; top: 50%; transform: translateY(-50%); border-radius: 24px;
         border: 1px solid var(--line-strong); box-shadow: 0 34px 100px rgba(0, 0, 0, 0.6);
-        max-height: 86dvh; animation: fade 0.2s; }
+        max-height: 86dvh; animation: fade 0.2s;
+      }
+    }
+
+    /* ---------- narrow: the detail slides over the rail ---------- */
+    @media (max-width: 899px) {
+      #app { display: block; }
+      .rail { width: auto; border-radius: 18px; max-height: calc(100dvh - 150px); }
+      .detail {
+        position: fixed; inset: 0; z-index: 45; border-radius: 0; border: 0;
+        transform: translateX(100%); transition: transform 0.26s var(--ease);
+        padding-top: env(safe-area-inset-top);
+        background: linear-gradient(180deg, rgba(255, 255, 255, 0.018), transparent 26%), var(--bg);
+      }
+      body.detail-open .detail { transform: none; }
+      .backbtn { display: grid; }
+      .dhero-acts { width: 100%; margin-left: 0; justify-content: stretch; }
+      .dhero-acts .dbtn { flex: 1; justify-content: center; }
+      .dhero-row { flex-wrap: wrap; }
+      .dstat { flex: 1; min-width: 96px; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .detail { transition: none; }
     }
   </style>
+
+  <!-- Paint the stored theme before first render. Inline and synchronous on
+       purpose: deferring this to the module script below flashes dark-then-light
+       on every load for anyone using the light theme. Same storage key and
+       default as the desktop app (src/renderer/src/theme.ts). -->
+  <script>
+    (function () {
+      try {
+        var t = localStorage.getItem('elauncher.theme') === 'light' ? 'light' : 'dark'
+        document.documentElement.dataset.theme = t
+        var m = document.querySelector('meta[name="theme-color"]')
+        if (m) m.setAttribute('content', t === 'light' ? '#eef0f7' : '#0a0a0f')
+      } catch (e) {
+        /* private mode / storage blocked — dark is the default anyway */
+      }
+    })()
+  </script>
 </head>
 <body>
   <div class="shell">
@@ -583,6 +868,9 @@
       <img src="../icon.png" alt="" />
       <div class="wordmark">ELauncher <span>Remote</span></div>
       <div class="live poll" id="livePill" title="Connection to your cloud"><span class="dot"></span><span id="liveTxt">sync</span></div>
+      <button class="iconbtn" id="themeBtn" title="Switch theme" aria-label="Switch theme">
+        <svg id="themeIcon" viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></svg>
+      </button>
       <button class="iconbtn" id="bell" title="Enable notifications" aria-label="Notifications" hidden>
         <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
       </button>
@@ -616,25 +904,25 @@
       </div>
     </div>
 
+    <!-- One tree at every breakpoint. Wide screens show rail + detail side by
+         side; narrow ones show the rail and slide the detail over it when a
+         server is picked (body.detail-open). No second render path. -->
     <div id="app" hidden>
-      <div id="host"></div>
-      <div id="servers"></div>
-      <div id="hosting"></div>
-      <div style="text-align:center;margin-top:26px">
-        <a href="https://github.com/sponsors/Enderappsrepo" target="_blank" rel="noreferrer"
-           style="color:var(--faint);font-size:12px;text-decoration:none">♥ Support ELauncher</a>
-      </div>
-    </div>
-
-    <div id="dapp" hidden>
-      <aside class="dside">
-        <div class="dside-title">Servers</div>
-        <div id="dsideList"><div class="loadrow">Loading…</div></div>
-        <div class="dside-foot">
-          <button id="dStoreBtn" onclick="deskSelect('store')">＋ New server &amp; billing</button>
+      <aside class="rail" id="rail">
+        <div class="rail-head">Servers</div>
+        <div class="rail-tools">
+          <input id="railSearch" class="rail-search" type="search" placeholder="Search servers"
+                 aria-label="Search servers" oninput="railSetQuery(this.value)" />
+          <div class="rail-chips" id="railChips"></div>
+        </div>
+        <div class="rail-list" id="railList"><div class="loadrow">Loading…</div></div>
+        <div class="rail-foot">
+          <button id="storeBtn" onclick="selectView('store')">＋ New server &amp; billing</button>
+          <button id="healthBtn" hidden onclick="selectView('health')">Fleet health</button>
+          <a class="sponsor" href="https://github.com/sponsors/Enderappsrepo" target="_blank" rel="noreferrer">♥ Support ELauncher</a>
         </div>
       </aside>
-      <main class="dmain" id="dmain"></main>
+      <main class="detail" id="detail"></main>
     </div>
   </div>
   <div id="sheet"></div>
@@ -754,7 +1042,7 @@
         if (!rtLive && Date.now() - lastFetch > 3500) {
           lastFetch = Date.now()
           const rows = await fetchServers().catch(() => null)
-          if (rows) applyLayout(rows)
+          if (rows) applyRows(rows)
         }
         const row = rowsById.get(serverId)
         if (row && row.state === wanted) return true
@@ -778,7 +1066,9 @@
     }
 
     window.act = async (serverId, action) => {
-      if ((action === 'stop' || action === 'restart') && !confirm(`${action === 'stop' ? 'Stop' : 'Restart'} this server?`)) return
+      if (action === 'forceStop') {
+        if (!confirm('Force stop this server?\n\nThis kills the server process immediately — anything it has not written to disk since its last save is lost. Only do this if a normal stop is not finishing.')) return
+      } else if ((action === 'stop' || action === 'restart') && !confirm(`${action === 'stop' ? 'Stop' : 'Restart'} this server?`)) return
       try {
         if (action === 'restart') {
           restarting.add(serverId)
@@ -794,7 +1084,7 @@
         } else {
           optimistic(serverId, action === 'start' ? 'starting' : 'stopping')
           await queue(serverId, action)
-          toast(action === 'start' ? 'Start request sent' : 'Stop request sent')
+          toast(action === 'start' ? 'Start request sent' : action === 'forceStop' ? 'Force stop sent' : 'Stop request sent')
         }
         refreshSoon()
       } catch (e) {
@@ -812,7 +1102,7 @@
         await queue(serverId, 'command', value)
         input.value = ''
         // echo into the open console right away; the host's own echo replaces it within a beat
-        const con = document.querySelector('#dbody .console, #sheetBody .console')
+        const con = document.querySelector('#tabBody .console')
         if (con) {
           con.textContent = (con.textContent === 'No output yet.' ? '' : con.textContent + '\n') + '> ' + value
           con.scrollTop = con.scrollHeight
@@ -847,133 +1137,12 @@
       return `<span class="pill">${icon}<span>${html}</span></span>`
     }
 
-    function render(rows) {
-      const wrap = $('servers')
-      rowsById.clear()
-      rows.forEach((r) => rowsById.set(r.server_id, r))
-      if (!rows.length) {
-        wrap.innerHTML = `<div class="empty">
-          <div class="halo"><img src="../icon.png" alt="" /></div>
-          <b>No servers yet</b>
-          Open ELauncher on your PC — its servers appear here automatically.
-        </div>`
-        return
-      }
-      wrap.innerHTML = rows.map((row) => {
-        const fresh = Date.now() - new Date(row.updated_at).getTime() < HEARTBEAT_MS * 4
-        const state = fresh ? row.state : 'offline'
-        const busy = restarting.has(row.server_id)
-        const running = state === 'running'
-        const archived = state === 'archived'
-        const transit = state === 'starting' || state === 'stopping'
-        const stClass = running ? 'on' : transit ? 'warm' : state === 'offline' ? 'dead' : ''
-        const chipText = archived ? 'Archived' : running ? 'Online' : state === 'starting' ? 'Starting…' : state === 'stopping' ? 'Stopping…' : state === 'offline' ? 'PC offline' : 'Stopped'
-        const players = fresh ? (row.players ?? []) : []
-        const line = state === 'offline'
-          ? 'Open ELauncher on your PC to reconnect'
-          : archived
-            ? 'In cold storage — the world and files are kept'
-            : running
-              ? (players.length ? `${players.length} playing — ${players.join(', ')}` : 'Online — nobody on yet')
-              : state === 'stopped' ? 'Ready when you are' : 'Working on it…'
-
-        const perf = perfOf(row)
-        const pills = []
-        if (row._owner) pills.push(pill(icons.users, `${esc(row._owner)}&#8217;s PC`))
-        if (perf) pills.push(`<span class="pill" style="color:${perf[2]}"><span style="width:7px;height:7px;border-radius:99px;background:${perf[2]};display:inline-block"></span>${perf[1]}</span>`)
-        if (fresh && row.started_at && running) pills.push(pill(icons.clock, `<b>${fmtUptime(Date.now() - new Date(row.started_at).getTime())}</b>`))
-        if (fresh && row.memory_mb != null && running) pills.push(pill(icons.chipIc, `<b>${(row.memory_mb / 1024).toFixed(1)} GB</b>${row.cpu_percent != null ? ` · ${row.cpu_percent}%` : ''}`))
-        if (fresh && running) pills.push(pill(icons.users, `<b>${players.length}</b> online`))
-        if (row.community) pills.push(`<span class="pill" style="color:var(--accent);border-color:rgba(139,124,255,.35);background:var(--accent-soft)">${icons.globe}Community</span>`)
-        if (row.version) pills.push(pill(icons.tag, esc(row.version)))
-
-        const addr = fresh && row.address
-          ? `<button class="addr" onclick="copyAddr('${esc(row.address)}')">${icons.globe}<span class="a">${esc(row.address)}</span><span class="c">tap to copy</span></button>`
-          : ''
-
-        const acts = state === 'offline'
-          ? ''
-          : archived
-            ? (canManage(row.server_id)
-              ? `<div class="acts">
-                  <button class="btn start" onclick="restoreServer('${row.server_id}')">${icons.play} Restore server</button>
-                  <button class="btn stop" onclick="deleteArchived('${row.server_id}')">Delete</button>
-                </div>`
-              : '')
-            : running || transit
-              ? `<div class="acts">
-                  <button class="btn stop" onclick="act('${row.server_id}','stop')" ${busy || transit ? 'disabled' : ''}>${icons.stop} Stop</button>
-                  <button class="btn" onclick="act('${row.server_id}','restart')" ${busy || transit ? 'disabled' : ''}>${icons.redo} ${busy ? 'Restarting…' : 'Restart'}</button>
-                </div>`
-              : `<div class="acts single">
-                  <button class="btn start" onclick="act('${row.server_id}','start')" ${busy ? 'disabled' : ''}>${icons.play} Start server</button>
-                </div>`
-
-        const manage = state === 'offline' || archived ? '' :
-          `<button class="btn manage" onclick="openSheet('${row.server_id}')">${icons.sliders} Open control panel</button>`
-
-        return `<div class="card${state === 'offline' ? ' offline' : ''}">
-          <div class="head">
-            <div class="tile" style="background:${gradOf(row.server_id)}">${esc((row.name || '?').charAt(0).toUpperCase())}<span class="st ${stClass}"></span></div>
-            <div class="who">
-              <div class="nm">${esc(row.name || 'Server')}</div>
-              <div class="ln">${esc(line)}</div>
-            </div>
-            <span class="chip ${stClass}">${chipText}</span>
-          </div>
-          ${pills.length ? `<div class="pills">${pills.join('')}</div>` : ''}
-          ${addr}
-          ${acts}
-          ${manage}
-        </div>`
-      }).join('')
-
-      for (const id of openConsoles) {
-        const con = $(`con-${id}`)
-        if (con) con.scrollTop = con.scrollHeight
-      }
-    }
-
-    // design/debug hook: paints mock cards without auth (read-only UI, commands stay gated)
-    window.__renderPreview = (rows) => {
-      $('login').hidden = true
-      $('topbar').hidden = false
-      $('app').hidden = false
-      render(rows)
-    }
-    window.__previewHosting = (html) => {
-      $('login').hidden = true
-      $('topbar').hidden = false
-      $('app').hidden = false
-      $('hosting').innerHTML = html
-    }
-    // design/debug: render the settings tab into #servers with mock props (no auth/relay)
-    window.__previewSettings = (game, kind, props) => {
-      $('login').hidden = true; $('topbar').hidden = false; $('app').hidden = false
-      sheetInfo = { game, kind, minecraftVersion: '1.21.1', port: 25565, automation: {} }
-      renderSettings($('servers'), props)
-    }
-    // design/debug: open the control panel for a mock server (tabs render; relay calls fail offline)
-    window.__previewSheet = (row, info) => {
-      window.__renderPreview([row])
-      rowsById.set(row.server_id, row)
-      ownerOf.set(row.server_id, me) // previews act as the owner so owner-only controls render
-      sheetId = row.server_id; sheetInfo = info; sheetTab = 'console'; dirty = {}; filesRel = ''; fileView = null
-      infoCache.set(row.server_id, info)
-      if (DESK()) {
-        document.body.classList.add('desk')
-        $('dapp').hidden = false
-        deskSel = row.server_id
-        renderDeskList([row])
-      }
-      renderTab()
-    }
-
     // ---------- control-panel sheet (settings, players, automation over the relay) ----------
     const rowsById = new Map()
     let sheetId = null, sheetInfo = null, sheetTab = 'console', dirty = {}
+    /** the selected view: a server id, or one of SENTINELS, or null */
+    let sel = null
     const DESK = () => matchMedia('(min-width:900px)').matches
-    let deskSel = null // selected server id, or 'store', on desktop
 
     // two-way request: queue it, wait for the launcher to answer. Realtime settles
     // it the moment the PC replies; the poll only backstops clouds without realtime.
@@ -1136,40 +1305,12 @@
     const boolTrue = (v) => /^true$/i.test(v)
     const boolStr = (on) => (isPal() ? (on ? 'True' : 'False') : (on ? 'true' : 'false'))
 
-    window.openSheet = async (serverId) => {
-      sheetId = serverId; sheetTab = 'console'; dirty = {}; sheetInfo = null; filesRel = ''; fileView = null
-      paintSheet('<div class="loadrow">Loading control panel…</div>')
-      try { sheetInfo = await loadInfo(serverId) } catch (e) { toast(e.message, true); return closeSheet() }
-      renderTab()
-    }
-    // clear the pair together: a lingering sheetInfo with a null sheetId poisons the desk view
-    window.closeSheet = () => { sheetId = null; sheetInfo = null; $('sheet').innerHTML = '' }
-    window.sheetGo = (tab) => { if (Object.keys(dirty).length && !confirm('Discard unsaved changes?')) return; sheetTab = tab; dirty = {}; fileView = null; renderTab() }
     window.setDirty = (k, v) => { dirty[k] = v }
 
     const isModdable = () => sheetInfo && sheetInfo.game === 'minecraft' && ['paper', 'fabric', 'forge', 'neoforge'].includes(sheetInfo.kind)
     const tabList = () => ['console', 'settings', 'players', ...(isModdable() ? ['mods'] : []), 'files', 'automation']
     const tabLabels = () => ({ console: 'Console', settings: 'Settings', players: 'Players', mods: sheetInfo?.kind === 'paper' ? 'Plugins' : 'Mods', files: 'Files', automation: 'Automation' })
     const tabIcons = () => ({ console: icons.term, settings: icons.sliders, players: icons.users, mods: icons.puzzle, files: icons.folder, automation: icons.zap })
-    function paintSheet(bodyHtml) {
-      const row = rowsById.get(sheetId) || {}
-      const tabs = tabList()
-      const label = tabLabels()
-      const tico = tabIcons()
-      $('sheet').innerHTML = `<div class="sheet-bg" onclick="closeSheet()"></div>
-        <div class="sheet">
-          <div class="sheet-grip"></div>
-          <div class="sheet-top">
-            <div class="tile" style="background:${gradOf(sheetId)}">${esc((row.name || '?').charAt(0).toUpperCase())}</div>
-            <div style="flex:1;min-width:0"><div class="nm">${esc(row.name || 'Server')}</div>
-              <div class="sub">${sheetInfo ? gameLabel(sheetInfo.game) + (sheetInfo.game === 'minecraft' ? ' ' + esc(sheetInfo.minecraftVersion || '') : '') + ' · port ' + sheetInfo.port : ''}</div></div>
-            <button class="iconbtn" onclick="closeSheet()">${icons.x}</button>
-          </div>
-          <div class="sheet-tabs">${tabs.map((t) => `<button class="${t === sheetTab ? 'on' : ''}" onclick="sheetGo('${t}')">${tico[t]}<span>${label[t]}</span></button>`).join('')}</div>
-          <div class="sheet-body" id="sheetBody">${bodyHtml}</div>
-        </div>`
-    }
-
     // shared by the mobile modal and the desktop detail pane
     async function runTab(body) {
       body.innerHTML = '<div class="loadrow">Loading…</div>'
@@ -1188,10 +1329,9 @@
         body.innerHTML = `<div class="loadrow" style="color:var(--red)">${esc(e.message)}</div>`
       }
     }
+    /** One destination now — the detail pane, at every breakpoint. */
     async function renderTab() {
-      if (DESK()) return deskRenderDetail()
-      paintSheet('<div class="loadrow">Loading…</div>')
-      await runTab($('sheetBody'))
+      return renderDetail()
     }
 
     function renderConsole(body) {
@@ -1583,7 +1723,7 @@
       if (!e) return
       const rel = filesRel ? `${filesRel}/${e.name}` : e.name
       if (e.isDir) { filesRel = rel; return renderTab() }
-      const body = $('dbody') || $('sheetBody')
+      const body = $('tabBody')
       if (body) body.innerHTML = '<div class="loadrow">Opening…</div>'
       try {
         const res = await request(sheetId, 'readFile', { path: rel })
@@ -1663,145 +1803,422 @@
       if (row.cpu_percent >= 70) return ['fair', 'Busy', 'var(--amber)']
       return ['smooth', 'Smooth', 'var(--green)']
     }
-    function renderDeskList(rows) {
-      const el = $('dsideList')
+    // ---------- one list, one detail pane, one render path ----------
+    // The panel used to keep two complete UIs — mobile cards plus a bottom
+    // sheet, desktop rail plus detail pane — that shared only runTab(). Both
+    // breakpoints now paint the same DOM; CSS decides whether the rail and the
+    // detail sit side by side or the detail slides in over the rail.
+
+    /** view ids that are not servers */
+    const SENTINELS = new Set(['store', 'health'])
+    /** rail and detail are on screen together */
+    const WIDE = () => matchMedia('(min-width:900px)').matches
+
+    /**
+     * Rows bucketed the way a host actually reads the list: the question on
+     * open is "is anything broken", so unreachable hosts sort last and running
+     * servers lead.
+     */
+    const RAIL_GROUPS = [
+      ['running', 'Running'],
+      ['transit', 'Starting'],
+      ['stopped', 'Stopped'],
+      ['archived', 'Archived'],
+      ['dead', 'Host offline']
+    ]
+    function bucketOf(row) {
+      const cls = stClassOf(row)
+      if (cls === 'dead') return 'dead'
+      if (row.state === 'archived') return 'archived'
+      if (cls === 'on') return 'running'
+      if (cls === 'warm') return 'transit'
+      return 'stopped'
+    }
+
+    /** rail filter state (client-side only) */
+    let railQuery = ''
+    let railFilter = 'all'
+
+    /**
+     * Second line under the name. Enough to tell two servers with the same
+     * name apart, which the old one-word state line could not.
+     */
+    function railSub(row, bucket) {
+      const info = infoCache.get(row.server_id)
+      const bits = []
+      if (bucket === 'dead') {
+        bits.push('PC offline')
+        if (row.updated_at) bits.push('last seen ' + fmtUptime(Date.now() - new Date(row.updated_at).getTime()) + ' ago')
+        return bits.join(' · ')
+      }
+      if (bucket === 'archived') return 'Archived · world kept'
+      if (info) {
+        bits.push(info.game === 'minecraft' ? [info.kind, info.minecraftVersion].filter(Boolean).join(' ') : gameLabel(info.game))
+      }
+      if (bucket === 'running') {
+        bits.push((row.players?.length || 0) + ' online')
+        if (row.started_at) bits.push(fmtUptime(Date.now() - new Date(row.started_at).getTime()))
+      } else if (bucket === 'transit') {
+        bits.push(row.state === 'starting' ? 'starting…' : 'stopping…')
+      } else if (info) {
+        bits.push('port ' + info.port)
+      } else {
+        bits.push('stopped')
+      }
+      return bits.filter(Boolean).join(' · ')
+    }
+
+    /** Quick actions live on the row so managing four servers isn't four drill-ins. */
+    function railActions(row, bucket) {
+      const id = row.server_id
+      if (bucket === 'dead' || bucket === 'archived') return ''
+      if (bucket === 'running') {
+        return `<button class="icb no" title="Stop" onclick="event.stopPropagation();act('${id}','stop')">${icons.stop}</button>
+                <button class="icb" title="Restart" onclick="event.stopPropagation();act('${id}','restart')">${icons.redo}</button>`
+      }
+      if (bucket === 'transit') {
+        return row.state === 'stopping'
+          ? `<button class="icb no" title="Force stop" onclick="event.stopPropagation();act('${id}','forceStop')">${icons.stop}</button>`
+          : ''
+      }
+      return `<button class="icb go" title="Start" onclick="event.stopPropagation();act('${id}','start')">${icons.play}</button>`
+    }
+
+    function railRow(row, bucket) {
+      const id = row.server_id
+      const sub = railSub(row, bucket)
+      return `<div class="srow ${sel === id ? 'sel' : ''} ${bucket === 'dead' ? 'stale' : ''}" onclick="selectView('${id}')"
+                   role="button" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();selectView('${id}')}">
+        <span class="tile" style="background:${gradOf(id)}">${esc((row.name || '?').charAt(0).toUpperCase())}<span class="st ${stClassOf(row)}"></span></span>
+        <div class="srow-txt">
+          <div class="nm">${esc(row.name || 'Server')}</div>
+          <div class="sub">${esc(sub)}</div>
+        </div>
+        <div class="srow-acts">${railActions(row, bucket)}</div>
+      </div>`
+    }
+
+    function renderList(rows) {
+      const el = $('railList')
       if (!el) return
-      $('dStoreBtn').classList.toggle('sel', deskSel === 'store')
-      el.innerHTML = rows.length ? rows.map((r) => `<div class="dsrow ${deskSel === r.server_id ? 'sel' : ''}" onclick="deskSelect('${r.server_id}')">
-        <span class="tile" style="background:${gradOf(r.server_id)}">${esc((r.name || '?').charAt(0).toUpperCase())}<span class="st ${stClassOf(r)}"></span></span>
-        <div style="flex:1;min-width:0"><div class="dsn">${esc(r.name || 'Server')}</div><div class="dsm">${stClassOf(r) === 'on' ? (r.players?.length ? r.players.length + ' online' : 'Online') : stClassOf(r) === 'dead' ? 'PC offline' : (r.state || 'stopped')}</div></div>
-      </div>`).join('') : '<div class="loadrow">No servers yet.</div>'
+      $('storeBtn').classList.toggle('sel', sel === 'store')
+      $('healthBtn')?.classList.toggle('sel', sel === 'health')
+
+      const q = railQuery.trim().toLowerCase()
+      const visible = rows.filter((r) => {
+        if (q && !String(r.name || '').toLowerCase().includes(q)) return false
+        if (railFilter === 'all') return true
+        if (railFilter === 'running') return bucketOf(r) === 'running'
+        if (railFilter === 'stopped') return bucketOf(r) === 'stopped'
+        return (infoCache.get(r.server_id)?.game ?? 'minecraft') === railFilter
+      })
+
+      if (!rows.length) {
+        el.innerHTML = `<div class="empty">
+          <div class="halo"><img src="../icon.png" alt="" /></div>
+          <b>No servers yet</b>
+          Open ELauncher on your PC — its servers appear here automatically.
+        </div>`
+        return
+      }
+      if (!visible.length) {
+        el.innerHTML = `<div class="loadrow">No servers match that filter.</div>`
+        return
+      }
+
+      const groups = new Map(RAIL_GROUPS.map(([k]) => [k, []]))
+      visible.forEach((r) => groups.get(bucketOf(r)).push(r))
+      el.innerHTML = RAIL_GROUPS.map(([key, label]) => {
+        const bucket = groups.get(key)
+        if (!bucket.length) return ''
+        const rowsHtml = bucket
+          .sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')))
+          .map((r) => railRow(r, key))
+          .join('')
+        return `<div class="grp">${label}<span class="ct">${bucket.length}</span></div>${rowsHtml}`
+      }).join('')
     }
-    window.deskSelect = (id) => {
+
+    /** Which games are actually present, so the chips never offer an empty filter. */
+    function renderChips(rows) {
+      const el = $('railChips')
+      if (!el) return
+      const games = [...new Set(rows.map((r) => infoCache.get(r.server_id)?.game).filter(Boolean))]
+      const chips = [['all', 'All'], ['running', 'Running'], ['stopped', 'Stopped'], ...games.map((g) => [g, gameLabel(g)])]
+      el.innerHTML = chips
+        .map(([key, label]) => `<button class="rchip ${railFilter === key ? 'on' : ''}" onclick="railSetFilter('${key}')">${esc(label)}</button>`)
+        .join('')
+    }
+    window.railSetFilter = (key) => { railFilter = key; renderList([...rowsById.values()]); renderChips([...rowsById.values()]) }
+    window.railSetQuery = (value) => { railQuery = value; renderList([...rowsById.values()]) }
+
+    // ---------- routing ----------
+    // #/s/<id>/<tab> | #/store | #/health. Gives the panel deep links, a working
+    // back button, and restore-on-reload, none of which the old module-level
+    // `sheetTab` could do.
+    let suppressHash = false
+    function writeHash() {
+      if (!sel) return
+      const next = SENTINELS.has(sel) ? `#/${sel}` : `#/s/${sel}/${sheetTab}`
+      if (location.hash === next) return
+      suppressHash = true
+      history.pushState(null, '', next)
+      suppressHash = false
+    }
+    function readHash() {
+      const m = /^#\/s\/([^/]+)\/?([^/]*)$/.exec(location.hash)
+      if (m) return { id: decodeURIComponent(m[1]), tab: m[2] || 'console' }
+      if (location.hash === '#/store') return { id: 'store' }
+      if (location.hash === '#/health') return { id: 'health' }
+      return null
+    }
+    addEventListener('popstate', () => {
+      if (suppressHash) return
+      const route = readHash()
+      if (!route) { if (!WIDE()) closeDetail(); return }
+      if (route.tab) sheetTab = route.tab
+      selectView(route.id, { fromHash: true })
+    })
+
+    window.selectView = (id, opts = {}) => {
       if (Object.keys(dirty).length && !confirm('Discard unsaved changes?')) return
-      deskSel = id; dirty = {}
-      if (id !== 'store') { sheetId = id; sheetInfo = null; sheetTab = 'console'; filesRel = ''; fileView = null }
-      renderDeskList([...rowsById.values()])
-      deskRenderDetail()
+      sel = id
+      dirty = {}
+      if (!SENTINELS.has(id)) {
+        // a new server resets the tab; re-selecting the same one keeps your place
+        if (sheetId !== id) { sheetId = id; sheetInfo = null; filesRel = ''; fileView = null; if (!opts.fromHash) sheetTab = 'console' }
+      }
+      document.body.classList.add('detail-open')
+      if (!opts.fromHash) writeHash()
+      renderList([...rowsById.values()])
+      void renderDetail()
     }
-    window.deskTabGo = (tab) => {
+    /** Mobile back: drop the detail overlay and return to the rail. */
+    window.closeDetail = () => {
       if (Object.keys(dirty).length && !confirm('Discard unsaved changes?')) return
-      sheetTab = tab; dirty = {}; fileView = null
-      document.querySelectorAll('.dtabs button').forEach((b) => b.classList.toggle('on', b.dataset.t === tab))
-      const body = $('dbody'); if (body) runTab(body)
+      dirty = {}
+      document.body.classList.remove('detail-open')
+      if (!WIDE()) { sel = null; sheetId = null; sheetInfo = null }
+      renderList([...rowsById.values()])
     }
-    function deskHero(row) {
+    window.goTab = (t) => {
+      if (Object.keys(dirty).length && !confirm('Discard unsaved changes?')) return
+      sheetTab = t
+      dirty = {}
+      fileView = null
+      writeHash()
+      document.querySelectorAll('.dtabs button').forEach((b) => b.classList.toggle('on', b.dataset.t === t))
+      const body = $('tabBody')
+      if (body) void runTab(body)
+    }
+    // the old names stayed reachable from markup rendered before this landed
+    window.deskSelect = window.selectView
+    window.deskTabGo = window.goTab
+    window.sheetGo = window.goTab
+    window.openSheet = window.selectView
+    window.closeSheet = window.closeDetail
+
+    function renderHero(row) {
       const fresh = Date.now() - new Date(row.updated_at).getTime() < HEARTBEAT_MS * 4
       const running = fresh && row.state === 'running'
       const archived = fresh && row.state === 'archived'
       const transit = fresh && (row.state === 'starting' || row.state === 'stopping')
+      const id = row.server_id
       const power = archived
-        ? (canManage(row.server_id)
-          ? `<button class="dbtn start" onclick="restoreServer('${row.server_id}')">${icons.play} Restore</button>
-             <button class="dbtn stop" onclick="deleteArchived('${row.server_id}')">Delete</button>`
+        ? (canManage(id)
+          ? `<button class="dbtn start" onclick="restoreServer('${id}')">${icons.play} Restore</button>
+             <button class="dbtn stop" onclick="deleteArchived('${id}')">Delete</button>`
           : '')
-        : running || transit
-          ? `<button class="dbtn stop" onclick="act('${row.server_id}','stop')" ${transit ? 'disabled' : ''}>${icons.stop} Stop</button>
-             <button class="dbtn" onclick="act('${row.server_id}','restart')" ${transit ? 'disabled' : ''}>${icons.redo} Restart</button>`
-          : `<button class="dbtn start" onclick="act('${row.server_id}','start')">${icons.play} Start</button>`
-      const perf = perfOf(row)
+        : !fresh
+          ? ''
+          : running || transit
+            ? `${row.state === 'stopping'
+                 ? `<button class="dbtn stop" onclick="act('${id}','forceStop')">${icons.stop} Force stop</button>`
+                 : `<button class="dbtn stop" onclick="act('${id}','stop')" ${transit ? 'disabled' : ''}>${icons.stop} Stop</button>`}
+               <button class="dbtn" onclick="act('${id}','restart')" ${transit ? 'disabled' : ''}>${icons.redo} Restart</button>`
+            : `<button class="dbtn start" onclick="act('${id}','start')">${icons.play} Start</button>`
+
       const stats = []
-      if (perf) stats.push(`<div class="dstat"><div class="v" style="color:${perf[2]}">${perf[1]}</div><div class="l">Performance</div></div>`)
-      if (running && row.started_at) stats.push(`<div class="dstat"><div class="v">${fmtUptime(Date.now() - new Date(row.started_at).getTime())}</div><div class="l">Uptime</div></div>`)
-      if (running && row.memory_mb != null) stats.push(`<div class="dstat"><div class="v">${(row.memory_mb / 1024).toFixed(1)} GB</div><div class="l">Memory${row.cpu_percent != null ? ` · ${row.cpu_percent}% CPU` : ''}</div></div>`)
       stats.push(`<div class="dstat"><div class="v">${running ? (row.players?.length || 0) : '—'}</div><div class="l">Players</div></div>`)
-      if (fresh && row.address) stats.push(`<div class="dstat"><div class="v" style="font-family:ui-monospace,Consolas,monospace;font-size:14px;cursor:pointer" onclick="copyAddr('${esc(row.address)}')">${esc(row.address)}</div><div class="l">Public address · copy</div></div>`)
-      const label = archived ? 'Archived' : running ? 'Online' : transit ? (row.state === 'starting' ? 'Starting…' : 'Stopping…') : !fresh ? 'PC offline' : 'Stopped'
+      if (running && row.started_at) {
+        stats.push(`<div class="dstat"><div class="v">${fmtUptime(Date.now() - new Date(row.started_at).getTime())}</div><div class="l">Uptime</div></div>`)
+      }
+      // The per-server sampler is Windows-only, so on a Linux host these are
+      // permanently null. Say that in words rather than showing a zero or a
+      // dash that reads like "not measured yet".
+      if (running) {
+        stats.push(row.memory_mb != null
+          ? `<div class="dstat"><div class="v">${(row.memory_mb / 1024).toFixed(1)}<u>GB</u></div><div class="l">Memory</div></div>`
+          : `<div class="dstat dead"><div class="v">Not on Linux</div><div class="l">Memory</div><div class="why">Sampler is Windows-only</div></div>`)
+        if (row.cpu_percent != null) {
+          stats.push(`<div class="dstat"><div class="v">${row.cpu_percent}<u>%</u></div><div class="l">CPU</div></div>`)
+        }
+      }
+      const perf = perfOf(row)
+      if (perf) stats.push(`<div class="dstat"><div class="v" style="color:${perf[2]}">${perf[1]}</div><div class="l">Performance</div></div>`)
+
+      const label = archived ? 'Archived' : !fresh ? 'PC offline' : running ? 'Online' : transit ? (row.state === 'starting' ? 'Starting…' : 'Stopping…') : 'Stopped'
       const chip = `<span class="chip ${stClassOf(row)}">${label}</span>${row.community ? '<span class="chip acc">Community</span>' : ''}`
+      const addr = fresh && row.address
+        ? `<button class="addr" onclick="copyAddr('${esc(row.address)}')">${icons.globe}<span class="a">${esc(row.address)}</span><span class="c">copy</span></button>`
+        : ''
       return `<div class="dhero"><div class="dhero-row">
-        <span class="tile" style="background:${gradOf(row.server_id)}">${esc((row.name || '?').charAt(0).toUpperCase())}</span>
-        <div style="min-width:0"><div class="row" style="gap:10px"><h2>${esc(row.name || 'Server')}</h2>${chip}</div>
-          <div class="dhsub">${sheetInfo ? gameLabel(sheetInfo.game) + (sheetInfo.game === 'minecraft' ? ' ' + esc(sheetInfo.kind) + ' ' + esc(sheetInfo.minecraftVersion || '') : '') + ' · port ' + sheetInfo.port : ' '}</div></div>
+        <button class="backbtn" onclick="closeDetail()" aria-label="Back to servers">${icons.x}</button>
+        <span class="tile" style="background:${gradOf(id)}">${esc((row.name || '?').charAt(0).toUpperCase())}</span>
+        <div style="min-width:0"><div class="row" style="gap:10px;flex-wrap:wrap"><h2>${esc(row.name || 'Server')}</h2>${chip}</div>
+          <div class="dhsub">${sheetInfo ? esc(gameLabel(sheetInfo.game) + (sheetInfo.game === 'minecraft' ? ' ' + sheetInfo.kind + ' ' + (sheetInfo.minecraftVersion || '') : '') + ' · port ' + sheetInfo.port) : ' '}</div></div>
         <div class="dhero-acts">${power}</div></div>
+        ${addr}
         <div class="dstats">${stats.join('')}</div></div>`
     }
-    function deskTabsBar() {
+
+    function renderTabs() {
       const tabs = tabList()
       const label = tabLabels()
       const tico = tabIcons()
-      return `<div class="dtabs">${tabs.map((t) => `<button data-t="${t}" class="${t === sheetTab ? 'on' : ''}" onclick="deskTabGo('${t}')">${tico[t]}<span>${label[t]}</span></button>`).join('')}</div>`
+      return `<div class="dtabs">${tabs.map((t) => `<button data-t="${t}" class="${t === sheetTab ? 'on' : ''}" onclick="goTab('${t}')">${tico[t]}<span>${label[t]}</span></button>`).join('')}</div>`
     }
-    async function deskRenderDetail() {
-      const main = $('dmain'); if (!main) return
-      if (deskSel === 'store') {
-        main.innerHTML = `<div class="dhero"><div class="dhero-row"><div style="min-width:0"><h2>New server &amp; billing</h2><div class="dhsub">Order a server, pay, and track your plans</div></div></div></div>
-          <div class="dbody"><div id="dHost"></div><div id="dHosting"></div></div>`
-        loadHostCard('dHost'); loadHosting('dHosting'); return
+
+    /** Chrome for the two non-server views, so they read as part of the same pane. */
+    function viewShell(title, subtitle, bodyHtml) {
+      return `<div class="dhero"><div class="dhero-row">
+          <button class="backbtn" onclick="closeDetail()" aria-label="Back to servers">${icons.x}</button>
+          <div style="min-width:0"><h2>${esc(title)}</h2><div class="dhsub">${esc(subtitle)}</div></div>
+        </div></div>
+        <div class="dbody">${bodyHtml}</div>`
+    }
+
+    async function renderDetail() {
+      const main = $('detail')
+      if (!main) return
+      if (sel === 'store') {
+        main.innerHTML = viewShell('New server & billing', 'Order a server, pay, and track your plans', '<div id="vHost"></div><div id="vHosting"></div>')
+        void loadHostCard(); void loadHosting()
+        return
       }
-      if (!deskSel) {
+      if (sel === 'health') {
+        main.innerHTML = viewShell('Fleet health', 'Live vitals for every machine hosting a server', '<div id="vHealth"><div class="loadrow">Loading…</div></div>')
+        void loadHealth()
+        return
+      }
+      if (!sel) {
         main.innerHTML = `<div class="dwelcome"><div class="halo"><img src="../icon.png" alt=""></div><b>Pick a server</b>Choose one from the left to open its control panel.</div>`
         return
       }
-      const row = rowsById.get(deskSel) || {}
-      const rowFresh = Date.now() - new Date(row.updated_at).getTime() < HEARTBEAT_MS * 4
-      if (rowFresh && row.state === 'archived') {
-        // no live server behind it — the control-panel tabs would all error
-        main.innerHTML = deskHero(row) + `<div class="dbody"><div class="loadrow">This server is archived — its world and files are kept safe on the host. Restore it to manage it again.</div></div>`
+      const row = rowsById.get(sel)
+      if (!row) {
+        main.innerHTML = `<div class="dwelcome"><b>That server is gone</b>It may have been deleted or unshared.</div>`
         return
       }
-      main.innerHTML = deskHero(row) + `<div class="dtabs"></div><div class="dbody" id="dbody"><div class="loadrow">Loading control panel…</div></div>`
+      const fresh = Date.now() - new Date(row.updated_at).getTime() < HEARTBEAT_MS * 4
+      if (fresh && row.state === 'archived') {
+        // no live server behind it — every control-panel tab would error
+        main.innerHTML = renderHero(row) + `<div class="dbody"><div class="loadrow">This server is archived — its world and files are kept safe on the host. Restore it to manage it again.</div></div>`
+        return
+      }
+      main.innerHTML = renderHero(row) + `<div class="dtabs"></div><div class="dbody" id="tabBody"><div class="loadrow">Loading control panel…</div></div>`
       try {
-        // resync, not just fill: a stale sheetInfo (e.g. left over from a closed
-        // mobile sheet after widening the window) must never keep an old/null sheetId
-        if (sheetId !== deskSel || !sheetInfo) { sheetId = deskSel; sheetInfo = await loadInfo(deskSel) }
-        main.innerHTML = deskHero(row) + deskTabsBar() + '<div class="dbody" id="dbody"></div>'
-        await runTab($('dbody'))
+        if (sheetId !== sel || !sheetInfo) { sheetId = sel; sheetInfo = await loadInfo(sel) }
+        // the tab set is per-game, so a hand-typed link (or a stale tab carried
+        // over from another server) can name one this server doesn't have
+        if (!tabList().includes(sheetTab)) { sheetTab = 'console'; writeHash() }
+        main.innerHTML = renderHero(row) + renderTabs() + '<div class="dbody" id="tabBody"></div>'
+        await runTab($('tabBody'))
       } catch (e) {
-        const body = main.querySelector('.dbody'); if (body) body.innerHTML = `<div class="loadrow" style="color:var(--red)">${esc(e.message)}</div>`
+        const body = main.querySelector('.dbody')
+        if (body) body.innerHTML = `<div class="loadrow" style="color:var(--red)">${esc(e.message)}</div>`
       }
     }
 
-    function applyLayout(rows) {
-      // the desktop path doesn't call render(), so populate the shared lookup here
+    function applyRows(rows) {
       rowsById.clear()
       rows.forEach((r) => rowsById.set(r.server_id, r))
-      if (DESK()) {
-        document.body.classList.add('desk')
-        renderDeskList(rows)
-        if (deskSel === null) deskSel = rows[0]?.server_id ?? 'store'
-        // refresh the detail lightly: update hero stats / console without disturbing edits
-        if (deskSel && deskSel !== 'store' && !rowsById.get(deskSel)) { deskSel = rows[0]?.server_id ?? 'store'; deskRenderDetail() }
-        else if (!$('dbody') && !$('dHost')) deskRenderDetail()
-        else deskLiveUpdate()
-      } else {
-        document.body.classList.remove('desk')
-        render(rows)
-        void loadHostCard(); void loadHosting()
-      }
-    }
-    // keep hero/console fresh on desktop without clobbering the active tab's edits
-    function deskLiveUpdate() {
-      if (deskSel === 'store') { void loadHostCard(); void loadHosting(); return }
-      if (!deskSel) return
-      const row = rowsById.get(deskSel); if (!row) return
-      const hero = $('dmain')?.querySelector('.dhero')
-      if (hero) hero.outerHTML = deskHero(row)
-      if (sheetTab === 'console') {
-        const con = $('dmain')?.querySelector('.console')
-        if (con) { const stick = con.scrollHeight - con.scrollTop - con.clientHeight < 40; con.textContent = row.console || 'No output yet.'; if (stick) con.scrollTop = con.scrollHeight }
-      }
-    }
-    matchMedia('(min-width:900px)').addEventListener('change', () => { if (me) void refresh() })
 
-    // keep an open mobile console tab live without disturbing other tabs' edits
-    function paintMobileConsole() {
-      if (DESK() || !sheetId || sheetTab !== 'console') return
-      const con = document.querySelector('#sheetBody .console')
-      if (con) {
-        const stick = con.scrollHeight - con.scrollTop - con.clientHeight < 40
-        con.textContent = (rowsById.get(sheetId) || {}).console || 'No output yet.'
-        if (stick) con.scrollTop = con.scrollHeight
+      // first paint: honour a deep link, else land somewhere sensible
+      if (sel === null) {
+        const route = readHash()
+        if (route && (SENTINELS.has(route.id) || rowsById.has(route.id))) {
+          if (route.tab) sheetTab = route.tab
+          return selectView(route.id, { fromHash: true })
+        }
+        // wide screens always show something; narrow ones start on the list
+        if (WIDE()) { sel = rows[0]?.server_id ?? 'store'; document.body.classList.add('detail-open') }
       }
+      // the selected server vanished (deleted or unshared) — don't strand the pane.
+      // reset the tab too: it belonged to the old server, and carrying e.g. 'mods'
+      // onto a Palworld server lands on a tab that isn't in its tab list.
+      if (sel && !SENTINELS.has(sel) && !rowsById.has(sel)) {
+        sel = WIDE() ? (rows[0]?.server_id ?? 'store') : null
+        if (!sel) document.body.classList.remove('detail-open')
+        sheetId = sel && !SENTINELS.has(sel) ? sel : null
+        sheetInfo = null
+        sheetTab = 'console'
+      }
+      renderChips(rows)
+      renderList(rows)
+      if (!$('tabBody') && !$('vHost') && !$('vHealth')) void renderDetail()
+      else liveUpdate()
+    }
+
+    /** Keep the hero and console fresh without clobbering edits in the active tab. */
+    function liveUpdate() {
+      if (sel === 'store') { void loadHostCard(); void loadHosting(); return }
+      if (sel === 'health') { void loadHealth(); return }
+      if (!sel) return
+      const row = rowsById.get(sel)
+      if (!row) return
+      const hero = $('detail')?.querySelector('.dhero')
+      if (hero) hero.outerHTML = renderHero(row)
+      if (sheetTab === 'console') {
+        const con = $('detail')?.querySelector('.console')
+        if (con) {
+          const stick = con.scrollHeight - con.scrollTop - con.clientHeight < 40
+          con.textContent = row.console || 'No output yet.'
+          if (stick) con.scrollTop = con.scrollHeight
+        }
+      }
+    }
+
+    // widening/narrowing changes what "selected" means, so repaint the shell
+    matchMedia('(min-width:900px)').addEventListener('change', () => {
+      if (!me) return
+      if (WIDE() && !sel) { sel = [...rowsById.keys()][0] ?? 'store'; document.body.classList.add('detail-open') }
+      renderList([...rowsById.values()])
+      void renderDetail()
+    })
+
+    // design/debug hooks: paint the UI with no auth and no cloud
+    window.__renderPreview = (rows) => {
+      $('login').hidden = true
+      $('topbar').hidden = false
+      $('app').hidden = false
+      applyRows(rows)
+    }
+    window.__previewHosting = (html) => {
+      window.__renderPreview([])
+      selectView('store')
+      $('vHosting').innerHTML = html
+    }
+    window.__previewSettings = (game, kind, props) => {
+      $('login').hidden = true; $('topbar').hidden = false; $('app').hidden = false
+      sheetInfo = { game, kind, minecraftVersion: '1.21.1', port: 25565, automation: {} }
+      renderSettings($('detail'), props)
+    }
+    window.__previewSheet = (row, info) => {
+      ownerOf.set(row.server_id, me) // previews act as the owner so owner-only controls render
+      infoCache.set(row.server_id, info)
+      window.__renderPreview([row])
+      sheetInfo = info
+      selectView(row.server_id)
     }
 
     async function refresh() {
       if (!me || document.hidden) return
       try {
         const rows = await fetchServers()
-        applyLayout(rows)
-        paintMobileConsole()
+        applyRows(rows)
       } catch (e) {
-        const target = DESK() ? $('dsideList') : $('servers')
+        const target = $('railList')
         if (target) target.innerHTML = `<div class="empty"><b>Could not reach the cloud</b>${esc(e.message)}</div>`
       }
     }
@@ -1815,8 +2232,7 @@
       setTimeout(() => {
         paintQueued = false
         if (document.hidden) return
-        applyLayout([...rowsById.values()].sort((a, b) => (a.name || '').localeCompare(b.name || '')))
-        paintMobileConsole()
+        applyRows([...rowsById.values()].sort((a, b) => (a.name || '').localeCompare(b.name || '')))
       }, 120)
     }
     function mergeStatus(row) {
@@ -1852,7 +2268,7 @@
     }
 
     /** "PC as a host" card — the launcher publishes its specs + per-game report. */
-    async function loadHostCard(target = $('dHost') ? 'dHost' : 'host') {
+    async function loadHostCard(target = 'vHost') {
       try {
         const { data } = await supabase.from('host_specs').select('report').eq('owner_id', me).maybeSingle()
         const report = data?.report
@@ -1880,6 +2296,148 @@
       } catch {
         // card is optional — table may not be migrated yet
       }
+    }
+
+    // ---------- admin: fleet health ----------
+    /** vitals are published every 15s — three missed beats and the box is offline */
+    const HOST_STALE_MS = 45_000
+    const fmtGB = (mb) => (mb == null ? '—' : mb >= 1024 ? `${(mb / 1024).toFixed(1)} GB` : `${mb} MB`)
+    /** colour band for a 0-100 utilisation reading; null reads as "unknown", not "fine" */
+    const bandOf = (pct) => (pct == null ? 'none' : pct >= 90 ? 'dead' : pct >= 75 ? 'warm' : '')
+
+    function applyAdminUi() {
+      const btn = $('healthBtn')
+      if (!btn || btn.hidden === !isAdmin) return
+      btn.hidden = !isAdmin
+      btn.innerHTML = `${icons.zap} Fleet health`
+    }
+
+    function meter(label, pct, detail) {
+      const width = pct == null ? 0 : Math.max(2, Math.min(100, pct))
+      return `<div class="meter ${bandOf(pct)}">
+        <div class="mrow"><b>${esc(label)}</b><span>${esc(detail)}</span></div>
+        <div class="track"><div class="fill" style="width:${width}%"></div></div>
+      </div>`
+    }
+
+    /**
+     * Admin-only fleet overview: one card per machine publishing vitals, a
+     * roll-up across all of them, and anything that looks wrong. Read-only by
+     * design — the controls for a server still live on that server's own page.
+     */
+    async function loadHealth(target = 'vHealth') {
+      const el = $(target)
+      if (!el) return
+      if (!isAdmin) { el.__lastHtml = ''; el.innerHTML = ''; return }
+      const heading = ''
+      const paint = (html) => { if (el.__lastHtml !== html) { el.__lastHtml = html; el.innerHTML = html } }
+      // design/debug hook (same family as __mockRelay): renders offline, no cloud
+      if (window.__mockHealth) {
+        const m = window.__mockHealth
+        paint(heading + healthHtml(m.hosts, m.servers, m.names))
+        return
+      }
+      try {
+        const [hostsRes, statusRes] = await Promise.all([
+          supabase.from('host_health').select('*'),
+          supabase.from('server_status').select('server_id, state, updated_at')
+        ])
+        if (hostsRes.error) throw new Error(hostsRes.error.message)
+        const hosts = (hostsRes.data ?? []).slice().sort((a, b) => (a.host_name || '').localeCompare(b.host_name || ''))
+        if (!hosts.length) {
+          paint(heading + '<div class="loadrow">No host is reporting yet. Run the latest <b>schema.sql</b> in Supabase, then make sure a hosting launcher is signed in and online.</div>')
+          return
+        }
+        const servers = statusRes.data ?? []
+        // owner names come from a second query — the panel never uses embedded resources
+        const ownerIds = [...new Set(hosts.map((h) => h.owner_id))]
+        const profs = (await supabase.from('profiles').select('id, username').in('id', ownerIds)).data ?? []
+        paint(heading + healthHtml(hosts, servers, new Map(profs.map((p) => [p.id, p.username]))))
+      } catch (e) {
+        // a missing table just means the migration hasn't been run — say what to
+        // do about it rather than surfacing PostgREST's schema-cache wording
+        const missing = /schema cache|does not exist|42P01|PGRST205/i.test(e.message)
+        paint(heading + (missing
+          ? '<div class="loadrow">Fleet health needs one migration: open Supabase → SQL Editor and run the latest <b>schema.sql</b> once.</div>'
+          : `<div class="loadrow" style="color:var(--red)">${esc(e.message)}</div>`))
+      }
+    }
+
+    /** Pure render half of the Health view — kept separate so previews can drive it offline. */
+    function healthHtml(hosts, servers, names) {
+      const now = Date.now()
+      const alerts = []
+      let online = 0
+      let players = 0
+      const cards = hosts.map((h) => {
+        const age = now - new Date(h.updated_at).getTime()
+        const stale = age > HOST_STALE_MS
+        const who = names.get(h.owner_id) || 'Unknown account'
+        const label = h.host_name || who
+        const ramPct = h.ram_total_mb ? Math.round((h.ram_used_mb / h.ram_total_mb) * 100) : null
+        const diskPct = h.disk_total_gb ? Math.round(((h.disk_total_gb - h.disk_free_gb) / h.disk_total_gb) * 100) : null
+        if (stale) {
+          alerts.push(['bad', label, `No vitals for ${fmtUptime(age)} — the hosting launcher looks closed`])
+        } else {
+          online += 1
+          players += h.players_online || 0
+          // disk is the one that takes a host down for good, so it leads
+          if (h.disk_free_gb != null && h.disk_free_gb < 5) alerts.push(['bad', label, `Only ${h.disk_free_gb} GB of disk left`])
+          else if (diskPct != null && diskPct >= 90) alerts.push(['', label, `Disk ${diskPct}% full`])
+          if (ramPct != null && ramPct >= 92) alerts.push(['', label, `Memory ${ramPct}% used`])
+          if (h.cpu_percent != null && h.cpu_percent >= 92) alerts.push(['', label, `CPU pinned at ${h.cpu_percent}%`])
+        }
+        return `<div class="card ${stale ? 'offline' : ''}">
+          <div class="head">
+            <span class="tile" style="background:${gradOf(h.owner_id)}">${esc(label.charAt(0).toUpperCase())}</span>
+            <div class="who"><div class="nm">${esc(label)}</div><div class="ln">${esc(who)}${h.platform ? ' · ' + esc(h.platform) : ''}${h.headless ? ' · headless' : ''}</div></div>
+            <span class="chip ${stale ? 'dead' : 'on'}">${stale ? 'Offline' : 'Online'}</span>
+          </div>
+          ${meter('CPU', h.cpu_percent, h.cpu_percent == null ? 'not readable' : `${h.cpu_percent}%${h.load1 != null ? ` · load ${h.load1}` : ''}`)}
+          ${meter('Memory', ramPct, h.ram_total_mb ? `${fmtGB(h.ram_used_mb)} of ${fmtGB(h.ram_total_mb)}` : 'not readable')}
+          ${meter('Disk', diskPct, h.disk_total_gb ? `${h.disk_free_gb} GB free of ${h.disk_total_gb} GB` : 'not readable')}
+          <div class="hstats">
+            <div class="hstat"><div class="v">${h.servers_running}/${h.servers_total}</div><div class="l">Servers up</div></div>
+            <div class="hstat"><div class="v">${stale ? '—' : h.players_online}</div><div class="l">Players</div></div>
+            <div class="hstat"><div class="v">${h.uptime_seconds ? fmtUptime(h.uptime_seconds * 1000) : '—'}</div><div class="l">Host uptime</div></div>
+            <div class="hstat"><div class="v">${h.cpu_threads || '—'}</div><div class="l">Threads</div></div>
+          </div>
+          <div class="pills">
+            <span class="pill">${esc(h.cpu_model || 'Unknown CPU')}</span>
+            <span class="pill">ELauncher <b>${esc(h.app_version || '?')}</b></span>
+          </div>
+        </div>`
+      })
+
+      // critical first — an offline host or a full disk outranks a busy CPU
+      alerts.sort((a, b) => (b[0] === 'bad') - (a[0] === 'bad'))
+      const fresh = (s) => now - new Date(s.updated_at).getTime() < HEARTBEAT_MS * 4
+      const running = servers.filter((s) => s.state === 'running' && fresh(s)).length
+      const worst = alerts.some((a) => a[0] === 'bad') ? 'dead' : alerts.length ? 'warm' : 'on'
+      const summary = `<div class="card">
+        <div class="row" style="gap:8px">
+          <b style="font-size:14.5px;flex:1">Fleet at a glance</b>
+          <span class="chip ${worst}">${alerts.length ? alerts.length + ' to check' : 'All good'}</span>
+        </div>
+        <div class="hstats">
+          <div class="hstat"><div class="v">${online}/${hosts.length}</div><div class="l">Hosts online</div></div>
+          <div class="hstat"><div class="v">${running}</div><div class="l">Servers running</div></div>
+          <div class="hstat"><div class="v">${servers.length}</div><div class="l">Servers total</div></div>
+          <div class="hstat"><div class="v">${players}</div><div class="l">Players online</div></div>
+        </div>
+        ${alerts.map((a) => `<div class="alertrow ${a[0]}"><span class="dot"></span><div class="who"><b>${esc(a[1])}</b><i>${esc(a[2])}</i></div></div>`).join('')}
+      </div>`
+      return summary + cards.join('')
+    }
+
+    // design/debug: drive the real Health view (nav included) from mock rows
+    window.__previewHealth = (hosts, servers = []) => {
+      isAdmin = true
+      window.__mockHealth = { hosts, servers, names: new Map(hosts.map((h) => [h.owner_id, h.owner_name || 'someone'])) }
+      $('login').hidden = true; $('topbar').hidden = false
+      applyAdminUi()
+      $('app').hidden = false
+      selectView('health')
     }
 
     // ---------- hosting: plans, orders, admin approval ----------
@@ -2044,7 +2602,7 @@
         <div class="acts single"><button class="btn" onclick="markPaid('${order.id}')">I've paid — submit for review</button></div>`
     }
 
-    async function loadHosting(target = $('dHosting') ? 'dHosting' : 'hosting') {
+    async function loadHosting(target = 'vHosting') {
       try {
         const [{ data: prof }, { data: plans }, { data: settings }, { data: myOrders }] = await Promise.all([
           supabase.from('profiles').select('is_admin').eq('id', me).maybeSingle(),
@@ -2053,6 +2611,7 @@
           supabase.from('hosting_orders').select('*').order('created_at', { ascending: false })
         ])
         isAdmin = Boolean(prof?.is_admin)
+        applyAdminUi()
         const allPlans = plans ?? []
         const planList = allPlans.filter((p) => p.active !== false)
         const planMap = new Map(allPlans.map((p) => [p.id, p]))
@@ -2141,13 +2700,16 @@
 
     async function enter(session) {
       me = session.user.id
-      const { data } = await supabase.from('profiles').select('username').eq('id', me).maybeSingle()
+      // is_admin rides along here rather than waiting on loadHosting(), which only
+      // runs once the store tab is opened — the Fleet health nav must appear at sign-in
+      const { data } = await supabase.from('profiles').select('username, is_admin').eq('id', me).maybeSingle()
       if (data?.username) myName = `${data.username} (phone)`
+      isAdmin = Boolean(data?.is_admin)
+      applyAdminUi()
       $('login').hidden = true
       $('topbar').hidden = false
       $('app').hidden = false
-      $('dapp').hidden = false
-      $('servers').innerHTML = '<div class="skel"></div><div class="skel"></div>'
+      $('railList').innerHTML = '<div class="skel"></div><div class="skel"></div>'
       startRealtime()
       void refresh()
       void refreshBell()
@@ -2192,6 +2754,26 @@
     $('signout').addEventListener('click', async () => {
       await supabase.auth.signOut()
       location.reload()
+    })
+
+    // ---------- theme ----------
+    // The early inline script in <head> already painted the stored theme; this
+    // only wires the toggle and keeps the icon in sync. Same storage key as the
+    // desktop app so the two read as one product.
+    const SUN = '<circle cx="12" cy="12" r="4.2"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>'
+    const MOON = '<path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/>'
+    function paintTheme(theme) {
+      document.documentElement.dataset.theme = theme
+      // show the theme you would switch TO, which is the affordance people expect
+      $('themeIcon').innerHTML = theme === 'light' ? MOON : SUN
+      $('themeBtn').title = theme === 'light' ? 'Switch to dark' : 'Switch to light'
+      document.querySelector('meta[name="theme-color"]')?.setAttribute('content', theme === 'light' ? '#eef0f7' : '#0a0a0f')
+    }
+    paintTheme(document.documentElement.dataset.theme === 'light' ? 'light' : 'dark')
+    $('themeBtn').addEventListener('click', () => {
+      const next = document.documentElement.dataset.theme === 'light' ? 'dark' : 'light'
+      try { localStorage.setItem('elauncher.theme', next) } catch (e) { /* storage blocked */ }
+      paintTheme(next)
     })
 
     // ---------- push notifications ----------
