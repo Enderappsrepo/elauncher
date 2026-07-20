@@ -1039,7 +1039,19 @@
       background: var(--accent-soft); color: var(--accent); border: 1px solid var(--accent-line);
     }
     .plan:hover .plan-cta { background: var(--accent); color: #fff; border-color: transparent; }
-    .store-closed { padding: 26px 18px; text-align: center; color: var(--faint); font-size: 13px; }
+    .store-closed { padding: 26px 18px; text-align: center; color: var(--faint); font-size: 13px; line-height: 1.55; }
+    .store-alert {
+      display: flex; align-items: center; gap: 12px; width: 100%; text-align: left; cursor: pointer;
+      padding: 13px 15px; margin-bottom: 16px; border-radius: 14px;
+      background: var(--amber-soft); border: 1px solid rgba(251, 191, 36, 0.32); color: var(--text);
+      transition: border-color .15s var(--ease);
+    }
+    .store-alert:hover { border-color: rgba(251, 191, 36, 0.6); }
+    .store-alert > span { display: grid; place-items: center; flex: none; }
+    .store-alert svg { width: 16px; height: 16px; color: var(--amber); }
+    .store-alert div { flex: 1; min-width: 0; }
+    .store-alert b { display: block; font-size: 13.5px; font-weight: 650; }
+    .store-alert i { display: block; font-style: normal; font-size: 12px; color: var(--faint); margin-top: 2px; }
 
     /* ---------- wide: rail and detail side by side ---------- */
     @media (min-width: 900px) {
@@ -3220,8 +3232,10 @@
       const main = $('detail')
       if (!main) return
       if (sel === 'store') {
-        main.innerHTML = viewShell('New server & billing', 'Order a server, pay, and track your plans', '<div id="vHost"></div><div id="vHosting"></div>')
-        void loadHostCard(); void loadHosting()
+        // the host card is rendered inside the shop tab by loadHosting now, so
+        // this no longer seeds it — calling loadHostCard here would find no target
+        main.innerHTML = viewShell('Game servers', 'Rent one we run for you, or see what your own PC could handle', '<div id="vHosting"><div class="loadrow">Loading…</div></div>')
+        void loadHosting()
         return
       }
       if (sel === 'health') {
@@ -3286,13 +3300,15 @@
       }
       renderChips(rows)
       renderList(rows)
-      if (!$('tabBody') && !$('vHost') && !$('vHealth')) void renderDetail()
+      // vHosting, not vHost: the host card only exists on the shop tab now, and
+      // testing for it would rebuild the whole pane on every poll of the others
+      if (!$('tabBody') && !$('vHosting') && !$('vHealth')) void renderDetail()
       else liveUpdate()
     }
 
     /** Keep the hero and console fresh without clobbering edits in the active tab. */
     function liveUpdate() {
-      if (sel === 'store') { void loadHostCard(); void loadHosting(); return }
+      if (sel === 'store') { void loadHosting(); return } // paints the host card itself
       if (sel === 'health') { void loadHealth(); return }
       if (!sel) return
       const row = rowsById.get(sel)
@@ -3841,6 +3857,68 @@
         </div>`).join('')
     }
 
+    /** The customer's own orders: status, what to pay, and how it's going. */
+    function ordersHtml(liveOrders, planMap, cfg) {
+      if (!liveOrders.length) {
+        return `<div class="card"><div class="store-closed">Nothing rented yet. Anything you order shows up here with its status and payment steps.</div></div>`
+      }
+      return liveOrders.map((o) => {
+        const plan = planMap.get(o.plan_id)
+        const settingUp = o.status === 'active' && !o.server_id
+        const [cls, label] = settingUp ? ['warm', 'Setting up…'] : (STATUS_LABEL[o.status] ?? ['', o.status])
+        const until = o.paid_until ? ` · renews ${new Date(o.paid_until).toLocaleDateString()}` : ''
+        const pay = (o.status === 'awaiting_payment' || o.status === 'past_due') ? payBlock(o, plan, cfg) : ''
+        const cancel = (o.status === 'awaiting_payment' || o.status === 'pending_review') ? `<button class="conbtn" onclick="cancelOrder('${o.id}')">Cancel order</button>` : ''
+        const failed = /failed/i.test(o.note || '')
+        const noteHtml = o.note ? `<div class="hintline"${failed ? ' style="color:var(--red)"' : ''}>${settingUp && !failed ? '⏳ ' : ''}${esc(o.note)}</div>` : ''
+        const readyHint = o.status === 'active' && o.server_id ? `<div class="hintline">✓ Your server is live — manage it in the list on the left.</div>` : ''
+        return `<div class="card">
+          <div class="head"><div class="who"><div class="nm">${esc(o.server_name)}</div><div class="ln">${plan ? esc(plan.name) : o.plan_id}${until}</div></div><span class="chip ${cls}">${label}</span></div>
+          ${noteHtml}${readyHint}${pay}${cancel}
+        </div>`
+      }).join('')
+    }
+
+    /** Shop switch, per-plan listing, and the order queue — owner/admin only. */
+    function adminHtml(allPlans, shopOpen, cfg, allOrders, planMap) {
+      let html = `<div class="home-head" style="margin-top:0">Shop</div>
+        <div class="card">
+          <div class="head">
+            <div class="who"><div class="nm">${shopOpen ? 'Open' : 'Closed'}</div><div class="ln">${shopOpen ? 'Customers can order new servers' : 'Ordering is hidden for customers'}</div></div>
+            <button class="minibtn ${shopOpen ? 'red' : 'acc'}" onclick="adminShop(${shopOpen ? 'false' : 'true'})">${shopOpen ? 'Close shop' : 'Open shop'}</button>
+          </div>
+          ${allPlans.map((p) => `<div class="head" style="padding:8px 0;border-top:1px solid var(--line)">
+            <div class="who"><div class="nm" style="${p.active === false ? 'opacity:.5' : ''}">${esc(p.name)}</div>
+              <div class="ln">${gameLabel(p.game)} · ${p.max_players} players · ${+(p.memory_mb / 1024).toFixed(1)} GB · ${money(p.price_monthly, p.currency)}/mo</div></div>
+            <span class="chip ${p.active === false ? '' : 'on'}">${p.active === false ? 'Hidden' : 'Listed'}</span>
+            <button class="minibtn" onclick="adminTogglePlan('${p.id}', ${p.active === false ? 'true' : 'false'})">${p.active === false ? 'List' : 'Hide'}</button>
+          </div>`).join('')}
+        </div>`
+      const queue = allOrders.filter((o) => o.status === 'pending_review' || o.status === 'active' || o.status === 'past_due')
+      html += `<div class="home-head">Orders</div>`
+      if (!cfg.paypal_me) html += `<div class="card"><div class="hintline" style="color:var(--amber)">Set your PayPal.me handle in Supabase → hosting_settings so customers can pay.</div></div>`
+      html += queue.length ? queue.map((o) => {
+        const plan = planMap.get(o.plan_id)
+        const [cls, label] = STATUS_LABEL[o.status] ?? ['', o.status]
+        const actions = o.status === 'pending_review'
+          ? `<div class="acts"><button class="btn start" onclick="adminApprove('${o.id}')">Approve</button><button class="btn stop" onclick="adminReject('${o.id}')">Reject</button></div>`
+          : o.status === 'past_due'
+            ? `<div class="acts single"><button class="btn start" onclick="adminApprove('${o.id}')">Renew</button></div>`
+            : ''
+        return `<div class="card"><div class="head"><div class="who"><div class="nm">${esc(o.server_name)}</div><div class="ln">${plan ? esc(plan.name) : o.plan_id} · ref ${esc(o.reference)}</div></div><span class="chip ${cls}">${label}</span></div>${actions}</div>`
+      }).join('') : `<div class="card"><div class="store-closed">No orders waiting.</div></div>`
+      return html
+    }
+
+    /**
+     * Which section of the store is showing. Null until the first load picks a
+     * default: an order waiting on money is the thing you came back for, so it
+     * wins over browsing. Once the tab is clicked it stays clicked — the 8s poll
+     * re-renders constantly and must not drag you back.
+     */
+    let storeTab = null
+    window.goStoreTab = (t) => { storeTab = t; void loadHosting() }
+
     async function loadHosting(target = 'vHosting') {
       try {
         const [{ data: prof }, { data: plans }, { data: settings }, { data: myOrders }] = await Promise.all([
@@ -3858,70 +3936,43 @@
         const cfg = settings ?? { paypal_me: '' }
         const shopOpen = cfg.shop_open !== false // old clouds without the column read as open
         const orders = (myOrders ?? []).filter((o) => o.user_id === me)
-        let html = ''
-
-        // customer: my orders
         const liveOrders = orders.filter((o) => o.status !== 'cancelled' && o.status !== 'rejected')
-        if (liveOrders.length) {
-          html += `<div class="home-head">Your hosting</div>`
-          html += liveOrders.map((o) => {
-            const plan = planMap.get(o.plan_id)
-            const settingUp = o.status === 'active' && !o.server_id
-            const [cls, label] = settingUp ? ['warm', 'Setting up…'] : (STATUS_LABEL[o.status] ?? ['', o.status])
-            const until = o.paid_until ? ` · renews ${new Date(o.paid_until).toLocaleDateString()}` : ''
-            const pay = (o.status === 'awaiting_payment' || o.status === 'past_due') ? payBlock(o, plan, cfg) : ''
-            const cancel = (o.status === 'awaiting_payment' || o.status === 'pending_review') ? `<button class="conbtn" onclick="cancelOrder('${o.id}')">Cancel order</button>` : ''
-            const failed = /failed/i.test(o.note || '')
-            const noteHtml = o.note ? `<div class="hintline"${failed ? ' style="color:var(--red)"' : ''}>${settingUp && !failed ? '⏳ ' : ''}${esc(o.note)}</div>` : ''
-            const readyHint = o.status === 'active' && o.server_id ? `<div class="hintline">✓ Your server is live — manage it in the list above.</div>` : ''
-            return `<div class="card">
-              <div class="head"><div class="who"><div class="nm">${esc(o.server_name)}</div><div class="ln">${plan ? esc(plan.name) : o.plan_id}${until}</div></div><span class="chip ${cls}">${label}</span></div>
-              ${noteHtml}${readyHint}${pay}${cancel}
-            </div>`
-          }).join('')
-        }
+        const owing = liveOrders.filter((o) => o.status === 'awaiting_payment' || o.status === 'past_due')
 
-        // customer: order a new server (hidden entirely while the shop is closed)
-        html += storeHtml(planList, shopOpen, isAdmin, liveOrders.length > 0)
+        if (storeTab === null) storeTab = owing.length ? 'hosting' : 'shop'
+        if (storeTab === 'admin' && !isAdmin) storeTab = 'shop' // admin revoked mid-session
 
-        // admin: shop controls — close the whole store or shelve individual plans
-        if (isAdmin) {
-          html += `<div class="home-head">Admin · shop</div>
-            <div class="card">
-              <div class="head">
-                <div class="who"><div class="nm">Shop</div><div class="ln">${shopOpen ? 'Customers can order new servers' : 'Ordering is hidden for customers'}</div></div>
-                <button class="minibtn ${shopOpen ? 'red' : 'acc'}" onclick="adminShop(${shopOpen ? 'false' : 'true'})">${shopOpen ? 'Close shop' : 'Open shop'}</button>
-              </div>
-              ${allPlans.map((p) => `<div class="head" style="padding:8px 0;border-top:1px solid var(--line)">
-                <div class="who"><div class="nm" style="${p.active === false ? 'opacity:.5' : ''}">${esc(p.name)}</div>
-                  <div class="ln">${gameLabel(p.game)} · ${p.max_players} players · ${(p.memory_mb / 1024)} GB · ${money(p.price_monthly, p.currency)}/mo</div></div>
-                <span class="chip ${p.active === false ? '' : 'on'}">${p.active === false ? 'Hidden' : 'Listed'}</span>
-                <button class="minibtn" onclick="adminTogglePlan('${p.id}', ${p.active === false ? 'true' : 'false'})">${p.active === false ? 'List' : 'Hide'}</button>
-              </div>`).join('')}
-            </div>`
-        }
+        const tabs = [['shop', 'Shop'], ['hosting', `Your hosting${liveOrders.length ? ` · ${liveOrders.length}` : ''}`]]
+        if (isAdmin) tabs.push(['admin', 'Admin'])
+        let html = `<div class="sheet-tabs" style="border:0;padding:0 0 14px">${tabs
+          .map(([id, label]) => `<button class="${storeTab === id ? 'on' : ''}" onclick="goStoreTab('${id}')">${esc(label)}</button>`)
+          .join('')}</div>`
 
-        // admin: orders needing action
-        if (isAdmin) {
-          const queue = (myOrders ?? []).filter((o) => o.status === 'pending_review' || o.status === 'active' || o.status === 'past_due')
-          html += `<div class="home-head">Admin · orders</div>`
-          if (!cfg.paypal_me) html += `<div class="card"><div class="hintline" style="color:var(--amber)">Set your PayPal.me handle in Supabase → hosting_settings so customers can pay.</div></div>`
-          html += queue.length ? queue.map((o) => {
-            const plan = planMap.get(o.plan_id)
-            const [cls, label] = STATUS_LABEL[o.status] ?? ['', o.status]
-            const actions = o.status === 'pending_review'
-              ? `<div class="acts"><button class="btn start" onclick="adminApprove('${o.id}')">Approve</button><button class="btn stop" onclick="adminReject('${o.id}')">Reject</button></div>`
-              : o.status === 'past_due'
-                ? `<div class="acts single"><button class="btn start" onclick="adminApprove('${o.id}')">Renew</button></div>`
-                : ''
-            return `<div class="card"><div class="head"><div class="who"><div class="nm">${esc(o.server_name)}</div><div class="ln">${plan ? esc(plan.name) : o.plan_id} · ref ${esc(o.reference)}</div></div><span class="chip ${cls}">${label}</span></div>${actions}</div>`
-          }).join('') : `<div class="card"><div class="hintline">No orders waiting.</div></div>`
+        if (storeTab === 'shop') {
+          // an unpaid order is easy to lose behind a tab, so it follows you here
+          if (owing.length) {
+            html += `<button class="store-alert" onclick="goStoreTab('hosting')">
+              <span>${icons.clock}</span>
+              <div><b>${owing.length === 1 ? 'An order is waiting for payment' : `${owing.length} orders are waiting for payment`}</b>
+                <i>Your server starts once it's paid and approved.</i></div>
+              ${icons.chev}</button>`
+          }
+          html += storeHtml(planList, shopOpen, isAdmin, liveOrders.length > 0)
+          // the capacity report used to open this page; it belongs after the
+          // plans, as the alternative to renting rather than the headline
+          html += `<div class="home-head">Or host it on your own PC</div><div id="vHost"></div>`
+        } else if (storeTab === 'hosting') {
+          html += ordersHtml(liveOrders, planMap, cfg)
+        } else {
+          html += adminHtml(allPlans, shopOpen, cfg, myOrders ?? [], planMap)
         }
 
         // repaint only on real changes — this runs on the 8s poll, and a no-op
         // rewrite would flicker and swallow clicks mid-press
         const el = $(target)
         if (el && el.__lastHtml !== html) { el.__lastHtml = html; el.innerHTML = html }
+        // the host card lives inside the shop tab now, so it is painted after
+        if (storeTab === 'shop') void loadHostCard()
       } catch {
         // tables not migrated yet — hosting section stays empty
       }
