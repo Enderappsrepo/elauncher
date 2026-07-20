@@ -1,5 +1,5 @@
 import { resolve4 } from 'dns/promises'
-import type { LocalServer } from '@shared/types'
+import type { LocalServer, ServerGame } from '@shared/types'
 import { isCloudConfigured } from '@shared/cloudConfig'
 import { getClient } from './cloud'
 import { deviceId } from './device'
@@ -40,7 +40,7 @@ const POLL_MS = 15_000
 interface PlanRow {
   id: string
   name: string
-  game: 'minecraft' | 'palworld' | 'valheim' | 'sdtd'
+  game: ServerGame
   max_players: number
   memory_mb: number
   /** optional CPU core cap (column may not exist on older clouds) */

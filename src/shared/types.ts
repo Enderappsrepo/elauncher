@@ -419,7 +419,15 @@ export interface ServerEntry {
 export type ServerKind = 'vanilla' | 'paper' | 'fabric' | 'neoforge' | 'forge'
 
 /** Which game a local dedicated server runs. Absent on old records = minecraft. */
-export type ServerGame = 'minecraft' | 'palworld' | 'valheim' | 'sdtd'
+/**
+ * Games run by the generic SteamCMD registry. Adding one here makes the
+ * compiler demand a matching STEAM_GAMES entry, which is the point: the id used
+ * to be spelled out in six places and missing one shipped a game that
+ * typechecked but had no spec behind it.
+ */
+export type SteamServerGame = 'valheim' | 'sdtd'
+
+export type ServerGame = 'minecraft' | 'palworld' | SteamServerGame
 
 export type LocalServerState = 'stopped' | 'starting' | 'running' | 'stopping'
 
@@ -540,7 +548,7 @@ export type ServerSource =
   /** Palworld dedicated server, installed via SteamCMD */
   | { type: 'palworld'; serverPassword?: string; maxPlayers?: number; communityServer?: boolean }
   /** Any other SteamCMD dedicated server from the generic registry (valheim, 7 days to die, …) */
-  | { type: 'steamgame'; game: 'valheim' | 'sdtd'; serverPassword?: string; maxPlayers?: number }
+  | { type: 'steamgame'; game: SteamServerGame; serverPassword?: string; maxPlayers?: number }
   /** picks a local .mrpack via a file dialog */
   | { type: 'mrpack' }
   /** installs a pack from the cloud modpack library */

@@ -3,6 +3,7 @@ import { existsSync, readFileSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { Socket } from 'net'
 import { randomBytes } from 'crypto'
+import type { SteamServerGame } from '@shared/types'
 import { installSteamApp } from './steamcmd'
 import { killProcessTree } from './proctree'
 
@@ -15,8 +16,6 @@ import { killProcessTree } from './proctree'
  */
 
 const IS_WIN = process.platform === 'win32'
-
-export type SteamGameId = 'valheim' | 'sdtd'
 
 export interface SteamGameSpec {
   label: string
@@ -31,13 +30,17 @@ export interface SteamGameSpec {
   hasConsole: boolean
 }
 
-export const STEAM_GAMES: Record<SteamGameId, SteamGameSpec> = {
+/** Record, not a partial: a new SteamServerGame will not compile without an entry. */
+export const STEAM_GAMES: Record<SteamServerGame, SteamGameSpec> = {
   valheim: { label: 'Valheim', appId: 896660, basePort: 2456, portStep: 3, protocol: 'UDP', memoryHintMb: 4096, hasConsole: false },
   sdtd: { label: '7 Days to Die', appId: 294420, basePort: 26900, portStep: 4, protocol: 'UDP', memoryHintMb: 8192, hasConsole: true }
 }
 
+export type SteamGameId = SteamServerGame
+
+/** Asked of raw strings off the wire, so it reads the table rather than a copy of it. */
 export function isSteamGame(game: string | undefined): game is SteamGameId {
-  return game === 'valheim' || game === 'sdtd'
+  return game !== undefined && Object.prototype.hasOwnProperty.call(STEAM_GAMES, game)
 }
 
 // ---------- settings ----------
