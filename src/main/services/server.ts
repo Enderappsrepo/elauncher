@@ -1478,15 +1478,58 @@ function ensureFirewallPort(id: string, port: number, protocol: 'tcp' | 'udp'): 
 
 // ---------- hosted-plan limits (stamped by the provisioner, enforced here) ----------
 
+/** The plan's caps with an admin override merged over them, field by field. */
+export function effectiveLimits(
+  plan: PlanLimits | undefined,
+  override: PlanLimits | undefined
+): PlanLimits | undefined {
+  const merged = { ...(plan ?? {}), ...(override ?? {}) }
+  return Object.keys(merged).length ? merged : undefined
+}
+
 /** Stamp (or clear) plan resource caps on a server record; clamps the heap allocation immediately. */
 export function setServerLimits(id: string, limits: PlanLimits | undefined): void {
   const servers = loadServers()
   const record = servers.find((s) => s.id === id)
   if (!record) return
-  record.limits = limits
+  record.limitsPlan = limits
+  // an admin override outranks the plan, and the provisioner re-stamps these every tick
+  record.limits = effectiveLimits(limits, record.limitsOverride)
   // the minecraft heap allocation is plan-priced — keep the record itself inside it
-  if (limits?.memoryMb && record.memoryMax > limits.memoryMb) record.memoryMax = limits.memoryMb
+  const cap = record.limits?.memoryMb
+  if (cap && record.memoryMax > cap) record.memoryMax = cap
   saveServers(servers)
+}
+
+/**
+ * Admin resource override: lift one server above its plan, or clear the lift.
+ *
+ * Kept apart from `limits` because the provisioner reconciles those against the
+ * purchased plan every tick — an override written there would be reverted within
+ * a minute. Raising the ceiling raises `memoryMax` with it, since the heap in
+ * force is min(memoryMax, cap) and lifting only the cap would change nothing.
+ */
+export function setServerLimitsOverride(id: string, override: PlanLimits | undefined): PlanLimits | undefined {
+  const servers = loadServers()
+  const record = servers.find((s) => s.id === id)
+  if (!record) throw new Error('This server is no longer on this host.')
+  // first override on an older record: whatever is in force now is the plan baseline
+  if (!record.limitsPlan) record.limitsPlan = record.limits
+  const wanted = override && Object.keys(override).length ? override : undefined
+  record.limitsOverride = wanted
+  record.limits = effectiveLimits(record.limitsPlan, wanted)
+  const cap = record.limits?.memoryMb
+  // a lift is meant to be spent; a cut still clamps
+  if (cap && wanted?.memoryMb) record.memoryMax = cap
+  else if (cap && record.memoryMax > cap) record.memoryMax = cap
+  saveServers(servers)
+  pushLog(
+    id,
+    wanted
+      ? `[ELauncher] Admin override — ${wanted.memoryMb ? `${(wanted.memoryMb / 1024).toFixed(1)} GB RAM` : 'plan RAM'}, ${wanted.cpuCores ? `${wanted.cpuCores} core${wanted.cpuCores === 1 ? '' : 's'}` : 'plan CPU'}. Restart to apply.`
+      : '[ELauncher] Admin override cleared — back to the plan allowance. Restart to apply.'
+  )
+  return record.limits
 }
 
 /** The per-game settings key that carries the player cap (null = the game has a fixed cap). */

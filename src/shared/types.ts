@@ -457,8 +457,12 @@ export interface LocalServer {
   eulaAccepted: boolean
   /** palworld: list in the official community server browser (-publiclobby) */
   communityServer?: boolean
-  /** present only on plan-bound hosted servers; absent = unrestricted */
+  /** the caps actually in force = the plan's, with any admin override merged over them */
   limits?: PlanLimits
+  /** the plan's own caps, kept so an override can be recomputed when the plan changes */
+  limitsPlan?: PlanLimits
+  /** admin lift above the plan, per field — survives the provisioner's reconcile */
+  limitsOverride?: PlanLimits
   /** scheduled saves/restarts/backups + lifecycle switches */
   automation?: ServerAutomation
   createdAt: number

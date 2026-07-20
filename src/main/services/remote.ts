@@ -1,5 +1,5 @@
 import type { RealtimeChannel } from '@supabase/supabase-js'
-import type { LocalServer, LocalServerState, ManagedServer, ServerShare } from '@shared/types'
+import type { LocalServer, LocalServerState, ManagedServer, PlanLimits, ServerShare } from '@shared/types'
 import { isCloudConfigured } from '@shared/cloudConfig'
 import { getClient, getUser } from './cloud'
 import { collectHostVitals } from './hostHealth'
@@ -32,6 +32,7 @@ import {
   sendServerCommand,
   setCommunityServer,
   setServerAutomation,
+  setServerLimitsOverride,
   setServerProperties,
   startServer,
   stopServer,
@@ -66,8 +67,8 @@ const SHARE_REFRESH_MS = 60_000
 /** machine vitals move far slower than server state — no need to ride the 5s beat */
 const HOST_HEALTH_MS = 15_000
 
-/** destructive lifecycle actions only the host owner or an admin may trigger */
-const PRIVILEGED_ACTIONS = new Set(['delete', 'archive', 'restore'])
+/** destructive or plan-lifting actions only the host owner or an admin may trigger */
+const PRIVILEGED_ACTIONS = new Set(['delete', 'archive', 'restore', 'setLimits'])
 const adminCache = new Map<string, { admin: boolean; at: number }>()
 const ADMIN_CACHE_MS = 5 * 60_000
 
@@ -667,6 +668,8 @@ async function runPanelRequest(serverId: string, action: string, params: Record<
         communityServer: Boolean(record.communityServer),
         automation: getServerAutomation(serverId),
         limits: record.limits ?? null,
+        limitsPlan: record.limitsPlan ?? null,
+        limitsOverride: record.limitsOverride ?? null,
         owner: privileged
       }
     }
@@ -677,6 +680,17 @@ async function runPanelRequest(serverId: string, action: string, params: Record<
     case 'setAutomation':
       setServerAutomation(serverId, (params.automation as ServerAutomation) ?? {})
       return { ok: true }
+    case 'setLimits': {
+      // PRIVILEGED_ACTIONS gates this upstream — re-checked here so no path skips it
+      if (!privileged) throw new Error('Only the host owner or an admin can change resource limits.')
+      const raw = (params.override ?? {}) as Record<string, unknown>
+      const override: PlanLimits = {}
+      const memoryMb = Math.round(Number(raw.memoryMb))
+      const cpuCores = Math.round(Number(raw.cpuCores))
+      if (Number.isFinite(memoryMb) && memoryMb > 0) override.memoryMb = memoryMb
+      if (Number.isFinite(cpuCores) && cpuCores > 0) override.cpuCores = cpuCores
+      return { ok: true, limits: setServerLimitsOverride(serverId, override) ?? null }
+    }
     case 'players':
       return getPalworldPlayerDetails(serverId)
     case 'moderate':

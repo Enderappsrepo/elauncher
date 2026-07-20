@@ -314,7 +314,9 @@ async function tick(): Promise<void> {
           // provisioned before limits existed) — applied on the next start
           const record = localById.get(order.server_id)!
           const wanted = planLimits(plan)
-          if (JSON.stringify(record.limits ?? {}) !== JSON.stringify(wanted)) {
+          // compare against the plan baseline, not the caps in force — an admin
+          // override sits on top of these and must not read as a plan change
+          if (JSON.stringify(record.limitsPlan ?? record.limits ?? {}) !== JSON.stringify(wanted)) {
             setServerLimits(order.server_id, wanted)
           }
           // heal the share for healthy orders (covers re-approvals after past_due)
