@@ -135,14 +135,27 @@ export function validateRules(raw: unknown, taken: Map<string, string>): ExtraPo
  */
 const failures = new Map<string, string>()
 
-/** Live exposure of one port: mapped or not, with whichever caveat applies. */
+/**
+ * Record something outside the router that keeps a port shut — a firewall rule
+ * that would not take. On a public-IP host there is no mapping step to fail, so
+ * without this the port would report open on the strength of a mapping that
+ * never had to do anything.
+ */
+export function noteFailure(port: number, protocol: 'UDP' | 'TCP', reason: string): void {
+  failures.set(portKey(port, protocol), reason)
+}
+
+/** Live exposure of one port: reachable or not, with whichever caveat applies. */
 export function statusOf(
   port: number,
   protocol: 'UDP' | 'TCP'
 ): { open: boolean; warning?: string; error?: string } {
+  const error = failures.get(portKey(port, protocol))
+  // a failure outranks a mapping: a firewall that is still blocking means the
+  // port is shut whatever the mapping layer thinks it accomplished
+  if (error) return { open: false, error }
   const mapping = getMapping(port, protocol)
-  if (mapping) return { open: true, warning: mapping.warning }
-  return { open: false, error: failures.get(portKey(port, protocol)) }
+  return mapping ? { open: true, warning: mapping.warning } : { open: false }
 }
 
 /**

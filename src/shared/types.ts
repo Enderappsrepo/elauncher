@@ -503,6 +503,8 @@ export interface ServerPortsView {
   presets: PortPreset[]
   /** port number -> why opening it deserves a second thought (RCON, admin APIs) */
   cautions: Record<string, string>
+  /** the host's own IP is public (a VPS): no router to map, the firewall is the gate */
+  direct: boolean
   maxExtra: number
 }
 

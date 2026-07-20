@@ -73,12 +73,13 @@ import {
   STEAM_GAMES,
   type SteamGameHandle
 } from './steamgames'
-import { closePort, getMapping } from './upnp'
+import { closePort, getMapping, isDirectHost } from './upnp'
 import {
   MAX_EXTRA_PORTS,
   PORT_CAUTIONS,
   PORT_PRESETS,
   closeRules,
+  noteFailure,
   openRules,
   portKey,
   statusOf,
@@ -1353,6 +1354,7 @@ export function getServerPorts(id: string): ServerPortsView {
     ],
     presets: PORT_PRESETS,
     cautions: PORT_CAUTIONS,
+    direct: isDirectHost(),
     maxExtra: MAX_EXTRA_PORTS
   }
 }
@@ -1385,10 +1387,15 @@ export async function setServerPorts(id: string, raw: unknown): Promise<ServerPo
 async function openExtraPorts(server: LocalServer): Promise<void> {
   const rules = server.extraPorts ?? []
   if (rules.length === 0) return
-  for (const rule of rules) {
-    ensureFirewallPort(server.id, rule.port, rule.protocol.toLowerCase() as 'tcp' | 'udp')
-  }
   await openRules(rules, server.name)
+  // the firewall is checked after the mapping so its verdict wins: on a
+  // public-IP host the mapping always "succeeds" and ufw is the real gate
+  await Promise.all(
+    rules.map(async (rule) => {
+      const refused = await ensureFirewallPort(server.id, rule.port, rule.protocol.toLowerCase() as 'tcp' | 'udp')
+      if (refused) noteFailure(rule.port, rule.protocol, `The firewall would not open this port — ${refused}`)
+    })
+  )
   for (const rule of rules) {
     const status = statusOf(rule.port, rule.protocol)
     pushLog(
@@ -1577,22 +1584,38 @@ function healthOf(id: string): 'smooth' | 'fair' | 'poor' | null {
 
 /**
  * On a Linux host (VPS), open the server's port in ufw automatically so players
- * can connect without manual firewall edits. Best-effort: if ufw isn't installed
- * or isn't active, the ports are simply already reachable and this is a no-op.
+ * can connect without manual firewall edits.
+ *
+ * Resolves to null when the port is clear, or to a reason when the rule was
+ * refused. A missing ufw is still "clear" — nothing is filtering, so the port is
+ * already reachable. A ufw that answers and says no is not: on a public-IP box
+ * there is no router mapping in the picture, so this rule is the only thing
+ * standing between the port and the internet, and a silent failure there reads
+ * as "open" while nobody can connect.
  */
-function ensureFirewallPort(id: string, port: number, protocol: 'tcp' | 'udp'): void {
-  if (process.platform !== 'linux') return
-  try {
-    const proc = spawn('ufw', ['allow', `${port}/${protocol}`])
-    proc.on('error', () => {
+function ensureFirewallPort(id: string, port: number, protocol: 'tcp' | 'udp'): Promise<string | null> {
+  if (process.platform !== 'linux') return Promise.resolve(null)
+  return new Promise((resolve) => {
+    try {
+      const proc = spawn('ufw', ['allow', `${port}/${protocol}`])
+      let stderr = ''
+      proc.stderr?.on('data', (chunk) => {
+        stderr += String(chunk)
+      })
       // ufw not installed — nothing to open, ports are already exposed
-    })
-    proc.on('exit', (code) => {
-      if (code === 0) pushLog(id, `[ELauncher] Opened ${protocol.toUpperCase()} port ${port} in the firewall`)
-    })
-  } catch {
-    // best-effort
-  }
+      proc.on('error', () => resolve(null))
+      proc.on('exit', (code) => {
+        if (code === 0) {
+          pushLog(id, `[ELauncher] Opened ${protocol.toUpperCase()} port ${port} in the firewall`)
+          return resolve(null)
+        }
+        // the usual causes are running unprivileged or ufw being inactive
+        resolve(stderr.trim().split('\n')[0] || `ufw refused the rule (exit code ${code})`)
+      })
+    } catch {
+      resolve(null)
+    }
+  })
 }
 
 // ---------- hosted-plan limits (stamped by the provisioner, enforced here) ----------
@@ -1751,7 +1774,7 @@ export async function startServer(id: string): Promise<void> {
     procs.set(id, proc)
     lastStartAt.set(id, Date.now())
     lagEvents.delete(id)
-    ensureFirewallPort(id, server.port, 'tcp')
+    void ensureFirewallPort(id, server.port, 'tcp')
 
     const onLine = (line: string): void => {
       pushLog(id, line)
@@ -1861,7 +1884,7 @@ async function runSteamGameServer(server: LocalServer): Promise<void> {
     procs.set(id, handle.proc)
     steamGameHandles.set(id, handle)
     lastStartAt.set(id, Date.now())
-    ensureFirewallPort(id, server.port, spec.protocol.toLowerCase() as 'tcp' | 'udp')
+    void ensureFirewallPort(id, server.port, spec.protocol.toLowerCase() as 'tcp' | 'udp')
   } catch (e) {
     setState(id, 'stopped', e instanceof Error ? e.message : String(e))
     throw e
@@ -1941,7 +1964,7 @@ async function startPalworldServer(server: LocalServer): Promise<void> {
     procs.set(id, handle.proc)
     palworldHandles.set(id, handle)
     lastStartAt.set(id, Date.now())
-    ensureFirewallPort(id, server.port, 'udp')
+    void ensureFirewallPort(id, server.port, 'udp')
   } catch (e) {
     setState(id, 'stopped', e instanceof Error ? e.message : String(e))
     throw e

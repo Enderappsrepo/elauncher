@@ -240,6 +240,11 @@ function directPublicIp(): string | null {
   return null
 }
 
+/** True on a VPS/dedicated box: the NIC is already public, so no router is involved. */
+export function isDirectHost(): boolean {
+  return directPublicIp() !== null
+}
+
 export async function getExternalIp(): Promise<string> {
   const gateway = await discoverGateway()
   const xml = await soap(gateway, 'GetExternalIPAddress', {})

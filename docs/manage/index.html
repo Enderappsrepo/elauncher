@@ -2544,7 +2544,9 @@
         ${netPortRow(main, netLive.get(netKey(main)), null)}
 
         <div class="grouphead">Ports your mods need</div>
-        <div class="au-note">Some mods listen on a port of their own — proximity voice chat, live web maps, Bedrock crossplay. ELauncher opens these on the router while this server runs and releases them when it stops.</div>
+        <div class="au-note">Some mods listen on a port of their own — proximity voice chat, live web maps, Bedrock crossplay. ${view.direct
+          ? 'This host has a public IP of its own, so there is no router to configure — ELauncher opens each port in the firewall while this server runs.'
+          : 'ELauncher opens these on the router while this server runs and releases them when it stops.'}</div>
         ${netDraft.length
           ? netDraft.map((p, i) => netPortRow(p, netLive.get(netKey(p)), i)).join('')
           : '<div class="loadrow">No extra ports. Add one below if a mod asks for it.</div>'}
