@@ -776,6 +776,11 @@
     .ficon { display: grid; place-items: center; width: 32px; height: 32px; border-radius: 9px; background: var(--card-2); border: 1px solid var(--line); color: var(--dim); flex: none; }
     .ficon.fold { color: var(--accent); background: var(--accent-soft); border-color: rgba(124, 108, 255, 0.25); }
     .ficon svg { width: 15px; height: 15px; }
+    /* Icons carry a viewBox but no width/height, so they size purely from CSS.
+       Every other one sits in a wrapper that gives it a size; the folder-row
+       chevron is dropped straight into the flex row, where auto width resolved
+       against the free space and drew it at 586px. */
+    .plister .prow > svg { width: 15px; height: 15px; flex: none; color: var(--faint); }
     .filebar { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; flex-wrap: wrap; }
     .filebar .fname { flex: 1; min-width: 130px; font: 12px var(--mono); color: var(--dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .fileedit {
