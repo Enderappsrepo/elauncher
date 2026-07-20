@@ -50,6 +50,7 @@ import type {
   PlayerListEntry,
   PalworldModerationAction,
   PalworldPlayerDetail,
+  RemoteCommandAction,
   SavedServerEntry,
   ServerAutomation,
   ServerEntry,
@@ -285,6 +286,7 @@ const api = {
       ipcRenderer.invoke('server:remove', id),
     start: (id: string): Promise<OperationResult> => ipcRenderer.invoke('server:start', id),
     stop: (id: string): Promise<void> => ipcRenderer.invoke('server:stop', id),
+    forceStop: (id: string): Promise<void> => ipcRenderer.invoke('server:forceStop', id),
     command: (id: string, command: string): Promise<OperationResult> =>
       ipcRenderer.invoke('server:command', id, command),
     getStates: (): Promise<
@@ -365,7 +367,7 @@ const api = {
       ipcRenderer.invoke('remote:grant', serverId, serverName, username),
     revoke: (shareId: string): Promise<OperationResult> => ipcRenderer.invoke('remote:revoke', shareId),
     listManaged: (): Promise<ManagedServer[]> => ipcRenderer.invoke('remote:listManaged'),
-    sendCommand: (serverId: string, action: 'start' | 'stop' | 'command', payload?: string): Promise<OperationResult> =>
+    sendCommand: (serverId: string, action: RemoteCommandAction, payload?: string): Promise<OperationResult> =>
       ipcRenderer.invoke('remote:sendCommand', serverId, action, payload)
   },
   browser: {

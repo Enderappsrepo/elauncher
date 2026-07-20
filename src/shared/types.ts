@@ -568,6 +568,13 @@ export interface ManagedServer {
   updatedAt: string
 }
 
+/**
+ * Commands a manager launcher or the web panel can queue for a hosting
+ * launcher. `forceStop` skips the graceful save and kills the process tree —
+ * the escape hatch when a server ignores `stop`.
+ */
+export type RemoteCommandAction = 'start' | 'stop' | 'forceStop' | 'command'
+
 // ---------- server browser (saved servers + live status) ----------
 
 export interface SavedServerEntry {

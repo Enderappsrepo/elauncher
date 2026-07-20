@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { ManagedServer } from '@shared/types'
+import type { ManagedServer, RemoteCommandAction } from '@shared/types'
 import { useAppState } from '../../state'
 import { useToast } from '../../toast'
 import { IconCopy, IconGlobe, IconPlay, IconStop, IconUsers } from '../../icons'
@@ -18,15 +18,16 @@ function ManagedRow({ server }: { server: ManagedServer }): React.JSX.Element {
     if (open) consoleRef.current?.scrollTo({ top: consoleRef.current.scrollHeight })
   }, [open, server.console])
 
-  const send = async (action: 'start' | 'stop' | 'command', payload?: string): Promise<void> => {
+  const send = async (action: RemoteCommandAction, payload?: string): Promise<void> => {
     setBusy(action)
     try {
       const res = await window.elauncher.remote.sendCommand(server.serverId, action, payload)
       if (res.ok) {
+        const label = action === 'start' ? 'Start' : action === 'forceStop' ? 'Force stop' : 'Stop'
         toast.success(
           action === 'command'
             ? 'Command sent'
-            : `${action === 'start' ? 'Start' : 'Stop'} request sent to ${server.isMine ? 'your launcher at home' : `${server.ownerName}'s launcher`}`
+            : `${label} request sent to ${server.isMine ? 'your launcher at home' : `${server.ownerName}'s launcher`}`
         )
         if (action === 'command') setCmd('')
       } else toast.error(res.error ?? 'Could not reach the server')
@@ -66,6 +67,24 @@ function ManagedRow({ server }: { server: ManagedServer }): React.JSX.Element {
             {running ? (
               <button className="danger small" disabled={busy !== null} onClick={() => void send('stop')}>
                 <IconStop size={13} /> Stop
+              </button>
+            ) : server.state === 'stopping' ? (
+              // mid-stop the only useful action is the escape hatch — offering
+              // Start here would just be refused by the host
+              <button
+                className="ghost small"
+                disabled={busy !== null}
+                title="Kill the server process now, without waiting for it to save"
+                onClick={() => {
+                  if (
+                    confirm(
+                      `Force stop "${server.name}"?\n\nThis kills the server process immediately — anything not written to disk since its last save is lost.`
+                    )
+                  )
+                    void send('forceStop')
+                }}
+              >
+                <IconStop size={13} /> Force stop
               </button>
             ) : (
               <button className="play small" disabled={busy !== null} onClick={() => void send('start')}>

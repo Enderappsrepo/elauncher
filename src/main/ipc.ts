@@ -1,5 +1,5 @@
 import { app, ipcMain, BrowserWindow } from 'electron'
-import type { ContentKind, CopySettingsRequest, CreateInstanceOptions, CreateServerOptions, GraphicsPreset, Instance, MigrateRequest, ModInstallRequest, ModLoader, ModSearchQuery, ModSource, ModUpdateInfo, PalworldModerationAction, PublishNewsRequest, PublishPackRequest, PublishSessionRequest, ServerAutomation, ServerEntry, Settings } from '@shared/types'
+import type { ContentKind, CopySettingsRequest, CreateInstanceOptions, CreateServerOptions, GraphicsPreset, Instance, MigrateRequest, ModInstallRequest, ModLoader, ModSearchQuery, ModSource, ModUpdateInfo, PalworldModerationAction, PublishNewsRequest, PublishPackRequest, PublishSessionRequest, RemoteCommandAction, ServerAutomation, ServerEntry, Settings } from '@shared/types'
 import * as auth from './services/auth'
 import * as instances from './services/instances'
 import * as versions from './services/versions'
@@ -236,6 +236,7 @@ export function registerIpc(): void {
     }
   })
   ipcMain.handle('server:stop', (_e, id: string) => server.stopServer(id))
+  ipcMain.handle('server:forceStop', (_e, id: string) => server.forceStopServer(id))
   ipcMain.handle('server:command', (_e, id: string, command: string) => {
     try {
       server.sendServerCommand(id, command)
@@ -407,7 +408,7 @@ export function registerIpc(): void {
       return []
     }
   })
-  ipcMain.handle('remote:sendCommand', async (_e, serverId: string, action: 'start' | 'stop' | 'command', payload?: string) => {
+  ipcMain.handle('remote:sendCommand', async (_e, serverId: string, action: RemoteCommandAction, payload?: string) => {
     try {
       await remote.sendRemoteCommand(serverId, action, payload ?? '')
       return { ok: true }

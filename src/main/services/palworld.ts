@@ -4,6 +4,7 @@ import { dirname, join } from 'path'
 import { randomBytes } from 'crypto'
 import { installSteamApp } from './steamcmd'
 import { ensureSteamGameUser, prepareServerDirForGameUser } from './gameuser'
+import { killProcessTree } from './proctree'
 
 /**
  * Palworld dedicated server provider. Pocketpair ships the server free via
@@ -371,7 +372,7 @@ export async function startPalworld(
           cb.onLog(
             '[ELauncher] The server has not responded for 90 seconds — force-stopping it (crash auto-restart applies if enabled).'
           )
-          forceKill(proc)
+          killProcessTree(proc)
         }
         const playersTimer = setInterval(async () => {
           try {
@@ -400,7 +401,7 @@ export async function startPalworld(
       if (Date.now() - startedAt > 240_000) {
         clearInterval(readyTimer)
         cb.onLog('[ELauncher] The server did not respond within 4 minutes — stopping it.')
-        forceKill(proc)
+        killProcessTree(proc)
       }
     }
   }, 2500)
@@ -427,27 +428,12 @@ export async function startPalworld(
         // REST not up (still booting / crashed) — fall through to the kill below
       }
       setTimeout(() => {
-        if (!exited) forceKill(proc)
+        if (!exited) killProcessTree(proc)
       }, 20_000)
     })()
   }
 
   return { proc, stop }
-}
-
-/** UE servers spawn child processes — kill the whole tree (Windows) / group (Linux). */
-function forceKill(proc: ChildProcess): void {
-  if (proc.pid === undefined) return
-  if (process.platform === 'win32') {
-    spawn('taskkill', ['/pid', String(proc.pid), '/T', '/F'], { windowsHide: true })
-  } else {
-    // the server was spawned detached, so it leads its own process group (-pid)
-    try {
-      process.kill(-proc.pid, 'SIGKILL')
-    } catch {
-      proc.kill('SIGKILL')
-    }
-  }
 }
 
 // ---------- console commands over REST ----------

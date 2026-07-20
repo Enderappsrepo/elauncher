@@ -4,6 +4,7 @@ import { join } from 'path'
 import { Socket } from 'net'
 import { randomBytes } from 'crypto'
 import { installSteamApp } from './steamcmd'
+import { killProcessTree } from './proctree'
 
 /**
  * Generic SteamCMD dedicated-server provider. Palworld came first and has its
@@ -153,19 +154,6 @@ export interface SteamGameRunCallbacks {
   onExit: (code: number | null) => void
 }
 
-/** UE/Unity servers spawn children — kill the whole tree (Windows) / group (Linux). */
-function forceKill(proc: ChildProcess): void {
-  if (proc.pid === undefined) return
-  if (IS_WIN) spawn('taskkill', ['/pid', String(proc.pid), '/T', '/F'], { windowsHide: true })
-  else {
-    try {
-      process.kill(-proc.pid, 'SIGKILL')
-    } catch {
-      proc.kill('SIGKILL')
-    }
-  }
-}
-
 export function startSteamGame(
   game: SteamGameId,
   dir: string,
@@ -296,7 +284,7 @@ export function startSteamGame(
       }
     }
     setTimeout(() => {
-      if (!exited) forceKill(proc)
+      if (!exited) killProcessTree(proc)
     }, 25_000)
   }
 

@@ -464,7 +464,7 @@ create table if not exists public.server_commands (
   owner_id uuid not null references public.profiles (id) on delete cascade,
   sender_id uuid not null references public.profiles (id) on delete cascade,
   sender_name text not null default '',
-  action text not null, -- 'start' | 'stop' | 'command'
+  action text not null, -- 'start' | 'stop' | 'forceStop' | 'command'
   payload text not null default '',
   executed boolean not null default false,
   created_at timestamptz not null default now()
@@ -517,6 +517,56 @@ create policy "senders see their own commands"
   on public.server_commands for select to authenticated using (sender_id = auth.uid());
 
 -- ============================================================
+-- Fleet health (2026-07-19): admin-wide view of the boxes doing the hosting.
+-- Every hosting launcher publishes its machine vitals on the relay heartbeat,
+-- and admins get read access across hosts/servers so the panel's Health view
+-- can answer "is anything on fire?" without SSHing into anything.
+-- Run this block on existing projects to enable the panel's Health view.
+-- ============================================================
+create table if not exists public.host_health (
+  owner_id uuid primary key references public.profiles (id) on delete cascade,
+  host_name text not null default '',
+  platform text not null default '',
+  app_version text not null default '',
+  headless boolean not null default false,
+  cpu_model text not null default '',
+  cpu_threads integer not null default 0,
+  -- machine-wide, not per-server: nulls simply mean "not readable here"
+  cpu_percent integer,
+  ram_used_mb integer,
+  ram_total_mb integer,
+  disk_free_gb integer,
+  disk_total_gb integer,
+  uptime_seconds bigint,
+  load1 numeric(6,2),
+  servers_running integer not null default 0,
+  servers_total integer not null default 0,
+  players_online integer not null default 0,
+  updated_at timestamptz not null default now()
+);
+
+alter table public.host_health enable row level security;
+
+drop policy if exists "owners publish their host health" on public.host_health;
+create policy "owners publish their host health"
+  on public.host_health for all to authenticated
+  using (owner_id = auth.uid()) with check (owner_id = auth.uid());
+-- read-only for admins: they watch the fleet, the host still owns its own row
+drop policy if exists "admins read every host health" on public.host_health;
+create policy "admins read every host health"
+  on public.host_health for select to authenticated using (public.is_admin());
+
+-- the Health view also lists which individual servers need attention, so admins
+-- need read (never write) on every status row. Additive to the owner/grantee
+-- policies above — nobody else's access changes. Deliberately NOT extended to
+-- host_specs: that table has a row for every launcher user, while host_health
+-- is only published by machines actually running a server, so the fleet view
+-- never turns into a window onto ordinary players' PCs.
+drop policy if exists "admins read every server status" on public.server_status;
+create policy "admins read every server status"
+  on public.server_status for select to authenticated using (public.is_admin());
+
+-- ============================================================
 -- Instant relay (realtime)
 -- ============================================================
 -- Adds the relay tables to Supabase's realtime publication so the web panel
@@ -528,7 +578,7 @@ create policy "senders see their own commands"
 do $$
 declare t text;
 begin
-  foreach t in array array['server_status', 'server_commands', 'server_requests', 'hosting_orders'] loop
+  foreach t in array array['server_status', 'server_commands', 'server_requests', 'hosting_orders', 'host_health'] loop
     if not exists (
       select 1 from pg_publication_tables
       where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = t

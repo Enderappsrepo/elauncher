@@ -1208,6 +1208,17 @@ export default function ServerPage(): React.JSX.Element {
     toast.success(syncGameName ? 'Renamed — the in-game name follows on the next start' : 'Renamed in the launcher only')
   }
 
+  const forceStop = async (server: LocalServer): Promise<void> => {
+    if (
+      !confirm(
+        `Force stop "${server.name}"?\n\nThis kills the server process immediately. Anything it had not written to disk since its last save is lost. Only do this if a normal stop is not finishing.`
+      )
+    )
+      return
+    await window.elauncher.server.forceStop(server.id)
+    toast.success(`Force stopped "${server.name}"`)
+  }
+
   const remove = async (server: LocalServer): Promise<void> => {
     if (!confirm(`Delete "${server.name}" and its world files? This cannot be undone.`)) return
     const res = await window.elauncher.server.remove(server.id)
@@ -1427,14 +1438,28 @@ export default function ServerPage(): React.JSX.Element {
                         <IconPlay size={14} /> Start
                       </button>
                     ) : (
-                      <button
-                        className="danger"
-                        style={{ padding: '10px 22px' }}
-                        disabled={selStatus.state === 'stopping'}
-                        onClick={() => void window.elauncher.server.stop(selected.id)}
-                      >
-                        <IconStop size={14} /> {selStatus.state === 'stopping' ? 'Stopping…' : 'Stop'}
-                      </button>
+                      <div className="row" style={{ gap: 8 }}>
+                        <button
+                          className="danger"
+                          style={{ padding: '10px 22px' }}
+                          disabled={selStatus.state === 'stopping'}
+                          onClick={() => void window.elauncher.server.stop(selected.id)}
+                        >
+                          <IconStop size={14} /> {selStatus.state === 'stopping' ? 'Stopping…' : 'Stop'}
+                        </button>
+                        {/* the way out when a server ignores `stop` — offered only once
+                            a normal stop is already underway, so it stays a last resort */}
+                        {selStatus.state === 'stopping' && (
+                          <button
+                            className="ghost"
+                            style={{ padding: '10px 16px' }}
+                            title="Kill the server process now, without waiting for it to save"
+                            onClick={() => void forceStop(selected)}
+                          >
+                            Force stop
+                          </button>
+                        )}
+                      </div>
                     )}
                   </div>
                 </div>
