@@ -513,6 +513,10 @@
     .rtabs button.on { background: var(--accent-soft); border-color: var(--accent-line); color: var(--accent); }
     .rtabs .ct { font: 650 10.5px var(--mono); background: rgba(0,0,0,.25); border-radius: 99px; padding: 1px 6px; }
     .prow .pn i { display: block; font-style: normal; font-size: 10.5px; color: var(--faint); font-family: var(--mono); overflow: hidden; text-overflow: ellipsis; }
+    /* access rows carry a sentence, not a UUID — read them as prose */
+    .plister.access .pn i { font-family: inherit; font-size: 11.5px; font-weight: 500; white-space: normal; }
+    .plister.access .prow { gap: 12px; }
+    .plister.access .chip { flex: none; }
     /* head render over the initial tile: the tile shows through if the fetch fails */
     .avatar { position: relative; overflow: hidden; }
     .avatar img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; image-rendering: pixelated; }
@@ -1158,7 +1162,8 @@
       puzzle: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19.5 12.5c0-.83.67-1.5 1.5-1.5s1.5-.67 1.5-1.5S21.83 8 21 8h-1V6a2 2 0 0 0-2-2h-2V3c0-.83-.67-1.5-1.5-1.5S13 2.17 13 3s-.67 1.5-1.5 1.5S10 3.83 10 3s-.67-1.5-1.5-1.5S7 2.17 7 3v1H5a2 2 0 0 0-2 2v2H2c-.83 0-1.5.67-1.5 1.5S1.17 11 2 11s1.5.67 1.5 1.5S2.83 14 2 14s-1.5.67-1.5 1.5S1.17 17 2 17h1v2a2 2 0 0 0 2 2h2v1c0 .83.67 1.5 1.5 1.5S10 22.83 10 22s.67-1.5 1.5-1.5 1.5.67 1.5 1.5.67 1.5 1.5 1.5S16 22.83 16 22v-1h2a2 2 0 0 0 2-2v-2h1c.83 0 1.5-.67 1.5-1.5s-.67-1.5-1.5-1.5-1.5-.67-1.5-1.5z"/></svg>',
       zap: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>',
       sliders: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></svg>',
-      x: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>'
+      x: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>',
+      shield: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/></svg>'
     }
 
     function toast(message, bad = false) {
@@ -1393,6 +1398,7 @@
     // ---------- settings knowledge base (labels, explanations, groups) ----------
     const ACRONYMS = [[/\bPv P\b/g, 'PvP'], [/\bU Id\b/g, 'UID'], [/\bHp\b/g, 'HP'], [/\bUi\b/g, 'UI'], [/\bId\b/g, 'ID'], [/\bXp\b/g, 'XP'], [/\bRest Api\b/gi, 'REST API'], [/\bRcon\b/gi, 'RCON'], [/\bUNKO\b/g, 'Poop']]
     function labelFor(key) {
+      if (KEY_LABELS[key]) return KEY_LABELS[key]
       let s = key.replace(/^b(?=[A-Z])/, '').replace(/_/g, ' ').replace(/([a-z0-9])([A-Z])/g, '$1 $2').replace(/([A-Z]+)([A-Z][a-z])/g, '$1 $2').trim()
       for (const [re, to] of ACRONYMS) s = s.replace(re, to)
       return s
@@ -1469,7 +1475,30 @@
       Difficulty: [['None', 'None (use sliders)'], ['Casual', 'Casual'], ['Normal', 'Normal'], ['Hard', 'Hard']],
       DeathPenalty: [['None', 'Keep everything'], ['Item', 'Drop items'], ['ItemAndEquipment', 'Drop items + equipment'], ['All', 'Drop everything (incl. Pals)']],
       gamemode: [['survival', 'Survival'], ['creative', 'Creative'], ['adventure', 'Adventure'], ['spectator', 'Spectator']],
-      difficulty: [['peaceful', 'Peaceful'], ['easy', 'Easy'], ['normal', 'Normal'], ['hard', 'Hard']]
+      difficulty: [['peaceful', 'Peaceful'], ['easy', 'Easy'], ['normal', 'Normal'], ['hard', 'Hard']],
+      // valheim world modifiers — '' means the value the world was made with
+      ModifierCombat: [['', 'Leave as the world has it'], ['veryeasy', 'Very easy'], ['easy', 'Easy'], ['hard', 'Hard'], ['veryhard', 'Very hard']],
+      ModifierDeathPenalty: [['', 'Leave as the world has it'], ['casual', 'Casual — keep everything'], ['veryeasy', 'Very easy'], ['easy', 'Easy'], ['hard', 'Hard'], ['hardcore', 'Hardcore']],
+      ModifierResources: [['', 'Leave as the world has it'], ['muchless', 'Much less'], ['less', 'Less'], ['more', 'More'], ['muchmore', 'Much more'], ['most', 'Most']],
+      ModifierRaids: [['', 'Leave as the world has it'], ['none', 'No raids'], ['muchless', 'Much less often'], ['less', 'Less often'], ['more', 'More often'], ['muchmore', 'Much more often']],
+      ModifierPortals: [['', 'Leave as the world has it'], ['casual', 'Casual — carry anything'], ['hard', 'Hard'], ['veryhard', 'Very hard — no portals']]
+    }
+    /** Keys whose auto-generated label reads badly. */
+    const KEY_LABELS = {
+      Crossplay: 'Crossplay (Xbox / Game Pass players)',
+      SaveIntervalSeconds: 'Save the world every (seconds)',
+      BackupCount: 'Backups to keep',
+      BackupShortSeconds: 'First backup after (seconds)',
+      BackupLongSeconds: 'Then a backup every (seconds)',
+      ModifierCombat: 'Combat difficulty',
+      ModifierDeathPenalty: 'Death penalty',
+      ModifierResources: 'Resource drops',
+      ModifierRaids: 'Raid frequency',
+      ModifierPortals: 'Portal rules',
+      KeyNoBuildCost: 'Free building (no materials)',
+      KeyPlayerEvents: 'Raids follow players',
+      KeyPassiveMobs: 'Passive creatures (never attack)',
+      KeyNoMap: 'No map'
     }
     // curated top section per game: [key, optional friendly label]
     const PAL_ESS = [['ServerName', 'Server name'], ['ServerDescription', 'Description'], ['ServerPassword', 'Join password'], ['ServerPlayerMaxNum', 'Max players'], ['Difficulty'], ['DeathPenalty'], ['ExpRate', 'XP rate'], ['PalCaptureRate', 'Capture rate'], ['bEnablePlayerToPlayerDamage', 'PvP damage'], ['bEnableInvaderEnemy', 'Raids']]
@@ -1504,9 +1533,13 @@
     window.setDirty = (k, v) => { dirty[k] = v }
 
     const isModdable = () => sheetInfo && sheetInfo.game === 'minecraft' && ['paper', 'fabric', 'forge', 'neoforge'].includes(sheetInfo.kind)
-    const tabList = () => ['overview', 'console', 'settings', 'players', ...(isModdable() ? ['mods'] : []), 'files', 'network', 'automation']
-    const tabLabels = () => ({ overview: 'Overview', console: 'Console', settings: 'Settings', players: 'Players', mods: sheetInfo?.kind === 'paper' ? 'Plugins' : 'Mods', files: 'Files', network: 'Network', automation: 'Automation' })
-    const tabIcons = () => ({ overview: icons.sliders, console: icons.term, settings: icons.sliders, players: icons.users, mods: icons.puzzle, files: icons.folder, network: icons.globe, automation: icons.zap })
+    // Access is the one tab that isn't about the game: it's there for whoever can
+    // hand this panel to someone else — the host, an admin, or the customer whose
+    // server it is. The host decides that (info.canShare); a friend they invited
+    // simply never sees the tab.
+    const tabList = () => ['overview', 'console', 'settings', 'players', ...(isModdable() ? ['mods'] : []), 'files', 'network', 'automation', ...(sheetInfo?.canShare ? ['access'] : [])]
+    const tabLabels = () => ({ overview: 'Overview', console: 'Console', settings: 'Settings', players: 'Players', mods: sheetInfo?.kind === 'paper' ? 'Plugins' : 'Mods', files: 'Files', network: 'Network', automation: 'Automation', access: 'Access' })
+    const tabIcons = () => ({ overview: icons.sliders, console: icons.term, settings: icons.sliders, players: icons.users, mods: icons.puzzle, files: icons.folder, network: icons.globe, automation: icons.zap, access: icons.shield })
     // shared by the mobile modal and the desktop detail pane
     async function runTab(body) {
       body.innerHTML = '<div class="loadrow">Loading…</div>'
@@ -1523,6 +1556,7 @@
         if (sheetTab === 'files') return renderFiles(body)
         if (sheetTab === 'network') return renderNetwork(body, await request(sheetId, 'ports'))
         if (sheetTab === 'automation') return renderAutomation(body, sheetInfo.automation || {})
+        if (sheetTab === 'access') return renderAccess(body, await request(sheetId, 'shares'))
       } catch (e) {
         body.innerHTML = `<div class="loadrow" style="color:var(--red)">${esc(e.message)}</div>`
       }
@@ -2718,6 +2752,76 @@
         toast(e.message, true)
       }
     }
+
+    // ---------- access ----------
+    // Who else can open this panel. The grants belong to the host account, so
+    // every change goes over the relay rather than straight to the table: that
+    // way a customer can invite their own friends to the server they rent
+    // without ever holding write access to the host's grants.
+
+    function accessRow(name, meta, button) {
+      return `<div class="prow">
+        <span class="avatar" style="background:${gradOf(name)}">${esc(name.charAt(0).toUpperCase())}</span>
+        <div class="pn" style="flex:1;min-width:0">${esc(name)}<i>${esc(meta)}</i></div>
+        ${button}
+      </div>`
+    }
+
+    function renderAccess(body, view) {
+      window.__access = view // accessRevoke names the person from here
+      const people = view.people ?? []
+      body.innerHTML = `
+        <div class="grouphead" style="margin-top:0">Who can manage this server</div>
+        <div class="plister access">
+          ${accessRow(view.owner, 'Hosts this server — full control', '<span class="chip">Host</span>')}
+          ${people.map((p) => accessRow(
+            p.name,
+            p.customer ? 'This server belongs to them — can invite others' : 'Invited — same panel, minus archive and delete',
+            p.customer
+              ? '<span class="chip acc">Owner</span>'
+              : `<button class="minibtn red" onclick="accessRevoke('${esc(p.id)}')">Remove</button>`
+          )).join('')}
+        </div>
+        ${people.length ? '' : '<div class="loadrow">Nobody else has access yet.</div>'}
+
+        <div class="grouphead">Invite someone</div>
+        <div class="np-new">
+          <input type="text" id="acName" placeholder="Their ELauncher username" autocomplete="off" autocapitalize="none"
+                 onkeydown="if(event.key==='Enter')accessGrant()">
+          <button class="minibtn acc" id="acAdd" onclick="accessGrant()">Invite</button>
+        </div>
+        <div class="au-note">They need an ELauncher account already — invite them by the username they signed up with.
+          Once added, this server shows up in their launcher and in this panel: console, players, settings, files and
+          start/stop. Archiving and deleting stay with the host.</div>`
+    }
+
+    window.accessGrant = async () => {
+      const username = ($('acName')?.value || '').trim()
+      if (!username) return toast('Type their ELauncher username first.', true)
+      const btn = $('acAdd')
+      if (btn) { btn.disabled = true; btn.textContent = 'Inviting…' }
+      try {
+        renderAccess($('tabBody'), await request(sheetId, 'share', { username }))
+        toast(`${username} can now manage this server`)
+      } catch (e) {
+        toast(e.message, true)
+        if (btn) { btn.disabled = false; btn.textContent = 'Invite' }
+      }
+    }
+
+    window.accessRevoke = async (shareId) => {
+      // the name is looked up rather than passed in — an inline argument would
+      // have to survive HTML-escaping, and account names are not player names
+      const name = (window.__access?.people ?? []).find((p) => p.id === shareId)?.name ?? 'that person'
+      if (!confirm(`Remove ${name}'s access to this server? They keep their account — they just lose this panel.`)) return
+      try {
+        renderAccess($('tabBody'), await request(sheetId, 'unshare', { shareId }))
+        toast(`${name} no longer has access`)
+      } catch (e) {
+        toast(e.message, true)
+      }
+    }
+
     // ---------- desktop master-detail ----------
     const stClassOf = (row) => {
       const fresh = Date.now() - new Date(row.updated_at).getTime() < HEARTBEAT_MS * 4
@@ -2936,7 +3040,13 @@
       dirty = {}
       fileView = null
       writeHash()
-      document.querySelectorAll('.dtabs button').forEach((b) => b.classList.toggle('on', b.dataset.t === t))
+      document.querySelectorAll('.dtabs button').forEach((b) => {
+        const on = b.dataset.t === t
+        b.classList.toggle('on', on)
+        // the strip scrolls sideways with no visible scrollbar, so a tab near the
+        // end can be active with nothing on screen saying so
+        if (on) b.scrollIntoView({ block: 'nearest', inline: 'nearest' })
+      })
       const body = $('tabBody')
       if (body) void runTab(body)
     }
@@ -3052,6 +3162,8 @@
         // over from another server) can name one this server doesn't have
         if (!tabList().includes(sheetTab)) { sheetTab = 'overview'; writeHash() }
         main.innerHTML = renderHero(row) + renderTabs() + '<div class="dbody" id="tabBody"></div>'
+        // a deep link can land on a tab that sits past the end of the strip
+        main.querySelector('.dtabs button.on')?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
         await runTab($('tabBody'))
       } catch (e) {
         const body = main.querySelector('.dbody')

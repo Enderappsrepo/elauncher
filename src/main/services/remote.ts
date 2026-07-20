@@ -71,8 +71,18 @@ const HOST_HEALTH_MS = 15_000
 
 /** destructive or plan-lifting actions only the host owner or an admin may trigger */
 const PRIVILEGED_ACTIONS = new Set(['delete', 'archive', 'restore', 'setLimits'])
+/**
+ * Handing out panel access. Wider than PRIVILEGED_ACTIONS — the customer renting
+ * a hosted server invites their own friends — but deliberately narrower than the
+ * ordinary grantee set: whoever they invite cannot pass access on again.
+ */
+const ACCESS_ACTIONS = new Set(['shares', 'share', 'unshare'])
 const adminCache = new Map<string, { admin: boolean; at: number }>()
 const ADMIN_CACHE_MS = 5 * 60_000
+/** hosted server -> the account renting it, cached off hosting_orders */
+let customerByServer = new Map<string, string>()
+let customersAt = 0
+const CUSTOMER_CACHE_MS = 60_000
 
 /** Is this requester an admin? (profiles.is_admin, cached — it gates every privileged request.) */
 async function isAdminUser(supabase: ReturnType<typeof getClient>, userId: string): Promise<boolean> {
@@ -82,6 +92,23 @@ async function isAdminUser(supabase: ReturnType<typeof getClient>, userId: strin
   const admin = Boolean((data as { is_admin?: boolean } | null)?.is_admin)
   adminCache.set(userId, { admin, at: Date.now() })
   return admin
+}
+
+/**
+ * Which account is a hosted server actually *for*? The host owns every grant, so
+ * server_shares alone can't tell the customer renting a box from a friend they
+ * invited — hosting_orders can, and the provisioner already keeps it in step.
+ * Nothing comes back for a plain self-hosted server (no order), which is right:
+ * there the owner is the only one who hands out access.
+ */
+async function customerOf(supabase: ReturnType<typeof getClient>, serverId: string): Promise<string | null> {
+  if (Date.now() - customersAt > CUSTOMER_CACHE_MS) {
+    const { data } = await supabase.from('hosting_orders').select('server_id, user_id').eq('status', 'active')
+    const rows = (data as { server_id: string | null; user_id: string }[] | null) ?? []
+    customerByServer = new Map(rows.filter((o) => o.server_id).map((o) => [o.server_id as string, o.user_id]))
+    customersAt = Date.now() // a missing/denied table caches empty and retries on the next beat
+  }
+  return customerByServer.get(serverId) ?? null
 }
 
 /**
@@ -111,7 +138,10 @@ export async function grantAccess(serverId: string, serverName: string, username
     .maybeSingle()
   if (findError) throw friendly(findError)
   if (!profile) throw new Error(`No ELauncher user named "${username.trim()}".`)
-  if (profile.id === me.id) throw new Error("That's you — you already manage this server.")
+  // over the relay `me` is the HOST account, not whoever asked — so this reads
+  // correctly both for an owner typing their own name and for a customer typing
+  // the name of the machine hosting their server
+  if (profile.id === me.id) throw new Error('That account hosts this server — it already has full access.')
   const { error } = await supabase.from('server_shares').upsert(
     {
       owner_id: me.id,
@@ -155,8 +185,27 @@ export async function listShares(serverId: string): Promise<ServerShare[]> {
     id: r.id,
     serverId: r.server_id,
     serverName: r.server_name,
+    granteeId: r.grantee_id,
     granteeName: names.get(r.grantee_id) ?? 'unknown'
   }))
+}
+
+/** Everyone who can open one server's panel, shaped for the web panel's Access tab. */
+async function listAccess(serverId: string): Promise<{
+  owner: string
+  people: { id: string; name: string; customer: boolean }[]
+}> {
+  const supabase = getClient()
+  const me = await getUser()
+  if (!me) throw new Error('the host launcher is signed out')
+  const [customer, shares] = await Promise.all([customerOf(supabase, serverId), listShares(serverId)])
+  return {
+    owner: me.username,
+    people: shares
+      .map((s) => ({ id: s.id, name: s.granteeName, customer: s.granteeId === customer }))
+      // the person paying for the server reads first; the rest alphabetically
+      .sort((a, b) => Number(b.customer) - Number(a.customer) || a.name.localeCompare(b.name))
+  }
 }
 
 // ---------- manager: servers shared with me ----------
@@ -403,6 +452,7 @@ async function hostTick(): Promise<void> {
         const archivedHere = archivedIds.has(req.server_id)
         if (!localIds.has(req.server_id) && !archivedHere) throw new Error('server is not on this machine')
         let privileged = req.requester_id === me
+        let canShare = privileged
         if (!privileged) {
           // the host owner can do anything; admins can do anything; grantees
           // (customers) are limited to non-destructive actions while shared
@@ -412,11 +462,17 @@ async function hostTick(): Promise<void> {
           }
           if (!admin && !sharedServerIds.has(req.server_id)) throw new Error('access was revoked')
           privileged = admin
+          // the customer renting this server invites their own friends; those
+          // friends are ordinary grantees and cannot pass access on again
+          canShare = admin || (await customerOf(supabase, req.server_id)) === req.requester_id
+        }
+        if (ACCESS_ACTIONS.has(req.action) && !canShare) {
+          throw new Error('Only the owner, an admin, or the customer this server belongs to can manage access.')
         }
         if (archivedHere && !PRIVILEGED_ACTIONS.has(req.action)) {
           throw new Error('This server is archived — restore it first.')
         }
-        response = await runPanelRequest(req.server_id, req.action, req.params, privileged)
+        response = await runPanelRequest(req.server_id, req.action, req.params, privileged, canShare)
       } catch (e) {
         error = e instanceof Error ? e.message : String(e)
       }
@@ -655,7 +711,13 @@ function guardCustomerLimits(serverId: string, action: string, params: Record<st
 }
 
 /** Execute one control-panel request against a local server and return its result. */
-async function runPanelRequest(serverId: string, action: string, params: Record<string, unknown>, privileged = true): Promise<unknown> {
+async function runPanelRequest(
+  serverId: string,
+  action: string,
+  params: Record<string, unknown>,
+  privileged = true,
+  canShare = privileged
+): Promise<unknown> {
   if (!privileged) guardCustomerLimits(serverId, action, params)
   switch (action) {
     case 'info': {
@@ -672,7 +734,9 @@ async function runPanelRequest(serverId: string, action: string, params: Record<
         limits: record.limits ?? null,
         limitsPlan: record.limitsPlan ?? null,
         limitsOverride: record.limitsOverride ?? null,
-        owner: privileged
+        owner: privileged,
+        // drives whether the panel offers an Access tab at all
+        canShare
       }
     }
     case 'getProps':
@@ -762,6 +826,25 @@ async function runPanelRequest(serverId: string, action: string, params: Record<
       const end = Number.isFinite(before) ? Math.max(0, Math.min(before, all.length)) : all.length
       const start = Math.max(0, end - limit)
       return { lines: all.slice(start, end), start, total: all.length, atStart: start === 0 }
+    }
+    // ---- panel access (ACCESS_ACTIONS gates who gets this far) ----
+    case 'shares':
+      return listAccess(serverId)
+    case 'share': {
+      const record = listLocalServers().find((s) => s.id === serverId)
+      await grantAccess(serverId, record?.name ?? '', String(params.username ?? ''))
+      return listAccess(serverId)
+    }
+    case 'unshare': {
+      // resolve against this server's own grants, so a share id from elsewhere
+      // (or one already revoked) can't be used to reach past it
+      const target = (await listAccess(serverId)).people.find((p) => p.id === String(params.shareId ?? ''))
+      if (!target) throw new Error('That person no longer has access to this server.')
+      if (target.customer && !privileged) {
+        throw new Error('This server belongs to that account — only the host owner or an admin can remove it.')
+      }
+      await revokeAccess(target.id)
+      return listAccess(serverId)
     }
     case 'roster':
       return readServerRoster(serverId)

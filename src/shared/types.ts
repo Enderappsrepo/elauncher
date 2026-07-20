@@ -594,6 +594,7 @@ export interface ServerShare {
   id: string
   serverId: string
   serverName: string
+  granteeId: string
   granteeName: string
 }
 

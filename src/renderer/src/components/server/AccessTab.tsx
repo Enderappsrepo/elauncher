@@ -67,9 +67,9 @@ export default function AccessTab({ server }: { server: LocalServer }): React.JS
           </span>
         </div>
         <p className="perf-lead">
-          People you add here see this server in their own launcher's Server tab — live console, players, and
-          start/stop/commands — relayed through your ELauncher cloud. They never get file access, and you can revoke
-          them anytime.
+          People you add here see this server in their own launcher's Server tab and in the web panel — live console,
+          players, settings, files, and start/stop — relayed through your ELauncher cloud. Only you can archive or
+          delete it, and you can revoke them anytime.
         </p>
         <form
           className="row"
