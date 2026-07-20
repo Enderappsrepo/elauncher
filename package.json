@@ -1,6 +1,6 @@
 {
   "name": "elauncher",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "A custom Minecraft launcher with Microsoft login, mod loaders, mods, and shareable modpacks",
   "main": "./out/main/index.js",
   "author": "ELauncher",
