@@ -26,6 +26,7 @@ import type {
 } from '@shared/types'
 import { archivedServersFile, instanceDir, javaDir, serverArchivesDir, serverDir, serversFile } from '../paths'
 import { readJson, writeJson } from '../store'
+import { killProcessTree } from './proctree'
 import { downloadAgent, withRetries } from '../net'
 import { downloadToFile, listInstalledMods, modrinthFetch, readModsMeta } from './mods'
 import {
@@ -1132,59 +1133,78 @@ async function runScheduledRestart(id: string, reason: string): Promise<void> {
   )
 }
 
-/** Copy world/save folders into backups/<stamp> and prune old ones (copies, not zips, keep the app responsive). */
-async function backupServer(id: string): Promise<void> {
+/** Manifest written beside every backup so a restore knows where each folder came from. */
+const BACKUP_MANIFEST = '.elauncher-backup.json'
+type BackupManifest = { game: ServerGame; createdAt: string; sources: string[] }
+
+/**
+ * Save folders for a game, as paths relative to the server dir.
+ *
+ * Relative on purpose: palworld nests its saves at Pal/Saved/SaveGames, so a
+ * backup keyed on basename alone can't be put back where it came from.
+ */
+function backupSources(server: LocalServer): string[] {
+  const dir = serverDir(server.id)
+  const rel: string[] = []
+  if (gameOf(server) === 'palworld') rel.push(join('Pal', 'Saved', 'SaveGames'))
+  else if (gameOf(server) === 'valheim') rel.push('save')
+  else if (gameOf(server) === 'sdtd') rel.push('UserData')
+  else {
+    const level = getServerProperties(server.id)['level-name']?.trim() || 'world'
+    for (const suffix of ['', '_nether', '_the_end']) rel.push(level + suffix)
+  }
+  return rel.filter((r) => existsSync(join(dir, r)))
+}
+
+/**
+ * Copy world/save folders into backups/<stamp> and prune old ones (copies, not
+ * zips, to keep the app responsive). Throws on failure — callers that must not
+ * fail (the automation timer) use backupServer() instead.
+ */
+export async function makeServerBackup(id: string): Promise<{ stamp: string }> {
   const server = loadServers().find((s) => s.id === id)
-  if (!server) return
+  if (!server) throw new Error('server not found')
   const dir = serverDir(id)
+  const sources = backupSources(server)
+  if (sources.length === 0) throw new Error('Nothing to back up yet — the world is created on first start.')
+
+  const running = (states.get(id) ?? 'stopped') === 'running'
+  if (running) {
+    // flush and pause writes so the copy isn't torn mid-write
+    if (gameOf(server) === 'minecraft') {
+      tryCommand(id, 'save-off')
+      tryCommand(id, 'save-all')
+    } else if (saveCommandFor(server)) {
+      tryCommand(id, saveCommandFor(server))
+    }
+    await sleep(3_000)
+  }
+  const stamp = new Date().toISOString().slice(0, 16).replace(/[T:]/g, '-')
+  const destRoot = join(dir, 'backups')
   try {
-    const sources: string[] = []
-    if (gameOf(server) === 'palworld') {
-      const saves = join(dir, 'Pal', 'Saved', 'SaveGames')
-      if (existsSync(saves)) sources.push(saves)
-    } else if (gameOf(server) === 'valheim') {
-      const saves = join(dir, 'save')
-      if (existsSync(saves)) sources.push(saves)
-    } else if (gameOf(server) === 'sdtd') {
-      const saves = join(dir, 'UserData')
-      if (existsSync(saves)) sources.push(saves)
-    } else {
-      const level = getServerProperties(id)['level-name']?.trim() || 'world'
-      for (const suffix of ['', '_nether', '_the_end']) {
-        const world = join(dir, level + suffix)
-        if (existsSync(world)) sources.push(world)
-      }
-    }
-    if (sources.length === 0) return
+    for (const rel of sources) await cp(join(dir, rel), join(destRoot, stamp, basename(rel)), { recursive: true })
+    const manifest: BackupManifest = { game: gameOf(server), createdAt: new Date().toISOString(), sources }
+    writeJson(join(destRoot, stamp, BACKUP_MANIFEST), manifest)
+  } finally {
+    if (running && gameOf(server) === 'minecraft') tryCommand(id, 'save-on')
+  }
+  pushLog(id, `[ELauncher] World backed up to backups/${stamp}`)
 
-    const running = (states.get(id) ?? 'stopped') === 'running'
-    if (running) {
-      // flush and pause writes so the copy isn't torn mid-write
-      if (gameOf(server) === 'minecraft') {
-        tryCommand(id, 'save-off')
-        tryCommand(id, 'save-all')
-      } else if (saveCommandFor(server)) {
-        tryCommand(id, saveCommandFor(server))
-      }
-      await sleep(3_000)
-    }
-    const stamp = new Date().toISOString().slice(0, 16).replace(/[T:]/g, '-')
-    const destRoot = join(dir, 'backups')
-    try {
-      for (const src of sources) await cp(src, join(destRoot, stamp, basename(src)), { recursive: true })
-    } finally {
-      if (running && gameOf(server) === 'minecraft') tryCommand(id, 'save-on')
-    }
-    pushLog(id, `[ELauncher] World backed up to backups/${stamp}`)
+  const keep = Math.max(1, server.automation?.backupKeep ?? 5)
+  const old = readdirSync(destRoot, { withFileTypes: true })
+    .filter((e) => e.isDirectory())
+    .map((e) => e.name)
+    .sort()
+  for (const name of old.slice(0, Math.max(0, old.length - keep))) {
+    rmSync(join(destRoot, name), { recursive: true, force: true })
+  }
+  return { stamp }
+}
 
-    const keep = Math.max(1, server.automation?.backupKeep ?? 5)
-    const old = readdirSync(destRoot, { withFileTypes: true })
-      .filter((e) => e.isDirectory())
-      .map((e) => e.name)
-      .sort()
-    for (const name of old.slice(0, Math.max(0, old.length - keep))) {
-      rmSync(join(destRoot, name), { recursive: true, force: true })
-    }
+/** Fire-and-forget wrapper for the automation timer: a failed backup logs, never throws. */
+async function backupServer(id: string): Promise<void> {
+  try {
+    await makeServerBackup(id)
   } catch (e) {
     pushLog(id, `[ELauncher] Backup failed: ${e instanceof Error ? e.message : String(e)}`)
   }
@@ -1778,12 +1798,46 @@ export function stopServer(id: string): void {
   try {
     proc.stdin?.write('stop\n')
   } catch {
-    proc.kill()
+    killProcessTree(proc)
     return
   }
   setTimeout(() => {
-    if (procs.get(id) === proc) proc.kill()
+    if (procs.get(id) === proc) killProcessTree(proc)
   }, 12_000)
+}
+
+/**
+ * Force stop: kill the process tree now, skipping the graceful save.
+ *
+ * The escape hatch for a server that ignored `stop` — a Palworld server whose
+ * REST admin never came up, a Valheim process that outlived its grace window, a
+ * JVM wedged mid-save. It is also the only way out of a stuck 'stopping', since
+ * startServer refuses unless the state is 'stopped' and nothing else resets it.
+ */
+export function forceStopServer(id: string): void {
+  const proc = procs.get(id) ?? palworldHandles.get(id)?.proc ?? steamGameHandles.get(id)?.proc
+  if (!proc) {
+    // nothing left running — clear a state stranded by an earlier failed stop
+    pushLog(id, '[ELauncher] Nothing was running — marking the server stopped')
+    setState(id, 'stopped')
+    return
+  }
+  setState(id, 'stopping')
+  pushLog(id, '[ELauncher] Force stopping — killing the process tree without saving')
+  killProcessTree(proc)
+  // the exit handler normally clears the state; if the kill leaves no exit event
+  // behind (pid already reaped, taskkill refused) don't strand it in 'stopping'
+  setTimeout(() => {
+    // identity check, not presence: a fresh run started in the meantime holds a
+    // different proc and must not be torn down by this timer
+    const stranded =
+      procs.get(id) === proc || palworldHandles.get(id)?.proc === proc || steamGameHandles.get(id)?.proc === proc
+    if (!stranded) return
+    procs.delete(id)
+    palworldHandles.delete(id)
+    steamGameHandles.delete(id)
+    setState(id, 'stopped', 'Force stopped — the process never reported an exit.')
+  }, 5_000)
 }
 
 export function sendServerCommand(id: string, command: string): void {
@@ -2262,6 +2316,144 @@ export function whitelistRemove(id: string, name: string): PlayerListEntry[] {
   return readPlayerList(id, 'whitelist')
 }
 
+/** Console verbs per list. A running server owns its own files, so we go through it. */
+const ROSTER_COMMANDS: Record<PlayerFileKind, { add: string; remove: string }> = {
+  whitelist: { add: 'whitelist add', remove: 'whitelist remove' },
+  ops: { add: 'op', remove: 'deop' },
+  'banned-players': { add: 'ban', remove: 'pardon' }
+}
+
+/** All three Minecraft player lists in one read, for the panel's Players tab. */
+export function readServerRoster(id: string): Record<PlayerFileKind, PlayerListEntry[]> {
+  return {
+    whitelist: readPlayerList(id, 'whitelist'),
+    ops: readPlayerList(id, 'ops'),
+    'banned-players': readPlayerList(id, 'banned-players')
+  }
+}
+
+/**
+ * Add or remove a player on any of the three lists.
+ *
+ * Running servers are told over the console — they hold these files open and
+ * would overwrite a direct edit on shutdown. Stopped servers get the json
+ * edited directly, which is the case the panel could never handle before.
+ */
+export async function editServerRoster(
+  id: string,
+  list: PlayerFileKind,
+  op: 'add' | 'remove',
+  name: string
+): Promise<Record<PlayerFileKind, PlayerListEntry[]>> {
+  const trimmed = name.trim()
+  if (!trimmed) throw new Error('Enter a player name.')
+  const server = loadServers().find((s) => s.id === id)
+  if (server && gameOf(server) !== 'minecraft') {
+    throw new Error('Whitelist, ops and bans are Minecraft-only.')
+  }
+
+  if ((states.get(id) ?? 'stopped') !== 'stopped') {
+    sendServerCommand(id, `${ROSTER_COMMANDS[list][op]} ${trimmed}`)
+    // the server rewrites the file itself; give it a beat before reading back
+    await sleep(400)
+    return readServerRoster(id)
+  }
+
+  const file = playerFile(id, list)
+  const entries = readJson<Record<string, unknown>[]>(file, [])
+  const matches = (e: Record<string, unknown>): boolean =>
+    String(e.name ?? '').toLowerCase() === trimmed.toLowerCase()
+
+  if (op === 'remove') {
+    writeJson(file, entries.filter((e) => !matches(e)))
+    return readServerRoster(id)
+  }
+
+  if (entries.some(matches)) return readServerRoster(id)
+  // Mojang is the only source of truth for the uuid these files key on
+  const player = await searchSkin(trimmed)
+  const base = { uuid: dashedUuid(player.uuid), name: player.username }
+  if (list === 'ops') entries.push({ ...base, level: 4, bypassesPlayerLimit: false })
+  else if (list === 'banned-players') {
+    entries.push({ ...base, created: new Date().toISOString(), source: 'ELauncher', expires: 'forever', reason: 'Banned by an operator.' })
+  } else entries.push(base)
+  writeJson(file, entries)
+  return readServerRoster(id)
+}
+
+// ---------- backups ----------
+
+/** Recursive byte count, best-effort — an unreadable entry contributes zero rather than throwing. */
+function dirSize(path: string): number {
+  let total = 0
+  try {
+    for (const entry of readdirSync(path, { withFileTypes: true })) {
+      const child = join(path, entry.name)
+      try {
+        if (entry.isDirectory()) total += dirSize(child)
+        else total += statSync(child).size
+      } catch {
+        /* vanished mid-walk */
+      }
+    }
+  } catch {
+    return 0
+  }
+  return total
+}
+
+export type ServerBackup = { stamp: string; createdAt: string; sizeBytes: number }
+
+/** Newest first — the order a restore list wants. */
+export function listServerBackups(id: string): ServerBackup[] {
+  const root = join(serverDir(id), 'backups')
+  if (!existsSync(root)) return []
+  return readdirSync(root, { withFileTypes: true })
+    .filter((e) => e.isDirectory())
+    .map((e) => {
+      const dir = join(root, e.name)
+      const manifest = readJson<Partial<BackupManifest>>(join(dir, BACKUP_MANIFEST), {})
+      return {
+        stamp: e.name,
+        // pre-manifest backups fall back to the folder's own mtime
+        createdAt: manifest.createdAt ?? statSync(dir).mtime.toISOString(),
+        sizeBytes: dirSize(dir)
+      }
+    })
+    .sort((a, b) => b.stamp.localeCompare(a.stamp))
+}
+
+/**
+ * Put a backup back. Requires the server to be stopped — copying over a live
+ * world hands the running process a half-replaced directory, and the shutdown
+ * save would then overwrite whatever we just restored.
+ */
+export async function restoreServerBackup(id: string, stamp: string): Promise<{ ok: true }> {
+  if ((states.get(id) ?? 'stopped') !== 'stopped') {
+    throw new Error('Stop the server before restoring a backup.')
+  }
+  const dir = serverDir(id)
+  const from = join(dir, 'backups', stamp)
+  // reject traversal: the stamp is user input and lands straight in a path
+  if (!existsSync(from) || dirname(from) !== join(dir, 'backups')) throw new Error('That backup no longer exists.')
+
+  const manifest = readJson<Partial<BackupManifest>>(join(from, BACKUP_MANIFEST), {})
+  const server = loadServers().find((s) => s.id === id)
+  // older backups predate the manifest — fall back to where this game keeps saves today
+  const sources = manifest.sources ?? (server ? backupSources(server) : [])
+  if (sources.length === 0) throw new Error('This backup is missing its manifest and the save location could not be inferred.')
+
+  for (const rel of sources) {
+    const src = join(from, basename(rel))
+    if (!existsSync(src)) continue
+    const dest = join(dir, rel)
+    rmSync(dest, { recursive: true, force: true })
+    await cp(src, dest, { recursive: true })
+  }
+  pushLog(id, `[ELauncher] Restored world from backups/${stamp}`)
+  return { ok: true }
+}
+
 // graceful shutdown: ask every server to save + stop, give it a few seconds, then quit
 let quitting = false
 app.on('before-quit', (event) => {
@@ -2270,8 +2462,10 @@ app.on('before-quit', (event) => {
   event.preventDefault()
   for (const [id, proc] of procs) {
     try {
-      const handle = palworldHandles.get(id)
-      if (handle) handle.stop() // REST save + shutdown
+      // steam games matter here too: valheim/7dtd ignore stdin `stop`, so
+      // without their handle they used to be killed without ever saving
+      const handle = palworldHandles.get(id) ?? steamGameHandles.get(id)
+      if (handle) handle.stop() // REST save + shutdown, or SIGINT / telnet shutdown
       else proc.stdin?.write('stop\n') // minecraft saves the world on `stop`
     } catch {
       // already dead
@@ -2280,7 +2474,7 @@ app.on('before-quit', (event) => {
   setTimeout(() => {
     for (const proc of procs.values()) {
       try {
-        proc.kill()
+        killProcessTree(proc)
       } catch {
         // gone
       }

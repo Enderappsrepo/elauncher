@@ -2,10 +2,13 @@ import type { RealtimeChannel } from '@supabase/supabase-js'
 import type { LocalServer, LocalServerState, ManagedServer, ServerShare } from '@shared/types'
 import { isCloudConfigured } from '@shared/cloudConfig'
 import { getClient, getUser } from './cloud'
+import { collectHostVitals } from './hostHealth'
 import {
   archiveServer,
   deleteServer,
   deleteServerPath,
+  editServerRoster,
+  forceStopServer,
   getPalworldPlayerDetails,
   getServerAutomation,
   getServerLogs,
@@ -14,12 +17,16 @@ import {
   installServerMod,
   listArchivedServers,
   listLocalServers,
+  listServerBackups,
   listServerFiles,
   listServerMods,
+  makeServerBackup,
   restoreServer,
+  restoreServerBackup,
   palworldModerate,
   playerCapKey,
   readServerFile,
+  readServerRoster,
   rebuildServer,
   removeServerMod,
   sendServerCommand,
@@ -30,7 +37,8 @@ import {
   stopServer,
   writeServerFile
 } from './server'
-import type { PalworldModerationAction, ServerAutomation } from '@shared/types'
+import type { PlayerFileKind } from './server'
+import type { PalworldModerationAction, RemoteCommandAction, ServerAutomation } from '@shared/types'
 
 /**
  * Remote server management, relayed through the shared cloud:
@@ -46,8 +54,17 @@ const HEARTBEAT_MS = 5_000
 /** queued commands/requests are polled this often — the realtime kick makes it near-instant */
 const TICK_MS = 2_000
 const CONSOLE_TAIL_LINES = 80
+/**
+ * Ceiling on one `logs` reply. The host buffers 1000 lines; a single Supabase
+ * row carrying all of them is a ~200 KB round trip, so the panel pages instead.
+ */
+const MAX_PANEL_LOG_LINES = 500
+/** Valid `rosterEdit` targets — the request carries a raw string off the wire. */
+const ROSTER_LISTS: PlayerFileKind[] = ['whitelist', 'ops', 'banned-players']
 /** shares are re-checked this often so new grants start syncing without a restart */
 const SHARE_REFRESH_MS = 60_000
+/** machine vitals move far slower than server state — no need to ride the 5s beat */
+const HOST_HEALTH_MS = 15_000
 
 /** destructive lifecycle actions only the host owner or an admin may trigger */
 const PRIVILEGED_ACTIONS = new Set(['delete', 'archive', 'restore'])
@@ -207,7 +224,7 @@ export async function listManagedServers(): Promise<ManagedServer[]> {
 /** Queue a start/stop/console command for a remote server (the hosting launcher executes it). */
 export async function sendRemoteCommand(
   serverId: string,
-  action: 'start' | 'stop' | 'command',
+  action: RemoteCommandAction,
   payload = ''
 ): Promise<void> {
   const supabase = getClient()
@@ -245,6 +262,7 @@ export async function sendRemoteCommand(
 // ---------- host: heartbeat + command execution loop ----------
 
 let loopTimer: NodeJS.Timeout | null = null
+let heartbeatTimer: NodeJS.Timeout | null = null
 /** false once the cloud rejects the stats columns (migration not run yet) */
 let statusHasStatsColumns = true
 /** false once the cloud rejects just the newer community column */
@@ -254,7 +272,14 @@ let sharedServerIds: Set<string> = new Set()
 let sharesDirty = true
 let lastShareRefresh = 0
 let ticking = false
+let publishing = false
+/** cached from the last tick so the heartbeat never waits on a session read */
+let hostUserId: string | null = null
 let lastPublish = 0
+let lastHealthPublish = 0
+/** false once the cloud rejects host_health (fleet-health migration not run yet) */
+let hostHealthAvailable = true
+let hostHealthRetryAt = 0
 let kickUser: string | null = null
 let kickChannel: RealtimeChannel | null = null
 let pendingKick = false
@@ -303,7 +328,11 @@ async function hostTick(): Promise<void> {
   try {
     const supabase = getClient()
     const me = (await supabase.auth.getSession()).data.session?.user.id
-    if (!me) return
+    if (!me) {
+      hostUserId = null // signed out — don't let the heartbeat publish as a stale user
+      return
+    }
+    hostUserId = me
     armRealtimeKick(me)
 
     if (sharesDirty || Date.now() - lastShareRefresh > SHARE_REFRESH_MS) {
@@ -341,6 +370,7 @@ async function hostTick(): Promise<void> {
       try {
         if (cmd.action === 'start') await startServer(cmd.server_id)
         else if (cmd.action === 'stop') stopServer(cmd.server_id)
+        else if (cmd.action === 'forceStop') forceStopServer(cmd.server_id)
         else if (cmd.action === 'command' && cmd.payload.trim()) {
           sendServerCommand(cmd.server_id, cmd.payload)
         }
@@ -393,10 +423,10 @@ async function hostTick(): Promise<void> {
         .eq('id', req.id)
     }
 
-    // 3. publish status snapshots — right after executing work so the panel
-    // sees the effect of its click at once, otherwise on the heartbeat cadence
-    const didWork = (commands?.length ?? 0) > 0 || (requests?.length ?? 0) > 0
-    if (didWork || Date.now() - lastPublish >= HEARTBEAT_MS) {
+    // 3. publish a snapshot straight after executing work, so the panel sees
+    // the effect of its click at once. The steady beat runs on its own timer —
+    // see publishHeartbeat, which is deliberately not called from here.
+    if ((commands?.length ?? 0) > 0 || (requests?.length ?? 0) > 0) {
       // re-list: a request may have deleted a server mid-tick, and publishing
       // the stale snapshot would resurrect the status row forgetServer removed
       await publishStatuses(supabase, me, listLocalServers())
@@ -411,6 +441,42 @@ async function hostTick(): Promise<void> {
       pendingKick = false
       setTimeout(() => void hostTick(), 25)
     }
+  }
+}
+
+/**
+ * Publish status snapshots and machine vitals on a fixed beat, deliberately
+ * outside hostTick.
+ *
+ * hostTick is serialised by `ticking` and awaits whatever work it finds: a
+ * queued start can hold it for the length of a Steam update, and delete/archive
+ * wait out ensureStopped (up to 60s). While it was the tick's last step, the
+ * heartbeat stopped for exactly as long as the machine was busy — and a
+ * snapshot older than HEARTBEAT_MS * 4 renders as "PC offline" in every panel.
+ * So the box looked dead precisely when it was working hardest, most visibly
+ * right after someone clicked Stop.
+ */
+async function publishHeartbeat(): Promise<void> {
+  if (publishing || !isCloudConfigured()) return
+  publishing = true
+  try {
+    const supabase = getClient()
+    const me = hostUserId ?? (await supabase.auth.getSession()).data.session?.user.id
+    if (!me) return
+    hostUserId = me
+    const local = listLocalServers()
+    if (local.length === 0 && listArchivedServers().length === 0) return
+    await publishStatuses(supabase, me, local)
+    lastPublish = Date.now()
+    // vitals move far slower than server state — they ride a slower beat
+    if (Date.now() - lastHealthPublish >= HOST_HEALTH_MS) {
+      lastHealthPublish = Date.now()
+      await publishHostHealth(supabase, me, local)
+    }
+  } catch (e) {
+    console.warn('[remote] heartbeat failed:', e)
+  } finally {
+    publishing = false
   }
 }
 
@@ -490,6 +556,59 @@ async function publishStatuses(supabase: ReturnType<typeof getClient>, me: strin
   }
   if (!statusHasStatsColumns) {
     await supabase.from('server_status').upsert(allRows(false))
+  }
+}
+
+/**
+ * Publish machine-wide vitals (CPU, memory, disk, uptime) plus what this box is
+ * currently carrying. One row per hosting account; admins read the fleet from it.
+ */
+async function publishHostHealth(
+  supabase: ReturnType<typeof getClient>,
+  me: string,
+  local: LocalServer[]
+): Promise<void> {
+  // re-probe hourly so a migration run mid-flight starts working without a restart
+  if (!hostHealthAvailable && Date.now() < hostHealthRetryAt) return
+  hostHealthAvailable = true
+  try {
+    const vitals = await collectHostVitals()
+    const states = getServerStates()
+    let running = 0
+    let playersOnline = 0
+    for (const server of local) {
+      const status = states[server.id]
+      if (status?.state === 'running') {
+        running += 1
+        playersOnline += status.players.length
+      }
+    }
+    const { error } = await supabase.from('host_health').upsert({
+      owner_id: me,
+      host_name: vitals.hostName,
+      platform: vitals.platform,
+      app_version: vitals.appVersion,
+      headless: vitals.headless,
+      cpu_model: vitals.cpuModel,
+      cpu_threads: vitals.cpuThreads,
+      cpu_percent: vitals.cpuPercent,
+      ram_used_mb: vitals.ramUsedMB,
+      ram_total_mb: vitals.ramTotalMB,
+      disk_free_gb: vitals.diskFreeGB,
+      disk_total_gb: vitals.diskTotalGB,
+      uptime_seconds: vitals.uptimeSeconds,
+      load1: vitals.load1,
+      servers_running: running,
+      servers_total: local.length + listArchivedServers().length,
+      players_online: playersOnline,
+      updated_at: new Date().toISOString()
+    })
+    if (error && /relation|column|schema cache/i.test(error.message ?? '')) {
+      hostHealthAvailable = false
+      hostHealthRetryAt = Date.now() + 3_600_000
+    }
+  } catch {
+    // vitals are a nicety — never let them break the relay tick
   }
 }
 
@@ -605,6 +724,44 @@ async function runPanelRequest(serverId: string, action: string, params: Record<
     case 'setCommunity':
       setCommunityServer(serverId, Boolean(params.on))
       return { ok: true }
+    case 'logs': {
+      // The heartbeat only carries an 80-line tail, but the host buffers 1000.
+      // This hands the panel real scrollback without growing the beat.
+      //
+      // Paging is by index into that buffer. The buffer rotates once it passes
+      // MAX_LOG_LINES, so on a very chatty server an old `before` can drift by
+      // however many lines arrived in between — acceptable for a log tail, and
+      // the alternative (a monotonic sequence on every pushLog) costs more than
+      // it buys here.
+      const all = getServerLogs(serverId)
+      const wanted = Number(params.lines)
+      const limit = Math.min(Number.isFinite(wanted) && wanted > 0 ? wanted : 400, MAX_PANEL_LOG_LINES)
+      const before = Number(params.before)
+      const end = Number.isFinite(before) ? Math.max(0, Math.min(before, all.length)) : all.length
+      const start = Math.max(0, end - limit)
+      return { lines: all.slice(start, end), start, total: all.length, atStart: start === 0 }
+    }
+    case 'roster':
+      return readServerRoster(serverId)
+    case 'rosterEdit': {
+      const list = String(params.list ?? 'whitelist') as PlayerFileKind
+      if (!ROSTER_LISTS.includes(list)) throw new Error(`unknown list: ${list}`)
+      const op = params.op === 'remove' ? 'remove' : 'add'
+      return editServerRoster(serverId, list, op, String(params.name ?? ''))
+    }
+    case 'backups': {
+      const op = String(params.op ?? 'list')
+      if (op === 'make') {
+        const { stamp } = await makeServerBackup(serverId)
+        return { stamp, backups: listServerBackups(serverId) }
+      }
+      if (op === 'restore') {
+        await restoreServerBackup(serverId, String(params.stamp ?? ''))
+        return { backups: listServerBackups(serverId) }
+      }
+      if (op === 'list') return { backups: listServerBackups(serverId) }
+      throw new Error(`unknown backup op: ${op}`)
+    }
     default:
       throw new Error(`unknown request: ${action}`)
   }
@@ -612,8 +769,10 @@ async function runPanelRequest(serverId: string, action: string, params: Record<
 
 /** Start the host-side relay loop (cheap no-op ticks when signed out or nothing is shared). */
 export function startRemoteHost(): void {
-  if (loopTimer || !isCloudConfigured()) return
+  if (loopTimer || heartbeatTimer || !isCloudConfigured()) return
   loopTimer = setInterval(() => void hostTick(), TICK_MS)
+  // its own timer, so a long-running command can never starve the beat
+  heartbeatTimer = setInterval(() => void publishHeartbeat(), HEARTBEAT_MS)
 }
 
 /** Remove every grant for a server (used on archive — the owner re-shares when the customer returns). */
