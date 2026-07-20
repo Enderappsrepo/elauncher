@@ -726,6 +726,7 @@ export async function createServer(opts: CreateServerOptions): Promise<LocalServ
       memoryMax: opts.memoryMax && opts.memoryMax >= 1024 ? opts.memoryMax : modded ? 4096 : 2048,
       javaComponent: meta.javaComponent,
       eulaAccepted: true,
+      orderId: opts.orderId,
       createdAt: Date.now()
     }
 
@@ -835,6 +836,7 @@ async function createPalworldServer(
     javaComponent: '',
     eulaAccepted: true,
     communityServer: Boolean(source.communityServer),
+    orderId: opts.orderId,
     createdAt: Date.now()
   }
   const dir = serverDir(server.id)
@@ -877,6 +879,7 @@ async function createSteamGameServer(
     memoryMax: 0,
     javaComponent: '',
     eulaAccepted: true,
+    orderId: opts.orderId,
     createdAt: Date.now()
   }
   const dir = serverDir(server.id)

@@ -467,6 +467,9 @@ export interface LocalServer {
   automation?: ServerAutomation
   /** extra router ports mods need (voice chat, web maps) — opened with the server */
   extraPorts?: ExtraPort[]
+  /** the hosting order this server was built for; lets a host recognise its own
+   *  half-finished work instead of building the order a second time */
+  orderId?: string
   createdAt: number
 }
 
@@ -646,6 +649,8 @@ export interface CreateServerOptions {
   /** must be true — writes eula.txt */
   acceptEula: boolean
   source: ServerSource
+  /** set by the hosting provisioner — stamps the order onto the record */
+  orderId?: string
 }
 
 export interface ServerStatus {

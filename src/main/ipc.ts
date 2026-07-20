@@ -23,6 +23,7 @@ import * as servers from './services/servers'
 import * as skins from './services/skins'
 import * as news from './services/news'
 import * as updater from './services/updater'
+import { HOSTING_NODE } from './services/headless'
 
 export function registerIpc(): void {
   // host side of remote server management: heartbeats + queued-command execution
@@ -34,8 +35,10 @@ export function registerIpc(): void {
   // publish host specs/report so the phone dashboard can show them
   specs.startHostReportPublisher()
 
-  // hosting business: provision/suspend customer servers from approved orders
-  hostingOrders.startHostingProvisioner()
+  // hosting business: provision/suspend customer servers from approved orders.
+  // Hosting nodes only — a desktop launcher signed into the same account must
+  // not build a second copy of every order (see HOSTING_NODE).
+  if (HOSTING_NODE) hostingOrders.startHostingProvisioner()
 
   ipcMain.handle('host:report', () => specs.getHostReport())
 

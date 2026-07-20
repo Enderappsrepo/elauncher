@@ -26,6 +26,8 @@ export const settingsFile = join(dataRoot, 'settings.json')
 export const cloudSessionFile = join(dataRoot, 'cloud-session.json')
 /** which pool hostname each hosted server was assigned (serverId -> hostname) */
 export const hostNamesFile = join(dataRoot, 'host-names.json')
+/** this machine's identity in the hosting fleet (see services/device.ts) */
+export const deviceFile = join(dataRoot, 'device.json')
 
 export function instanceDir(id: string): string {
   return join(instancesDir, id)

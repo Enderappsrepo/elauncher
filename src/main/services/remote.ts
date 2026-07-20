@@ -2,6 +2,7 @@ import type { RealtimeChannel } from '@supabase/supabase-js'
 import type { LocalServer, LocalServerState, ManagedServer, PlanLimits, ServerShare } from '@shared/types'
 import { isCloudConfigured } from '@shared/cloudConfig'
 import { getClient, getUser } from './cloud'
+import { deviceId } from './device'
 import { collectHostVitals } from './hostHealth'
 import {
   archiveServer,
@@ -331,6 +332,27 @@ let publishing = false
 let hostUserId: string | null = null
 let lastPublish = 0
 let lastHealthPublish = 0
+/**
+ * Queued work for servers this box doesn't have, and when we first saw it.
+ * Another host in the fleet normally claims it within a tick or two; anything
+ * still sitting here after ORPHAN_MS belongs to a server no online host has
+ * (deleted, or its box is down) and gets cleared, so it can't fill the twenty
+ * -row poll window for ever — or, for a request, leave the panel waiting.
+ * Deliberately measured against this machine's own clock on both ends: the
+ * hosts' clocks drift apart, and comparing them would swallow live work.
+ */
+const ORPHAN_MS = 60_000
+const unclaimed = new Map<string, number>()
+
+/** True once this id has been going unclaimed for ORPHAN_MS on our own clock. */
+function unclaimedTooLong(id: string): boolean {
+  const seen = unclaimed.get(id)
+  if (seen === undefined) {
+    unclaimed.set(id, Date.now())
+    return false
+  }
+  return Date.now() - seen > ORPHAN_MS
+}
 /** false once the cloud rejects host_health (fleet-health migration not run yet) */
 let hostHealthAvailable = true
 let hostHealthRetryAt = 0
@@ -417,8 +439,19 @@ async function hostTick(): Promise<void> {
       action: string
       payload: string
     }[]) ?? []) {
+      if (!localIds.has(cmd.server_id)) {
+        // another box in the fleet hosts this server, so leave the command
+        // queued for it. Burning it here first — which is what marking it
+        // executed up front did — swallowed Start/Stop outright whenever a
+        // second host happened to poll before the one holding the server.
+        if (unclaimedTooLong(cmd.id)) {
+          await supabase.from('server_commands').update({ executed: true }).eq('id', cmd.id)
+          unclaimed.delete(cmd.id)
+        }
+        continue
+      }
+      unclaimed.delete(cmd.id)
       await supabase.from('server_commands').update({ executed: true }).eq('id', cmd.id)
-      if (!localIds.has(cmd.server_id)) continue // hosted by another of my devices
       // my own commands always run; grantee commands stop once the grant is revoked
       if (cmd.sender_id !== me && !sharedServerIds.has(cmd.server_id)) continue
       try {
@@ -448,11 +481,25 @@ async function hostTick(): Promise<void> {
       action: string
       params: Record<string, unknown>
     }[]) ?? []) {
+      const archivedHere = archivedIds.has(req.server_id)
+      if (!localIds.has(req.server_id) && !archivedHere) {
+        // the host that has this server answers it. Answering "not on this
+        // machine" here used to win the race and overwrite the real host's
+        // reply, so the panel showed that error for a server running fine
+        // elsewhere. Only speak up once nobody has claimed it at all.
+        if (unclaimedTooLong(req.id)) {
+          await supabase
+            .from('server_requests')
+            .update({ done: true, response: null, error: 'the host for this server is offline' })
+            .eq('id', req.id)
+          unclaimed.delete(req.id)
+        }
+        continue
+      }
+      unclaimed.delete(req.id)
       let response: unknown = null
       let error: string | null = null
       try {
-        const archivedHere = archivedIds.has(req.server_id)
-        if (!localIds.has(req.server_id) && !archivedHere) throw new Error('server is not on this machine')
         let privileged = req.requester_id === me
         let canShare = privileged
         if (!privileged) {
@@ -482,6 +529,14 @@ async function hostTick(): Promise<void> {
         .from('server_requests')
         .update({ done: true, response: response ?? null, error })
         .eq('id', req.id)
+    }
+
+    // work another host claimed leaves the queue for good, so forget the
+    // waiting entries we're no longer being offered rather than tracking them
+    // for the life of the process
+    if (unclaimed.size > 0) {
+      const queued = new Set([...(commands ?? []), ...(requests ?? [])].map((row) => (row as { id: string }).id))
+      for (const id of unclaimed.keys()) if (!queued.has(id)) unclaimed.delete(id)
     }
 
     // 3. publish a snapshot straight after executing work, so the panel sees
@@ -622,7 +677,8 @@ async function publishStatuses(supabase: ReturnType<typeof getClient>, me: strin
 
 /**
  * Publish machine-wide vitals (CPU, memory, disk, uptime) plus what this box is
- * currently carrying. One row per hosting account; admins read the fleet from it.
+ * currently carrying. One row per box, so an account hosting from several of
+ * them shows as several cards; admins read the fleet from it.
  */
 async function publishHostHealth(
   supabase: ReturnType<typeof getClient>,
@@ -646,6 +702,10 @@ async function publishHostHealth(
     }
     const { error } = await supabase.from('host_health').upsert({
       owner_id: me,
+      // keyed per box, not per account: several hosts share one hosting
+      // account, and on owner_id alone they overwrote each other's vitals
+      // every heartbeat so the fleet view could only ever show one of them
+      device_id: deviceId(),
       host_name: vitals.hostName,
       platform: vitals.platform,
       app_version: vitals.appVersion,
@@ -663,7 +723,7 @@ async function publishHostHealth(
       servers_total: local.length + listArchivedServers().length,
       players_online: playersOnline,
       updated_at: new Date().toISOString()
-    })
+    }, { onConflict: 'owner_id,device_id' })
     if (error && /relation|column|schema cache/i.test(error.message ?? '')) {
       hostHealthAvailable = false
       hostHealthRetryAt = Date.now() + 3_600_000

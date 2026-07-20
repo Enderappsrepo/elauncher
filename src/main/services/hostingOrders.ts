@@ -2,6 +2,7 @@ import { resolve4 } from 'dns/promises'
 import type { LocalServer } from '@shared/types'
 import { isCloudConfigured } from '@shared/cloudConfig'
 import { getClient } from './cloud'
+import { deviceId } from './device'
 import { getShareInfo, startTunnel, stopTunnel } from './hosting'
 import { assignHost, hostPool, listAssignedHosts, updateDuckDns } from './hostNames'
 import { notifyPhones } from './notifications'
@@ -11,6 +12,7 @@ import { getMinecraftVersions } from './versions'
 import {
   announceServerByPort,
   createServer,
+  deleteServer,
   getServerPublicAddress,
   listLocalServers,
   setServerAutomation,
@@ -69,6 +71,82 @@ interface OrderRow {
 
 let running = false
 const provisioning = new Set<string>()
+
+/**
+ * Fleet claim. Any number of boxes can be signed into the hosting account and
+ * they all watch the same orders, so a host takes an order before building it
+ * and re-presents that claim to attach the finished server. The lease is judged
+ * by the database's clock and never the host's — boxes drift apart, and one
+ * running a few minutes fast would read a live claim as expired and build a
+ * duplicate, which is the whole thing we're preventing.
+ */
+const LEASE_SECONDS = 600
+const RENEW_MS = 30_000
+
+/** Cleared when the cloud hasn't had the fleet migration run yet — see claimOrder. */
+let claimAvailable = true
+let claimWarned = false
+
+/** Tell "this cloud has no such function" apart from a network/permission failure. */
+function missingFunction(message: string | undefined): boolean {
+  return /function|schema cache|PGRST202/i.test(message ?? '')
+}
+
+/** Take or renew the right to build this order. False = another host holds it. */
+async function claimOrder(orderId: string): Promise<boolean> {
+  if (!claimAvailable) return true
+  const { data, error } = await getClient().rpc('hosting_claim', {
+    order_id: orderId,
+    node: deviceId(),
+    lease_seconds: LEASE_SECONDS
+  })
+  if (error) {
+    if (!missingFunction(error.message)) return false // transient — the next tick retries
+    // an un-migrated cloud keeps trading instead of silently refusing to
+    // provision: that's the old behaviour exactly, and it only bites on a
+    // multi-host fleet, which is what the warning is for
+    claimAvailable = false
+    if (!claimWarned) {
+      claimWarned = true
+      notifyPhones(
+        'Hosting',
+        'Fleet claim is missing — run the latest schema.sql in Supabase. Orders still provision, but a second hosting box would build every one of them twice.',
+        'hosting'
+      )
+    }
+    return true
+  }
+  return data === true
+}
+
+/** Keep the lease warm while a long build runs, so no other host takes over. */
+function holdClaim(orderId: string): () => void {
+  const timer = setInterval(() => void claimOrder(orderId), RENEW_MS)
+  return () => clearInterval(timer)
+}
+
+/**
+ * Attach the built server to its order, but only while this host still holds
+ * the lease. false = another host owns the order now and this build is a
+ * duplicate; null = the cloud was unreachable, so ownership is unknown and the
+ * caller must leave the server alone for a later tick to adopt.
+ */
+async function finishClaim(orderId: string, serverId: string): Promise<boolean | null> {
+  const supabase = getClient()
+  if (!claimAvailable) {
+    const { error } = await supabase
+      .from('hosting_orders')
+      .update({ server_id: serverId, note: 'Starting your server…', updated_at: new Date().toISOString() })
+      .eq('id', orderId)
+    return error ? null : true
+  }
+  const { data, error } = await supabase.rpc('hosting_finish', {
+    order_id: orderId,
+    node: deviceId(),
+    new_server_id: serverId
+  })
+  return error ? null : data === true
+}
 
 // UPnP failures back off so a dead router doesn't stall every tick on rediscovery
 let upnpRetryAt = 0
@@ -182,16 +260,21 @@ async function provision(order: OrderRow, plan: PlanRow, me: string): Promise<vo
     await supabase.from('hosting_orders').update({ note: text, updated_at: new Date().toISOString() }).eq('id', order.id)
   }
 
-  // tell the customer it's happening before the (possibly long) download starts
-  await note(plan.game === 'minecraft' ? 'Setting up your server…' : 'Setting up your server — downloading the game (this can take a few minutes)…')
-
+  // a build that finished but couldn't be written back — the cloud dropped out
+  // between the record landing and the fence below — leaves a server tagged
+  // with this order. Adopt it; building a second one is the bug we're fixing.
   const name = order.server_name.trim() || plan.name
-  const server =
-    plan.game === 'palworld'
-      ? await createServer({ name, acceptEula: true, source: { type: 'palworld', maxPlayers: plan.max_players } })
-      : plan.game === 'valheim' || plan.game === 'sdtd'
-        ? await createServer({ name, acceptEula: true, source: { type: 'steamgame', game: plan.game, maxPlayers: plan.max_players } })
-        : await createServer({ name, memoryMax: plan.memory_mb, acceptEula: true, source: await minecraftSource(order.config) })
+  let server = listLocalServers().find((s) => s.orderId === order.id) ?? null
+  if (!server) {
+    // tell the customer it's happening before the (possibly long) download starts
+    await note(plan.game === 'minecraft' ? 'Setting up your server…' : 'Setting up your server — downloading the game (this can take a few minutes)…')
+    server =
+      plan.game === 'palworld'
+        ? await createServer({ name, acceptEula: true, orderId: order.id, source: { type: 'palworld', maxPlayers: plan.max_players } })
+        : plan.game === 'valheim' || plan.game === 'sdtd'
+          ? await createServer({ name, acceptEula: true, orderId: order.id, source: { type: 'steamgame', game: plan.game, maxPlayers: plan.max_players } })
+          : await createServer({ name, memoryMax: plan.memory_mb, acceptEula: true, orderId: order.id, source: await minecraftSource(order.config) })
+  }
   if (!server) throw new Error('server creation was cancelled')
 
   if (plan.game === 'minecraft') {
@@ -199,6 +282,23 @@ async function provision(order: OrderRow, plan: PlanRow, me: string): Promise<vo
   }
   // plan caps ride on the record: enforced at every start, guarded over the relay
   setServerLimits(server.id, planLimits(plan))
+  // Fence — attach the server only while this host still holds the order. A
+  // build can outlive its lease (a stalled event loop on a big modpack import,
+  // a network partition), and by then the host that took over is building the
+  // real one. Arming and sharing come after, so a losing build is never handed
+  // to the customer and never wakes itself up on the next launcher start.
+  const kept = await finishClaim(order.id, server.id)
+  if (kept === false) {
+    await deleteServer(server.id).catch(() => {
+      // the record is gone from the order either way; leftover files are visible in the panel
+    })
+    throw new Error('another host took this order over while it was building')
+  }
+  if (kept === null) {
+    // ownership unknown — keep the server, it carries the order tag and the
+    // next tick adopts it rather than starting again from scratch
+    throw new Error('could not reach the cloud to confirm the build — it will be picked up again shortly')
+  }
   // hosted servers take care of themselves
   setServerAutomation(server.id, {
     restartMode: 'off',
@@ -213,10 +313,6 @@ async function provision(order: OrderRow, plan: PlanRow, me: string): Promise<vo
       { owner_id: me, server_id: server.id, server_name: server.name, grantee_id: order.user_id },
       { onConflict: 'server_id,grantee_id' }
     )
-  await supabase
-    .from('hosting_orders')
-    .update({ server_id: server.id, note: 'Starting your server…', updated_at: new Date().toISOString() })
-    .eq('id', order.id)
   await startServer(server.id).catch(() => {
     // surfaced through the server's own state events
   })
@@ -285,11 +381,17 @@ async function tick(): Promise<void> {
       try {
         if (!order.server_id) {
           if (provisioning.has(order.id)) continue // a slow download from a prior tick is still running
+          // one host builds each order — the rest leave it alone rather than
+          // racing it into a second copy (announcing comes after winning, so
+          // only the host actually doing the work says so)
+          if (!(await claimOrder(order.id))) continue
           provisioning.add(order.id)
           notifyPhones('Hosting', `Provisioning ${plan.name} for order ${order.reference}…`, 'hosting')
+          const release = holdClaim(order.id)
           try {
             await provision(order, plan, me)
           } finally {
+            release()
             provisioning.delete(order.id)
           }
         } else if (order.paid_until && new Date(order.paid_until).getTime() < Date.now()) {

@@ -567,6 +567,99 @@ create policy "admins read every server status"
   on public.server_status for select to authenticated using (public.is_admin());
 
 -- ============================================================
+-- Fleet provisioning (2026-07-20): one host builds each order.
+-- Several boxes can be signed into the hosting account at once — a desktop
+-- launcher plus one or more VPS hosts. They all used to poll hosting_orders
+-- and provision every approved order, so an order became one server per box:
+-- duplicates that each held a port, a hostname, and plan-sized RAM, with only
+-- the last one written back to the order. Hosts now claim an order before
+-- building it and re-present the claim to attach the server, so exactly one
+-- build survives however many hosts are online.
+-- Run this block on existing projects before updating the hosts.
+-- ============================================================
+alter table public.hosting_orders add column if not exists provisioner_id text;
+alter table public.hosting_orders add column if not exists provisioner_seen_at timestamptz;
+
+-- customers hold INSERT on their own orders, and the claim columns are new, so
+-- the existing check has to name them: a self-inserted claim that never expires
+-- would leave the order permanently unbuildable by any host.
+drop policy if exists "customers create their orders" on public.hosting_orders;
+create policy "customers create their orders"
+  on public.hosting_orders for insert to authenticated
+  with check (user_id = auth.uid() and status = 'awaiting_payment' and server_id is null and paid_until is null
+              and provisioner_id is null and provisioner_seen_at is null);
+
+-- Take (or renew) the right to build an order. Deliberately server-side: the
+-- lease has to be judged by one clock, and hosts drift apart — a box running a
+-- few minutes fast would read a fresh claim as expired and build a duplicate.
+-- Idempotent for the holder, so the same call renews the lease mid-build.
+create or replace function public.hosting_claim(order_id uuid, node text, lease_seconds integer default 600)
+returns boolean
+language plpgsql
+security definer set search_path = public
+as $$
+declare claimed boolean;
+begin
+  if not public.is_admin() then
+    raise exception 'not authorised';
+  end if;
+  update public.hosting_orders
+    set provisioner_id = node, provisioner_seen_at = now()
+    where id = order_id
+      and status = 'active'
+      and server_id is null
+      and (provisioner_id is null
+           or provisioner_id = node
+           -- a host that went dark mid-build releases the order; null seen_at
+           -- is spelt out because null < interval is null, not true
+           or provisioner_seen_at is null
+           or provisioner_seen_at < now() - make_interval(secs => lease_seconds))
+    returning true into claimed;
+  return coalesce(claimed, false);
+end;
+$$;
+
+-- Attach the built server to the order — but only for the host that still holds
+-- the lease. A build can outlive its claim (a stalled event loop, a network
+-- partition), and without this fence the late finisher would overwrite the
+-- winner's server_id and strand a running server that belongs to no order.
+create or replace function public.hosting_finish(order_id uuid, node text, new_server_id uuid)
+returns boolean
+language plpgsql
+security definer set search_path = public
+as $$
+declare kept boolean;
+begin
+  if not public.is_admin() then
+    raise exception 'not authorised';
+  end if;
+  update public.hosting_orders
+    set server_id = new_server_id, note = 'Starting your server…',
+        provisioner_seen_at = now(), updated_at = now()
+    where id = order_id and provisioner_id = node and server_id is null
+    returning true into kept;
+  return coalesce(kept, false);
+end;
+$$;
+
+revoke execute on function public.hosting_claim(uuid, text, integer) from public, anon;
+revoke execute on function public.hosting_finish(uuid, text, uuid) from public, anon;
+grant execute on function public.hosting_claim(uuid, text, integer) to authenticated;
+grant execute on function public.hosting_finish(uuid, text, uuid) to authenticated;
+
+-- Fleet health is per box, not per account: keyed on owner_id alone, two hosts
+-- overwrote each other's vitals every heartbeat and the Health view could only
+-- ever show one of them. The panel already renders whatever rows it gets.
+alter table public.host_health add column if not exists device_id text not null default '';
+-- rows written before this block have no device id and no host to refresh them;
+-- left in place they'd read as a permanently offline box. Cleared while the old
+-- key is still standing: the table publishes to realtime, and a delete with no
+-- primary key to serve as replica identity is rejected outright.
+delete from public.host_health where device_id = '';
+alter table public.host_health drop constraint if exists host_health_pkey;
+alter table public.host_health add primary key (owner_id, device_id);
+
+-- ============================================================
 -- Instant relay (realtime)
 -- ============================================================
 -- Adds the relay tables to Supabase's realtime publication so the web panel

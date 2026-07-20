@@ -81,6 +81,26 @@ ELAUNCHER_PASSWORD=your-elauncher-cloud-password
 Use your **admin** cloud account — the same one the web panel and the provisioner
 use.
 
+### Who builds paid orders
+
+A headless box is a **hosting node**: it watches approved orders and builds the
+servers customers pay for. A desktop launcher is not, even signed into the same
+admin account — so you can run the launcher at home to play without it building
+a second copy of every order alongside the VPS.
+
+Override with `ELAUNCHER_HOSTING_NODE=1` (make a desktop provision too) or `=0`
+(stand a headless box down and leave it running only the servers it already has).
+Hosting servers of your own is unaffected either way; this gates order
+provisioning only.
+
+Run as many hosting nodes as you like. Each order is claimed by one node before
+it's built, and the claim is re-checked before the finished server is attached,
+so an order is never built twice no matter how many boxes are online. A node that
+dies mid-build releases its claim after ten minutes and another picks the order
+up. **This needs the fleet migration** — run the latest `supabase/schema.sql`
+before updating the hosts, or they'll keep provisioning unclaimed (and you'll get
+a push notification saying so).
+
 ---
 
 ## 5. Run it as a service (systemd)
