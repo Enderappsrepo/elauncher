@@ -502,43 +502,83 @@
     .p-tile { display: grid; place-items: center; border-radius: 9px; background: var(--card-2); color: var(--faint); font-weight: 700; }
 
     /* ---------- console: terminal treatment ---------- */
+    /* ---------- console ---------- */
+    /* Deliberately stays dark in the light theme: a terminal that flips to white
+       reads as a text editor, and every other tool keeps it dark too. */
     .con-wrap { border: 1px solid var(--line-strong); border-radius: 14px; overflow: hidden; background: #060609; box-shadow: inset 0 2px 18px rgba(0, 0, 0, 0.5); }
     .con-head {
-      display: flex; align-items: center; gap: 8px; padding: 9px 13px;
-      background: rgba(255, 255, 255, 0.028); border-bottom: 1px solid var(--line);
-      font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--faint);
+      display: flex; align-items: center; gap: 9px; flex-wrap: wrap;
+      padding: 8px 11px; background: rgba(255, 255, 255, 0.028); border-bottom: 1px solid var(--line);
+      font-size: 11.5px; color: var(--dim);
     }
-    .con-head .cdot { width: 8px; height: 8px; border-radius: 99px; background: var(--faint); }
+    .con-head .seg { display: flex; background: rgba(0, 0, 0, 0.35); border: 1px solid var(--line); border-radius: 9px; padding: 2px; gap: 2px; }
+    .con-head .seg button {
+      font: 650 10.5px var(--mono); letter-spacing: 0.05em; padding: 3px 9px; border-radius: 7px; color: var(--faint);
+      transition: all 0.15s var(--ease);
+    }
+    .con-head .seg button:hover { color: var(--text); }
+    .con-head .seg button.on { background: #16161d; color: var(--text); }
+    .con-head .seg button.on.warn { color: var(--amber); }
+    .con-head .seg button.on.error { color: var(--red); }
+    .conbtn {
+      display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 8px;
+      font: 650 10.5px var(--mono); letter-spacing: 0.05em; text-transform: uppercase;
+      border: 1px solid var(--line); background: rgba(0, 0, 0, 0.3); color: var(--faint);
+      transition: all 0.15s var(--ease);
+    }
+    .conbtn:hover { color: var(--text); border-color: var(--line-strong); }
+    .conbtn.on { color: var(--green); border-color: rgba(52, 211, 153, 0.4); background: var(--green-soft); }
+    .con-head .cdot { width: 7px; height: 7px; border-radius: 99px; background: var(--faint); flex: none; }
     .con-head .cdot.on { background: var(--green); box-shadow: 0 0 8px rgba(52, 211, 153, 0.8); animation: pulse 2s infinite; }
-    .console {
-      display: none; padding: 13px 14px;
-      font: 11.5px/1.6 var(--mono); color: #c2c8dc;
-      max-height: 250px; overflow-y: auto; white-space: pre-wrap; word-break: break-word;
+    .con-find {
+      flex: 1; min-width: 90px; max-width: 200px; padding: 4px 9px; border-radius: 8px;
+      background: rgba(0, 0, 0, 0.35); border: 1px solid var(--line); color: #d7dbea;
+      font: 11.5px var(--mono); outline: none;
     }
-    .console.open { display: block; }
-    .con-wrap .console { display: block; max-height: 44dvh; }
-    .cmdrow { display: none; gap: 8px; margin-top: 10px; }
-    .cmdrow.open { display: flex; }
-    .cmdrow input {
-      flex: 1; min-width: 0; padding: 12px 14px; border-radius: 12px;
-      background: var(--card-2); border: 1px solid var(--line); color: var(--text); outline: none;
-      font: 12.5px var(--mono); transition: border-color 0.15s, box-shadow 0.15s;
+    .con-find:focus { border-color: var(--accent-line); }
+    .con-meta { margin-left: auto; font: 500 10.5px var(--mono); color: var(--faint); white-space: nowrap; }
+
+    .con-log { max-height: 46dvh; overflow: auto; padding: 10px 12px; font: 12.4px/1.62 var(--mono); }
+    .con-log .ln { display: flex; gap: 9px; white-space: pre-wrap; word-break: break-word; padding: 0 4px; border-radius: 4px; }
+    .con-log .ln:hover { background: rgba(255, 255, 255, 0.04); }
+    .con-log .ts { color: #5a5f75; flex: none; }
+    .con-log .lv { flex: none; font-weight: 700; width: 5ch; color: #5a5f75; }
+    .con-log .src { color: var(--accent-2); opacity: 0.8; flex: none; }
+    .con-log .msg { color: #b9bfd4; min-width: 0; }
+    .con-log .warn .lv, .con-log .warn .msg { color: var(--amber); }
+    .con-log .error .lv, .con-log .error .msg { color: var(--red); }
+    .con-log .debug .msg { color: #6b7089; }
+    .con-log .join .msg { color: var(--green); }
+    .con-log .leave .msg { color: #7c8199; }
+    .con-log .faintln .msg { color: #6b7089; }
+    .con-log .hi { background: rgba(251, 191, 36, 0.32); color: #fff; border-radius: 3px; }
+    /* a Forge crash dump is mostly frames — collapse the run, expand on click */
+    .con-log .fold { cursor: pointer; color: var(--faint); font-style: italic; opacity: 0.75; }
+    .con-log .fold:hover { opacity: 1; }
+    .con-log .ready {
+      margin: 6px 0; padding: 2px 4px; color: var(--green); font-weight: 650;
+      border-top: 1px dashed rgba(52, 211, 153, 0.3); border-bottom: 1px dashed rgba(52, 211, 153, 0.3);
     }
-    .cmdrow input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
-    .cmdrow button {
-      display: grid; place-items: center; width: 46px; border-radius: 12px;
-      background: linear-gradient(135deg, var(--accent), #5f8bff); color: #fff;
-      box-shadow: 0 6px 18px rgba(124, 108, 255, 0.35); transition: all 0.15s var(--ease);
+    .con-more {
+      display: block; width: 100%; margin-bottom: 8px; padding: 5px; border-radius: 7px;
+      font: 650 10.5px var(--mono); letter-spacing: 0.06em; text-transform: uppercase;
+      background: rgba(255, 255, 255, 0.04); border: 1px solid var(--line); color: var(--faint);
     }
-    .cmdrow button:active { transform: scale(0.94); }
-    .cmdrow button:disabled { opacity: 0.4; }
-    .cmdrow button svg { width: 15px; height: 15px; }
-    .qchips { display: flex; gap: 7px; flex-wrap: wrap; margin-top: 10px; }
-    .qchips button {
-      font: 11.5px var(--mono); color: var(--dim); padding: 6px 11px; border-radius: 99px;
-      background: var(--card-2); border: 1px solid var(--line); transition: all 0.14s;
+    .con-more:hover:not([disabled]) { color: var(--accent); border-color: var(--accent-line); }
+    .con-more[disabled] { opacity: 0.5; }
+    .con-start, .con-empty { text-align: center; color: #5a5f75; font-size: 11px; padding: 6px 0 10px; }
+
+    .con-ac { margin-top: 8px; }
+    .con-ac div {
+      padding: 6px 11px; font: 12.4px var(--mono); color: var(--dim); display: flex; gap: 10px;
+      cursor: pointer; border: 1px solid transparent;
     }
-    .qchips button:hover { color: var(--accent); border-color: rgba(124, 108, 255, 0.4); background: var(--accent-soft); }
+    .con-ac div:first-child { border-radius: 9px 9px 0 0; }
+    .con-ac div:last-child { border-radius: 0 0 9px 9px; }
+    .con-ac div:only-child { border-radius: 9px; }
+    .con-ac div.on { background: var(--accent-soft); color: var(--text); border-color: var(--accent-line); }
+    .con-ac div i { color: var(--faint); font-style: normal; margin-left: auto; font-size: 11px; }
+    .con-ac:not(:empty) { border: 1px solid var(--line-strong); border-radius: 9px; background: var(--pop-bg); overflow: hidden; box-shadow: var(--shadow-2); }
 
     /* ---------- settings (grouped) ---------- */
     .set-hero { margin-bottom: 18px; }
@@ -1101,11 +1141,11 @@
       try {
         await queue(serverId, 'command', value)
         input.value = ''
-        // echo into the open console right away; the host's own echo replaces it within a beat
-        const con = document.querySelector('#tabBody .console')
-        if (con) {
-          con.textContent = (con.textContent === 'No output yet.' ? '' : con.textContent + '\n') + '> ' + value
-          con.scrollTop = con.scrollHeight
+        // echo into the open console right away; the host's own echo lands within a beat
+        if ($('conLog') && conState.id === serverId) {
+          conState.lines.push('> ' + value)
+          conState.follow = true
+          paintConsole()
         }
         refreshSoon()
       } catch (e) {
@@ -1334,35 +1374,281 @@
       return renderDetail()
     }
 
+    // ---------- console ----------
+    // The relay heartbeat carries an 80-line tail; the host buffers 1000 and the
+    // `logs` action pages over it. So the pane keeps its own line buffer: the
+    // beat appends to it, "Load earlier" prepends to it.
+
+    /** `[02:55:04] [Server thread/INFO] [source]: message` — vanilla, Paper and Forge */
+    const MC_LINE = /^\[(\d{2}:\d{2}:\d{2})\] \[([^\]]*?)\/(\w+)\](?: \[([^\]]*?)\])?:? ?([\s\S]*)$/
+    /** java.util.logging, which Forge mods drop into: a header line then `LEVEL: msg` */
+    const JUL_HEAD = /^\w{3} \d{1,2}, \d{4} \d{1,2}:\d{2}:\d{2} [AP]M (\S+) (\S+)$/
+    const JUL_BODY = /^(INFO|WARNING|SEVERE|CONFIG|FINE): ([\s\S]*)$/
+    const FRAME = /^\s+at [\w.$/<>]+\(/
+    const CAUSED = /^(Caused by|\t\.\.\. \d+ more)/
+    const JOIN = /\b(joined the game|logged in with entity id)\b/
+    const LEAVE = /\b(left the game|lost connection)\b/
+    const READY = /\bDone \(([\d.]+)s\)!/
+
+    const LEVELS = { INFO: 'info', WARN: 'warn', WARNING: 'warn', ERROR: 'error', SEVERE: 'error', FATAL: 'error', DEBUG: 'debug', TRACE: 'debug', CONFIG: 'debug', FINE: 'debug' }
+
+    /** Console pane state, reset whenever a different server is opened. */
+    let conState = { id: null, lines: [], filter: 'all', follow: true, query: '', start: null, atStart: false, busy: false }
+    const CON_KEEP = 2000
+
+    function conReset(id) {
+      conState = { id, lines: [], filter: 'all', follow: true, query: '', start: null, atStart: false, busy: false }
+    }
+
+    /**
+     * Fold the heartbeat's tail into the buffer. The tail overlaps whatever we
+     * already have, so find the overlap rather than appending blind.
+     */
+    function conMergeTail(raw) {
+      const tail = String(raw ?? '').split('\n')
+      const buf = conState.lines
+      if (!buf.length) { conState.lines = tail; return }
+      for (let k = Math.min(tail.length, buf.length); k > 0; k--) {
+        if (buf.slice(-k).join('\n') === tail.slice(0, k).join('\n')) {
+          if (k < tail.length) conState.lines = buf.concat(tail.slice(k))
+          return
+        }
+      }
+      // no overlap at all: the server restarted, or we fell far enough behind
+      // that the whole tail is new
+      conState.lines = buf.concat(tail)
+      if (conState.lines.length > CON_KEEP) conState.lines = conState.lines.slice(-CON_KEEP)
+    }
+
+    function parseLine(raw, prev) {
+      const line = String(raw ?? '')
+      if (FRAME.test(line) || CAUSED.test(line)) return { level: prev?.level ?? 'error', msg: line, frame: true }
+      let m = MC_LINE.exec(line)
+      if (m) {
+        const level = LEVELS[m[3].toUpperCase()] ?? 'info'
+        return { ts: m[1], thread: m[2], level, src: m[4] || '', msg: m[5] }
+      }
+      m = JUL_BODY.exec(line)
+      if (m) return { level: LEVELS[m[1]] ?? 'info', msg: m[2] }
+      if (JUL_HEAD.test(line)) return { level: prev?.level ?? 'info', msg: line, faint: true }
+      return { level: 'info', msg: line, bare: true }
+    }
+
+    function conHighlight(text) {
+      const q = conState.query.trim()
+      if (!q) return esc(text)
+      const parts = String(text).split(new RegExp('(' + q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ')', 'ig'))
+      return parts.map((p, i) => (i % 2 ? `<span class="hi">${esc(p)}</span>` : esc(p))).join('')
+    }
+
+    /** Rows the filter lets through, with consecutive stack frames folded into one. */
+    function conVisible() {
+      const q = conState.query.trim().toLowerCase()
+      const out = []
+      let prev = null
+      for (const raw of conState.lines) {
+        const p = parseLine(raw, prev)
+        prev = p
+        if (conState.filter !== 'all' && p.level !== conState.filter) continue
+        if (q && !String(raw).toLowerCase().includes(q)) continue
+        // a Forge crash dump is mostly frames; collapse runs of them
+        if (p.frame && out.length && out[out.length - 1].frame) { out[out.length - 1].count++; continue }
+        out.push({ ...p, count: 1 })
+      }
+      return out
+    }
+
+    function conLineHtml(p) {
+      if (p.frame && p.count > 1) {
+        return `<div class="ln fold" onclick="this.classList.toggle('open')"><span class="msg">▸ ${p.count} more stack frames</span></div>`
+      }
+      const ready = READY.exec(p.msg || '')
+      if (ready) return `<div class="ln ready"><span class="msg">server ready in ${esc(ready[1])}s</span></div>`
+      const kind = JOIN.test(p.msg || '') ? ' join' : LEAVE.test(p.msg || '') ? ' leave' : ''
+      const ts = p.ts ? `<span class="ts">${esc(p.ts)}</span>` : ''
+      const lv = p.bare || p.faint || p.frame ? '' : `<span class="lv">${esc((p.level || '').toUpperCase())}</span>`
+      const src = p.src ? `<span class="src">[${esc(p.src)}]</span>` : ''
+      return `<div class="ln ${p.level}${kind}${p.faint ? ' faintln' : ''}">${ts}${lv}${src}<span class="msg">${conHighlight(p.msg ?? '')}</span></div>`
+    }
+
+    function paintConsole() {
+      const log = $('conLog')
+      if (!log) return
+      const rows = conVisible()
+      log.innerHTML =
+        (conState.atStart ? '<div class="con-start">— start of buffered log —</div>' : `<button class="con-more" onclick="conLoadEarlier()" ${conState.busy ? 'disabled' : ''}>${conState.busy ? 'Loading…' : 'Load earlier'}</button>`) +
+        (rows.length ? rows.map(conLineHtml).join('') : '<div class="con-empty">Nothing matches that filter.</div>')
+      const meta = $('conMeta')
+      if (meta) meta.textContent = `${conState.lines.length} lines${conState.filter !== 'all' || conState.query ? ` · ${rows.length} shown` : ''}`
+      if (conState.follow) log.scrollTop = log.scrollHeight
+    }
+
+    window.conSetFilter = (f) => { conState.filter = f; document.querySelectorAll('#conSeg button').forEach((b) => b.classList.toggle('on', b.dataset.f === f)); paintConsole() }
+    window.conSetQuery = (v) => { conState.query = v; paintConsole() }
+    window.conToggleFollow = () => {
+      conState.follow = !conState.follow
+      $('conFollow')?.classList.toggle('on', conState.follow)
+      if (conState.follow) { const l = $('conLog'); if (l) l.scrollTop = l.scrollHeight }
+    }
+    /** Scrolling up drops follow; returning to the bottom picks it back up. */
+    window.conScrolled = (el) => {
+      const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 30
+      if (atBottom !== conState.follow) { conState.follow = atBottom; $('conFollow')?.classList.toggle('on', atBottom) }
+    }
+    window.conLoadEarlier = async () => {
+      if (conState.busy || conState.atStart) return
+      conState.busy = true
+      paintConsole()
+      try {
+        const res = await request(sheetId, 'logs', conState.start == null ? { lines: 300 } : { lines: 300, before: conState.start })
+        const older = res.lines ?? []
+        // first call returns the tail we already have; keep only what's above it
+        conState.lines = conState.start == null && conState.lines.length ? older.concat(conState.lines.slice(-0)) : older.concat(conState.lines)
+        if (conState.lines.length > CON_KEEP * 2) conState.lines = conState.lines.slice(-CON_KEEP * 2)
+        conState.start = res.start ?? 0
+        conState.atStart = Boolean(res.atStart)
+      } catch (e) {
+        toast(e.message, true)
+      } finally {
+        conState.busy = false
+        const wasFollow = conState.follow
+        conState.follow = false
+        paintConsole()
+        conState.follow = wasFollow
+      }
+    }
+    window.conDownload = () => {
+      const blob = new Blob([conState.lines.join('\n')], { type: 'text/plain' })
+      const a = document.createElement('a')
+      a.href = URL.createObjectURL(blob)
+      a.download = `${(rowsById.get(sheetId)?.name || 'server').replace(/[^\w-]+/g, '-')}-console.txt`
+      a.click()
+      setTimeout(() => URL.revokeObjectURL(a.href), 5000)
+    }
+
+    // ---------- command input ----------
+    /** Per-server command history, oldest first. */
+    const cmdHistKey = (id) => `elauncher.cmdhist.${id}`
+    function cmdHistory(id) {
+      try { return JSON.parse(localStorage.getItem(cmdHistKey(id)) || '[]') } catch { return [] }
+    }
+    function pushHistory(id, cmd) {
+      const list = cmdHistory(id).filter((c) => c !== cmd)
+      list.push(cmd)
+      try { localStorage.setItem(cmdHistKey(id), JSON.stringify(list.slice(-60))) } catch { /* storage blocked */ }
+    }
+    let histAt = -1
+
+    /** Command vocabulary per game, with argument hints. Static — no backend. */
+    const COMMANDS = {
+      minecraft: [
+        ['list', ''], ['say', '<message>'], ['tell', '<player> <message>'], ['kick', '<player> [reason]'],
+        ['ban', '<player> [reason]'], ['pardon', '<player>'], ['op', '<player>'], ['deop', '<player>'],
+        ['whitelist add', '<player>'], ['whitelist remove', '<player>'], ['whitelist list', ''], ['whitelist reload', ''],
+        ['save-all', ''], ['save-off', ''], ['save-on', ''], ['stop', ''],
+        ['time set', 'day|night|noon|midnight'], ['weather', 'clear|rain|thunder'],
+        ['difficulty', 'peaceful|easy|normal|hard'], ['gamemode', '<mode> [player]'],
+        ['gamerule', '<rule> [value]'], ['tp', '<player> <target>'], ['give', '<player> <item> [count]'],
+        ['effect give', '<player> <effect>'], ['xp add', '<player> <amount>'], ['seed', ''],
+        ['difficulty', ''], ['defaultgamemode', '<mode>'], ['setworldspawn', ''], ['spawnpoint', '<player>'],
+        ['forceload add', '<from> <to>'], ['datapack list', ''], ['reload', '']
+      ],
+      palworld: [['save', ''], ['players', ''], ['broadcast', '<message>'], ['kick', '<steamid>'], ['ban', '<steamid>'], ['unban', '<steamid>'], ['shutdown', '<seconds> <message>'], ['info', '']],
+      sdtd: [['saveworld', ''], ['lp', ''], ['say', '<message>'], ['settime', 'day|night'], ['kick', '<player>'], ['ban add', '<player>'], ['shutdown', '']],
+      valheim: []
+    }
+    function commandsFor(game) { return COMMANDS[game] ?? COMMANDS.minecraft }
+
+    window.conInputKey = (input, event) => {
+      const id = sheetId
+      if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
+        const list = cmdHistory(id)
+        if (!list.length) return
+        event.preventDefault()
+        if (histAt === -1) histAt = list.length
+        histAt += event.key === 'ArrowUp' ? -1 : 1
+        histAt = Math.max(0, Math.min(histAt, list.length))
+        input.value = histAt >= list.length ? '' : list[histAt]
+        conAutocomplete(input)
+        return
+      }
+      if (event.key === 'Enter') {
+        const pick = document.querySelector('#conAc .on')
+        if (pick && input.value.trim() && !pick.dataset.exact) {
+          event.preventDefault()
+          input.value = pick.dataset.cmd + ' '
+          conAutocomplete(input)
+          return
+        }
+        const value = input.value.trim()
+        if (!value) return
+        pushHistory(id, value)
+        histAt = -1
+        sendCmd(id, input.id)
+        conAutocomplete(input)
+        return
+      }
+      if (event.key === 'Tab') {
+        const pick = document.querySelector('#conAc .on')
+        if (pick) { event.preventDefault(); input.value = pick.dataset.cmd + ' '; conAutocomplete(input) }
+        return
+      }
+      if (event.key === 'Escape') { const ac = $('conAc'); if (ac) ac.innerHTML = '' }
+      setTimeout(() => conAutocomplete(input), 0)
+    }
+
+    window.conAutocomplete = (input) => {
+      const ac = $('conAc')
+      if (!ac) return
+      const raw = input.value.replace(/^\//, '')
+      if (!raw.trim()) { ac.innerHTML = ''; return }
+      const matches = commandsFor(sheetInfo?.game).filter(([c]) => c.startsWith(raw.toLowerCase())).slice(0, 6)
+      const exact = matches.length === 1 && matches[0][0] === raw.toLowerCase()
+      ac.innerHTML = matches.length && !exact
+        ? matches.map(([c, hint], i) => `<div class="${i === 0 ? 'on' : ''}" data-cmd="${esc(c)}" onclick="conPick('${esc(c)}')">${esc(c)}<i>${esc(hint)}</i></div>`).join('')
+        : ''
+    }
+    window.conPick = (cmd) => {
+      const input = $('sheetCmd')
+      if (!input) return
+      input.value = cmd + ' '
+      input.focus()
+      conAutocomplete(input)
+    }
+
     function renderConsole(body) {
       const row = rowsById.get(sheetId) || {}
       const running = row.state === 'running'
       const noConsole = sheetInfo?.game === 'valheim'
-      const quick = isPal()
-        ? ['save', 'players', 'say Welcome!']
-        : sheetInfo?.game === 'sdtd'
-          ? ['saveworld', 'lp', 'say "Welcome!"', 'settime day']
-          : ['list', 'say Welcome!', 'time set day', 'weather clear']
+      if (conState.id !== sheetId) conReset(sheetId)
+      conMergeTail(row.console || '')
+
       body.innerHTML = `<div class="con-wrap">
-          <div class="con-head"><span class="cdot ${running ? 'on' : ''}"></span>Server console<span style="margin-left:auto">${running ? 'streaming' : 'offline'}</span></div>
-          <div class="console open">${esc(row.console || 'No output yet.')}</div>
+          <div class="con-head">
+            <div class="seg" id="conSeg">
+              ${['all', 'info', 'warn', 'error'].map((f) => `<button data-f="${f}" class="${f === conState.filter ? 'on' : ''} ${f}" onclick="conSetFilter('${f}')">${f.toUpperCase()}</button>`).join('')}
+            </div>
+            <button class="conbtn ${conState.follow ? 'on' : ''}" id="conFollow" onclick="conToggleFollow()" title="Follow new output">
+              <span class="cdot ${running ? 'on' : ''}"></span>Follow
+            </button>
+            <input class="con-find" id="conFind" type="search" placeholder="Find…" aria-label="Find in log"
+                   value="${esc(conState.query)}" oninput="conSetQuery(this.value)" />
+            <span class="con-meta" id="conMeta"></span>
+            <button class="conbtn" onclick="conDownload()" title="Download log">${icons.down || '⭳'}</button>
+          </div>
+          <div class="con-log" id="conLog" onscroll="conScrolled(this)"></div>
         </div>
+        <div class="con-ac" id="conAc"></div>
         <div class="cmdrow open" style="margin-top:10px">
-          <input id="sheetCmd" placeholder="${noConsole ? 'Valheim has no admin console — logs stream here' : running ? 'Type a command…' : 'start the server to send commands'}" ${running && !noConsole ? '' : 'disabled'}
-            onkeydown="if(event.key==='Enter')sendCmd('${sheetId}','sheetCmd')" />
+          <input id="sheetCmd" autocomplete="off" spellcheck="false"
+            placeholder="${noConsole ? 'Valheim has no admin console — output only' : running ? 'Type a command…  ↑ for history' : 'start the server to send commands'}"
+            ${running && !noConsole ? '' : 'disabled'}
+            onkeydown="conInputKey(this, event)" />
           <button onclick="sendCmd('${sheetId}','sheetCmd')" ${running && !noConsole ? '' : 'disabled'} aria-label="Send command">${icons.send}</button>
         </div>
-        ${running && !noConsole ? `<div class="qchips">${quick.map((q) => `<button onclick="qcmd(this.textContent)">${esc(q)}</button>`).join('')}</div>` : ''}
-        <div class="frow" style="margin-top:10px"><div class="hint2">The console updates live while this panel is open.</div></div>`
-      const con = body.querySelector('.console'); if (con) con.scrollTop = con.scrollHeight
+        ${noConsole ? '<div class="frow" style="margin-top:10px"><div class="hint2">Valheim ships no admin console, so commands cannot be sent to it from anywhere — this pane is read-only for that game.</div></div>' : ''}`
+      paintConsole()
     }
-    window.qcmd = (cmd) => {
-      const input = $('sheetCmd')
-      if (!input) return
-      input.value = cmd
-      input.focus()
-    }
-
     const trimNum = (v) => { const n = Number(v); return Number.isFinite(n) ? String(n) : v }
     const isRate = (key) => /Rate$/.test(key)
 
@@ -2169,13 +2455,11 @@
       if (!row) return
       const hero = $('detail')?.querySelector('.dhero')
       if (hero) hero.outerHTML = renderHero(row)
-      if (sheetTab === 'console') {
-        const con = $('detail')?.querySelector('.console')
-        if (con) {
-          const stick = con.scrollHeight - con.scrollTop - con.clientHeight < 40
-          con.textContent = row.console || 'No output yet.'
-          if (stick) con.scrollTop = con.scrollHeight
-        }
+      // the console keeps its own buffer (the beat only carries a tail), so fold
+      // the new tail in and repaint rather than replacing the element's text
+      if (sheetTab === 'console' && $('conLog') && conState.id === sel) {
+        conMergeTail(row.console || '')
+        paintConsole()
       }
     }
 
