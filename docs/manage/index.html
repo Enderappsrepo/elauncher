@@ -502,6 +502,55 @@
     .p-tile { display: grid; place-items: center; border-radius: 9px; background: var(--card-2); color: var(--faint); font-weight: 700; }
 
     /* ---------- console: terminal treatment ---------- */
+    /* ---------- MOTD preview ---------- */
+    /* Shaped like the multiplayer server list entry, because that is the only
+       place these section codes are ever seen. */
+    .motd-preview {
+      display: flex; align-items: center; gap: 10px; margin-top: 10px;
+      padding: 8px 10px; border-radius: 8px; background: #2b2b2b;
+      border: 1px solid #1a1a1a; font-family: var(--mono); box-shadow: inset 0 1px 0 rgba(255,255,255,.05);
+    }
+    .motd-icon {
+      width: 34px; height: 34px; border-radius: 3px; flex: none;
+      background: repeating-conic-gradient(#3f4a2e 0% 25%, #4a5936 0% 50%) 50% / 8px 8px;
+    }
+    .motd-body { flex: 1; min-width: 0; }
+    .motd-name { color: #fff; font-size: 12.5px; margin-bottom: 2px; }
+    .motd-text { font-size: 12px; line-height: 1.35; }
+    .motd-line { color: #aaa; white-space: pre-wrap; word-break: break-word; }
+    .motd-ping { display: flex; align-items: center; gap: 4px; color: #aaa; font-size: 11px; flex: none; }
+    .motd-ping svg { width: 12px; height: 12px; }
+
+    /* ---------- automation ---------- */
+    /* Rules read as sentences: the setting IS the phrase, rather than a label
+       above a dropdown whose meaning you have to reconstruct. */
+    .au-rule {
+      display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+      padding: 11px 13px; border-radius: 13px; background: var(--card-2);
+      border: 1px solid var(--line); margin-bottom: 8px; font-size: 13.5px;
+    }
+    .au-rule span { color: var(--dim); }
+    .au-rule select, .au-rule input {
+      padding: 5px 9px; border-radius: 9px; background: var(--input-bg);
+      border: 1px solid var(--line-strong); color: var(--text); font: 650 13px inherit; outline: none;
+    }
+    .au-rule input[type=number] { width: 68px; }
+    .au-rule select:focus, .au-rule input:focus { border-color: var(--accent-line); }
+    .au-note {
+      display: block; margin: -3px 0 12px; padding: 8px 12px; border-radius: 10px;
+      font-size: 12px; line-height: 1.5; color: var(--faint);
+      background: rgba(255, 255, 255, 0.02); border: 1px solid var(--line);
+    }
+    .au-note.warn { color: var(--amber); border-color: rgba(251, 191, 36, 0.3); background: var(--amber-soft); }
+    .au-note code { font-family: var(--mono); font-size: 11.5px; }
+    .au-preview {
+      padding: 10px 13px; border-radius: 12px; margin-bottom: 8px; font-size: 13px;
+      background: var(--accent-soft); border: 1px solid var(--accent-line); color: var(--dim);
+    }
+    .au-preview:empty { display: none; }
+    .au-preview b { color: var(--accent); font-weight: 700; }
+    .au-preview i { display: block; font-style: normal; font-size: 11.5px; color: var(--faint); margin-top: 4px; }
+
     /* ---------- overview ---------- */
     .ov-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px; }
     .ov-card { border: 1px solid var(--line); border-radius: 14px; background: var(--card-2); overflow: hidden; }
@@ -1950,6 +1999,71 @@
           sel.innerHTML = vers.map((v) => `<option ${v === sheetInfo.minecraftVersion ? 'selected' : ''}>${v}</option>`).join('')
         })
       }
+      wireMotdPreview(body, props)
+    }
+
+    /** Minecraft's legacy section-code palette, as the client renders it. */
+    const MOTD_COLORS = {
+      0: '#000', 1: '#0000AA', 2: '#00AA00', 3: '#00AAAA', 4: '#AA0000', 5: '#AA00AA', 6: '#FFAA00', 7: '#AAAAAA',
+      8: '#555', 9: '#5555FF', a: '#55FF55', b: '#55FFFF', c: '#FF5555', d: '#FF55FF', e: '#FFFF55', f: '#FFF'
+    }
+    /** Render §-codes the way the multiplayer list does. Two lines max, like the real client. */
+    function motdHtml(raw) {
+      const text = String(raw ?? '').replace(/\\n/g, '\n')
+      if (!text.trim()) return '<span style="color:#777">A Minecraft Server</span>'
+      return text.split('\n').slice(0, 2).map((line) => {
+        let out = ''
+        let style = {}
+        const flush = (chunk) => {
+          if (!chunk) return
+          const css = [
+            style.color ? `color:${style.color}` : '',
+            style.bold ? 'font-weight:700' : '',
+            style.italic ? 'font-style:italic' : '',
+            style.under || style.strike ? `text-decoration:${[style.under ? 'underline' : '', style.strike ? 'line-through' : ''].filter(Boolean).join(' ')}` : ''
+          ].filter(Boolean).join(';')
+          out += css ? `<span style="${css}">${esc(chunk)}</span>` : esc(chunk)
+        }
+        const parts = line.split(/§(.)/)
+        flush(parts[0])
+        for (let i = 1; i < parts.length; i += 2) {
+          const code = String(parts[i]).toLowerCase()
+          if (code === 'r') style = {}
+          else if (MOTD_COLORS[code]) style = { color: MOTD_COLORS[code] }
+          else if (code === 'l') style.bold = true
+          else if (code === 'o') style.italic = true
+          else if (code === 'n') style.under = true
+          else if (code === 'm') style.strike = true
+          flush(parts[i + 1])
+        }
+        return `<div class="motd-line">${out || '&nbsp;'}</div>`
+      }).join('')
+    }
+
+    /**
+     * Live preview under the MOTD field. §-codes are the single most-asked-about
+     * setting and there is nowhere else to see what they do short of restarting
+     * the server and opening the game.
+     */
+    function wireMotdPreview(body, props) {
+      if (sheetInfo?.game !== 'minecraft') return
+      const row = [...body.querySelectorAll('.setrow')].find((r) => (r.dataset.k || '').startsWith('motd '))
+      const input = row?.querySelector('input, textarea')
+      if (!row || !input) return
+      const name = (rowsById.get(sheetId) || {}).name || 'Server'
+      const preview = document.createElement('div')
+      preview.className = 'motd-preview'
+      const paint = () => {
+        preview.innerHTML = `<div class="motd-icon"></div>
+          <div class="motd-body">
+            <div class="motd-name">${esc(name)}</div>
+            <div class="motd-text">${motdHtml(input.value)}</div>
+          </div>
+          <div class="motd-ping">${icons.users}<span>0/${esc(String(props['max-players'] ?? 20))}</span></div>`
+      }
+      paint()
+      input.addEventListener('input', paint)
+      row.appendChild(preview)
     }
     window.filterSettings = (q) => {
       q = q.trim().toLowerCase()
@@ -2249,29 +2363,131 @@
 
     function autoRow(html) { return `<div class="frow">${html}</div>` }
     function renderAutomation(body, a) {
-      const sel = (key, opts, val) => `<select onchange="setAuto('${key}', this.value)">${opts.map(([v, l]) => `<option value="${v}" ${String(val) === v ? 'selected' : ''}>${l}</option>`).join('')}</select>`
+      const row = rowsById.get(sheetId) || {}
+      const game = sheetInfo?.game ?? 'minecraft'
       window.__auto = { ...a }
-      window.setAuto = (k, v) => { window.__auto[k] = k === 'restartMode' || k === 'restartDailyAt' ? v : Number(v); }
-      window.setAutoBool = (k, v) => { window.__auto[k] = v }
+      window.setAuto = (k, v) => {
+        window.__auto[k] = k === 'restartMode' || k === 'restartDailyAt' ? v : Number(v)
+        setDirty('automation', true)
+        repaintAutoPreview()
+      }
+      window.setAutoBool = (k, v) => { window.__auto[k] = v; setDirty('automation', true) }
+
+      const sel = (key, opts, val) =>
+        `<select onchange="setAuto('${key}', this.value)">${opts.map(([v, l]) => `<option value="${v}" ${String(val) === v ? 'selected' : ''}>${l}</option>`).join('')}</select>`
+      const num = (key, val, min, max) =>
+        `<input type="number" value="${esc(String(val))}" min="${min}" ${max ? `max="${max}"` : ''} oninput="setAuto('${key}', this.value)">`
+
+      // Caveats the implementation already has but never told anyone about.
+      // Each one used to surface as "this setting is broken".
+      const saveNote = game === 'valheim'
+        ? `<div class="au-note warn">Valheim ships no console, so there is no save command to send — this setting has no effect for it. The server still saves on its own schedule and on shutdown.</div>`
+        : ''
+      // per-server memory sampling is Windows-only; on a Linux host the reading
+      // is permanently null, so the guard can never fire
+      const memUnavailable = row.state === 'running' && row.memory_mb == null
+      const memNote = memUnavailable
+        ? `<div class="au-note warn">This host does not report per-server memory (the sampler is Windows-only), so this guard will never trigger here. It saves fine and will start working if the server moves to a Windows host.</div>`
+        : ''
+      const crashNote = `<div class="au-note">A crash within 90 seconds of starting is treated as a failed start, not a crash, so a broken server cannot restart-loop.</div>`
+      const backupNote = `<div class="au-note">Backups are folder copies under <code>backups/</code>, not zips — fast, but they take real disk. Keep fewer if space is tight.</div>`
+
       body.innerHTML = `
-        <div class="frow"><label>Auto-save world</label>${sel('saveIntervalMin', [['0', 'Off'], ['5', 'Every 5 min'], ['10', 'Every 10 min'], ['15', 'Every 15 min'], ['30', 'Every 30 min'], ['60', 'Every hour']], a.saveIntervalMin || 0)}</div>
-        <div class="frow"><label>Scheduled restart</label>${sel('restartMode', [['off', 'Off'], ['interval', 'Every N hours'], ['daily', 'Daily at a time']], a.restartMode || 'off')}</div>
-        <div class="grid2">
-          <div class="frow"><label>Restart every (hours)</label><input type="number" value="${a.restartEveryHours || 6}" oninput="setAuto('restartEveryHours', this.value)"></div>
-          <div class="frow"><label>Daily time</label><input type="time" value="${a.restartDailyAt || '04:00'}" onchange="setAuto('restartDailyAt', this.value)"></div>
+        <div class="grouphead" style="margin-top:0">Keeping the world safe</div>
+        <div class="au-rule">
+          <span>Save the world</span>
+          ${sel('saveIntervalMin', [['0', 'never automatically'], ['5', 'every 5 minutes'], ['10', 'every 10 minutes'], ['15', 'every 15 minutes'], ['30', 'every 30 minutes'], ['60', 'every hour']], a.saveIntervalMin || 0)}
         </div>
-        <div class="frow"><label>Warn players (min)</label><input type="number" value="${a.restartWarningMin ?? 5}" oninput="setAuto('restartWarningMin', this.value)"></div>
-        <div class="frow"><label>World backups</label>${sel('backupIntervalHours', [['0', 'Off'], ['1', 'Hourly'], ['3', 'Every 3h'], ['6', 'Every 6h'], ['12', 'Every 12h'], ['24', 'Daily']], a.backupIntervalHours || 0)}</div>
-        <div class="frow"><label>Restart above memory</label>${sel('restartAboveMemoryMB', [['0', 'Off'], ['4096', '4 GB'], ['8192', '8 GB'], ['12288', '12 GB'], ['16384', '16 GB']], a.restartAboveMemoryMB || 0)}</div>
+        ${saveNote}
+        <div class="au-rule">
+          <span>Back up the world</span>
+          ${sel('backupIntervalHours', [['0', 'never'], ['1', 'hourly'], ['3', 'every 3 hours'], ['6', 'every 6 hours'], ['12', 'every 12 hours'], ['24', 'daily']], a.backupIntervalHours || 0)}
+          <span>and keep</span>
+          ${sel('backupKeep', [['3', '3'], ['5', '5'], ['10', '10'], ['20', '20']], a.backupKeep ?? 5)}
+          <span>of them</span>
+        </div>
+        ${backupNote}
+
+        <div class="grouphead">Restarts</div>
+        <div class="au-rule">
+          <span>Restart this server</span>
+          ${sel('restartMode', [['off', 'never'], ['interval', 'on a repeating timer'], ['daily', 'at the same time daily']], a.restartMode || 'off')}
+        </div>
+        <div id="autoRestartArgs">${autoRestartArgs(window.__auto)}</div>
+        <div class="au-preview" id="autoPreview"></div>
+
+        <div class="grouphead">Safety nets</div>
+        <div class="au-rule">
+          <span>Restart if memory goes above</span>
+          ${sel('restartAboveMemoryMB', [['0', 'never — off'], ['4096', '4 GB'], ['8192', '8 GB'], ['12288', '12 GB'], ['16384', '16 GB']], a.restartAboveMemoryMB || 0)}
+        </div>
+        ${memNote}
         <div class="frow check"><input type="checkbox" id="a-crash" ${a.restartOnCrash ? 'checked' : ''} onchange="setAutoBool('restartOnCrash', this.checked)"><label for="a-crash">Restart automatically after a crash</label></div>
-        <div class="frow check"><input type="checkbox" id="a-boot" ${a.autoStart ? 'checked' : ''} onchange="setAutoBool('autoStart', this.checked)"><label for="a-boot">Start with the launcher</label></div>
+        ${crashNote}
+        <div class="frow check"><input type="checkbox" id="a-boot" ${a.autoStart ? 'checked' : ''} onchange="setAutoBool('autoStart', this.checked)"><label for="a-boot">Start this server when the launcher opens</label></div>
+
         <div class="savebar"><button class="cta" onclick="saveAuto()">Save automation</button></div>`
-    }
-    window.saveAuto = async () => {
-      try { await request(sheetId, 'setAutomation', { automation: window.__auto }); sheetInfo.automation = window.__auto; toast('Automation saved') }
-      catch (e) { toast(e.message, true) }
+      repaintAutoPreview()
     }
 
+    /** Only the fields the chosen restart mode actually uses. */
+    function autoRestartArgs(a) {
+      if ((a.restartMode || 'off') === 'off') return ''
+      const every = a.restartMode === 'interval'
+        ? `<div class="au-rule"><span>every</span><input type="number" min="1" max="168" value="${a.restartEveryHours || 6}" oninput="setAuto('restartEveryHours', this.value)"><span>hours</span></div>`
+        : `<div class="au-rule"><span>at</span><input type="time" value="${a.restartDailyAt || '04:00'}" onchange="setAuto('restartDailyAt', this.value)"></div>`
+      return `${every}
+        <div class="au-rule"><span>warning players</span>
+          <input type="number" min="0" max="60" value="${a.restartWarningMin ?? 5}" oninput="setAuto('restartWarningMin', this.value)">
+          <span>minutes first</span></div>`
+    }
+
+    /** When the next scheduled restart actually lands — the schedule is computable, and not showing it is why these settings felt unpredictable. */
+    function nextRestartAt(a, startedAt) {
+      const mode = a.restartMode || 'off'
+      if (mode === 'off') return null
+      if (mode === 'daily') {
+        const [h, m] = String(a.restartDailyAt || '04:00').split(':').map(Number)
+        const next = new Date()
+        next.setHours(h || 0, m || 0, 0, 0)
+        if (next <= new Date()) next.setDate(next.getDate() + 1)
+        return next
+      }
+      const hours = Math.max(1, Number(a.restartEveryHours) || 6)
+      // the timer arms when the server reaches 'running', so count from there
+      const base = startedAt ? new Date(startedAt).getTime() : Date.now()
+      let next = base + hours * 3_600_000
+      while (next <= Date.now()) next += hours * 3_600_000
+      return new Date(next)
+    }
+
+    function repaintAutoPreview() {
+      const args = $('autoRestartArgs')
+      if (args) args.innerHTML = autoRestartArgs(window.__auto)
+      const el = $('autoPreview')
+      if (!el) return
+      const row = rowsById.get(sheetId) || {}
+      const a = window.__auto
+      const when = nextRestartAt(a, row.state === 'running' ? row.started_at : null)
+      if (!when) { el.innerHTML = ''; return }
+      const warn = Number(a.restartWarningMin ?? 5)
+      const inMs = when.getTime() - Date.now()
+      const clock = when.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+      const running = row.state === 'running'
+      el.innerHTML = `<b>Next restart ${esc(clock)}</b>${running ? ` · in ${fmtUptime(inMs)}` : ''}${warn > 0 ? ` · players warned ${warn} min before` : ''}
+        ${running ? '' : '<i>Timers only run while the server is running, so this starts counting once it is up.</i>'}`
+    }
+
+    window.saveAuto = async () => {
+      try {
+        await request(sheetId, 'setAutomation', { automation: window.__auto })
+        sheetInfo.automation = window.__auto
+        delete dirty.automation
+        toast('Automation saved')
+      } catch (e) {
+        toast(e.message, true)
+      }
+    }
     // ---------- desktop master-detail ----------
     const stClassOf = (row) => {
       const fresh = Date.now() - new Date(row.updated_at).getTime() < HEARTBEAT_MS * 4
