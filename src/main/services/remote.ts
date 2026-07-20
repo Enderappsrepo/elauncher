@@ -38,6 +38,7 @@ import {
   setServerProperties,
   startServer,
   stopServer,
+  valheimWorldReady,
   writeServerFile
 } from './server'
 import type { PlayerFileKind } from './server'
@@ -736,7 +737,10 @@ async function runPanelRequest(
         limitsOverride: record.limitsOverride ?? null,
         owner: privileged,
         // drives whether the panel offers an Access tab at all
-        canShare
+        canShare,
+        // valheim: world modifiers only bite while a world is being generated,
+        // so the settings tab says whether these fields still do anything
+        worldExists: (record.game ?? 'minecraft') === 'valheim' ? valheimWorldReady(serverId) : undefined
       }
     }
     case 'getProps':

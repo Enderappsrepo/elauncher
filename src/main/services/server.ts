@@ -71,6 +71,7 @@ import {
   setSteamGameSettings,
   startSteamGame,
   STEAM_GAMES,
+  valheimWorldExists,
   type SteamGameHandle
 } from './steamgames'
 import { closePort, getMapping, isDirectHost } from './upnp'
@@ -2057,6 +2058,18 @@ export function sendServerCommand(id: string, command: string): void {
 }
 
 // ---------- server.properties ----------
+
+/**
+ * Valheim only: has this server's world already been generated? Valheim applies
+ * world modifiers while creating a world and never afterwards, so the panel
+ * needs this to say whether those fields will do anything.
+ */
+export function valheimWorldReady(id: string): boolean {
+  const record = getServer(id)
+  if (gameOf(record) !== 'valheim') return false
+  const dir = serverDir(id)
+  return valheimWorldExists(dir, getSteamGameSettings('valheim', dir).world)
+}
 
 export function getServerProperties(id: string): Record<string, string> {
   const record = getServer(id)

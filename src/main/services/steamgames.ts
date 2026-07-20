@@ -51,14 +51,101 @@ function valheimDefaults(name: string): Record<string, string> {
   return { name, world: 'Dedicated', password: 'play' + randomBytes(3).toString('hex'), public: 'true' }
 }
 
+/**
+ * Everything else Valheim accepts on the command line. Each one defaults to
+ * unset — blank, or false for a flag — and `valheimExtraArgs` emits nothing for
+ * an unset value, so a server that never touches this screen keeps exactly the
+ * command line it had before these existed.
+ *
+ * The Modifier and Key entries are world modifiers, which Valheim only applies
+ * while generating a world. Editing them on a server whose world already exists
+ * does nothing; `valheimWorldExists` is what lets the panel say so.
+ */
+function valheimOptionDefaults(): Record<string, string> {
+  return {
+    Crossplay: 'false',
+    SaveIntervalSeconds: '',
+    BackupCount: '',
+    BackupShortSeconds: '',
+    BackupLongSeconds: '',
+    ModifierCombat: '',
+    ModifierDeathPenalty: '',
+    ModifierResources: '',
+    ModifierRaids: '',
+    ModifierPortals: '',
+    KeyNoBuildCost: 'false',
+    KeyPlayerEvents: 'false',
+    KeyPassiveMobs: 'false',
+    KeyNoMap: 'false'
+  }
+}
+
+/** ELauncher's key -> the name Valheim's `-modifier` expects. */
+const VALHEIM_MODIFIERS: Record<string, string> = {
+  ModifierCombat: 'combat',
+  ModifierDeathPenalty: 'deathpenalty',
+  ModifierResources: 'resources',
+  ModifierRaids: 'raids',
+  ModifierPortals: 'portals'
+}
+
+/** ELauncher's key -> the name Valheim's `-setkey` expects. */
+const VALHEIM_SETKEYS: Record<string, string> = {
+  KeyNoBuildCost: 'nobuildcost',
+  KeyPlayerEvents: 'playerevents',
+  KeyPassiveMobs: 'passivemobs',
+  KeyNoMap: 'nomap'
+}
+
+/**
+ * The optional half of the launch line — only what the user actually set.
+ * Exported so the arg line can be asserted directly: a wrong flag here does not
+ * fail loudly, it stops a live server from booting.
+ */
+export function valheimExtraArgs(settings: Record<string, string>): string[] {
+  const args: string[] = []
+  const on = (value?: string): boolean => /^true$/i.test(value ?? '')
+  const num = (flag: string, value?: string): void => {
+    const n = Number(value)
+    // blank means "leave it to the game" rather than "zero"
+    if ((value ?? '') !== '' && Number.isFinite(n) && n >= 0) args.push(flag, String(Math.round(n)))
+  }
+  if (on(settings.Crossplay)) args.push('-crossplay')
+  num('-saveinterval', settings.SaveIntervalSeconds)
+  num('-backups', settings.BackupCount)
+  num('-backupshort', settings.BackupShortSeconds)
+  num('-backuplong', settings.BackupLongSeconds)
+  for (const [key, name] of Object.entries(VALHEIM_MODIFIERS)) {
+    const value = (settings[key] ?? '').trim()
+    if (value) args.push('-modifier', name, value)
+  }
+  for (const [key, name] of Object.entries(VALHEIM_SETKEYS)) {
+    if (on(settings[key])) args.push('-setkey', name)
+  }
+  return args
+}
+
+/**
+ * Has this world already been generated? Valheim writes `<savedir>/worlds_local/
+ * <world>.fwl`; older builds used `worlds/`, so both are checked. World
+ * modifiers are creation-time only, so this is the difference between the
+ * modifier fields meaning something and being decoration.
+ */
+export function valheimWorldExists(dir: string, world: string): boolean {
+  const name = (world || 'Dedicated').trim()
+  return ['worlds_local', 'worlds'].some((sub) => existsSync(join(dir, 'save', sub, `${name}.fwl`)))
+}
+
 export function getSteamGameSettings(game: SteamGameId, dir: string): Record<string, string> {
   if (game === 'valheim') {
     const file = join(dir, VALHEIM_FILE)
-    if (!existsSync(file)) return valheimDefaults('Valheim Server')
+    if (!existsSync(file)) return { ...valheimOptionDefaults(), ...valheimDefaults('Valheim Server') }
     try {
-      return JSON.parse(readFileSync(file, 'utf-8')) as Record<string, string>
+      // options merge *under* the saved file, so a server made before they
+      // existed gains the fields unset without any saved value being touched
+      return { ...valheimOptionDefaults(), ...(JSON.parse(readFileSync(file, 'utf-8')) as Record<string, string>) }
     } catch {
-      return valheimDefaults('Valheim Server')
+      return { ...valheimOptionDefaults(), ...valheimDefaults('Valheim Server') }
     }
   }
   const file = join(dir, SDTD_CONFIG)
@@ -174,7 +261,8 @@ export function startSteamGame(
       '-world', settings.world || 'Dedicated',
       ...(settings.password ? ['-password', settings.password] : []),
       '-public', /^true$/i.test(settings.public ?? 'true') ? '1' : '0',
-      '-savedir', join(dir, 'save') // keep worlds inside the server folder (files tab, backups)
+      '-savedir', join(dir, 'save'), // keep worlds inside the server folder (files tab, backups)
+      ...valheimExtraArgs(settings)
     ]
     env.SteamAppId = '892970'
     if (!IS_WIN) env.LD_LIBRARY_PATH = `${join(dir, 'linux64')}:${env.LD_LIBRARY_PATH ?? ''}`

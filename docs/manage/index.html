@@ -1404,6 +1404,21 @@
       return s
     }
     const HINTS = {
+      // valheim — launch flags, so blank/off everywhere means "leave it to the game"
+      Crossplay: 'Runs the server on the PlayFab network so Xbox and Game Pass players can join, not just Steam. Steam players still join normally.',
+      SaveIntervalSeconds: 'How often the world is written to disk. Blank uses the game default of 1800 (30 minutes).',
+      BackupCount: 'How many backups Valheim keeps before deleting the oldest. Blank uses the game default of 4.',
+      BackupShortSeconds: 'How long after startup the first backup is taken. Blank uses the game default of 7200 (2 hours).',
+      BackupLongSeconds: 'The gap between backups after that first one. Blank uses the game default of 43200 (12 hours).',
+      ModifierCombat: 'How hard enemies hit and how much they take.',
+      ModifierDeathPenalty: 'What you lose when you die, from keeping everything to hardcore.',
+      ModifierResources: 'How much material the world drops when gathered.',
+      ModifierRaids: 'How often base raids come for you.',
+      ModifierPortals: 'Whether portals can carry ores and metals, or exist at all.',
+      KeyNoBuildCost: 'Build without spending materials.',
+      KeyPlayerEvents: 'Raids trigger around players wherever they are, rather than only at bases.',
+      KeyPassiveMobs: 'Creatures never attack. They can still be killed.',
+      KeyNoMap: 'No map or minimap — navigate by landmarks alone.',
       // palworld
       Difficulty: 'Overall preset. "None" means the individual sliders below are used instead.',
       DeathPenalty: 'What you drop when you die.',
@@ -1523,6 +1538,15 @@
     const gameLabel = (g) => GAME_LABEL[g] || 'Minecraft'
     // per-game settings essentials for the non-minecraft, non-palworld games
     const VAL_ESS = [['name', 'Server name'], ['world', 'World name'], ['password', 'Join password'], ['public', 'Visible in server list']]
+    // Valheim is configured entirely by launch flags, so these are ELauncher's own
+    // keys rather than a config file's. The 4th slot is a note for the group.
+    const VAL_GROUPS = [
+      ['Who can join', '🌐', /^Crossplay$/],
+      ['Saves & backups', '💾', /^(SaveInterval|Backup)/],
+      ['World modifiers', '🌍', /^(Modifier|Key)/, () => sheetInfo?.worldExists
+        ? `<div class="au-note warn">This server's world already exists, so changing these will not affect it. Valheim only applies world modifiers while generating a world — an existing one has to be changed with the in-game console, or replaced with a fresh world.</div>`
+        : `<div class="au-note">The world has not been generated yet, so these apply when the server first starts and are then baked into it.</div>`]
+    ]
     const SDTD_ESS = [['ServerName', 'Server name'], ['ServerPassword', 'Join password'], ['ServerMaxPlayerCount', 'Max players'], ['GameDifficulty', 'Difficulty (0-5)'], ['DayNightLength', 'Day length (min)'], ['ServerDescription', 'Description']]
     const isPal = () => sheetInfo?.game === 'palworld'
     /** Destructive lifecycle controls (archive/delete/restore) are owner-or-admin only; the host enforces this too. */
@@ -1999,7 +2023,7 @@
 
     function renderSettings(body, props) {
       const ess = isPal() ? PAL_ESS : sheetInfo.game === 'valheim' ? VAL_ESS : sheetInfo.game === 'sdtd' ? SDTD_ESS : MC_ESS
-      const groups = isPal() ? PAL_GROUPS : sheetInfo.game === 'minecraft' ? MC_GROUPS : []
+      const groups = isPal() ? PAL_GROUPS : sheetInfo.game === 'minecraft' ? MC_GROUPS : sheetInfo.game === 'valheim' ? VAL_GROUPS : []
       const essKeys = new Set(ess.map((e) => e[0]))
       const wideKeys = new Set(['ServerName', 'ServerDescription', 'motd', 'ServerPassword', 'level-seed', 'CrossplayPlatforms'])
       const essHtml = ess.map(([k, l]) => {
@@ -2017,10 +2041,12 @@
         grouped[g ? g[0] : 'Other'].push(k)
       }
       const groupsHtml = order.filter((t) => grouped[t].length).map((t) => {
-        const icon = (groups.find((x) => x[0] === t) || [, '⚙️'])[1]
+        const group = groups.find((x) => x[0] === t) || [, '⚙️']
+        // a group can carry a note explaining when its settings actually bite
+        const note = typeof group[3] === 'function' ? group[3]() : ''
         return `<div class="setgroup">
-          <div class="gh" onclick="this.parentElement.classList.toggle('open')"><span class="gi">${icon}</span>${t}<span class="cnt">${grouped[t].length}</span><span class="chev">${icons.chev}</span></div>
-          <div class="body">${grouped[t].map((k) => settingRow(k, props[k])).join('')}</div>
+          <div class="gh" onclick="this.parentElement.classList.toggle('open')"><span class="gi">${group[1]}</span>${t}<span class="cnt">${grouped[t].length}</span><span class="chev">${icons.chev}</span></div>
+          <div class="body">${note}${grouped[t].map((k) => settingRow(k, props[k])).join('')}</div>
         </div>`
       }).join('')
 
