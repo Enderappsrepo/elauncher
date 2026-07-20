@@ -1544,7 +1544,9 @@
       ['Who can join', '🌐', /^Crossplay$/],
       ['Saves & backups', '💾', /^(SaveInterval|Backup)/],
       ['World modifiers', '🌍', /^(Modifier|Key)/, () => sheetInfo?.worldExists
-        ? `<div class="au-note warn">This server's world already exists, so changing these will not affect it. Valheim only applies world modifiers while generating a world — an existing one has to be changed with the in-game console, or replaced with a fresh world.</div>`
+        ? `<div class="au-note warn">This server's world already exists, so changing these on their own will not affect it — Valheim only applies world modifiers while generating a world.
+             <div style="margin:9px 0 7px"><button class="minibtn red" onclick="regenerateWorld()">Regenerate the world with these settings</button></div>
+             That deletes the current world and builds a new one using whatever you pick above. The old world is copied into the server's backups first, but the world you are playing on cannot be brought back into place automatically.</div>`
         : `<div class="au-note">The world has not been generated yet, so these apply when the server first starts and are then baked into it.</div>`]
     ]
     const SDTD_ESS = [['ServerName', 'Server name'], ['ServerPassword', 'Join password'], ['ServerMaxPlayerCount', 'Max players'], ['GameDifficulty', 'Difficulty (0-5)'], ['DayNightLength', 'Day length (min)'], ['ServerDescription', 'Description']]
@@ -2201,6 +2203,25 @@
       try { await request(sheetId, 'setProps', { updates: dirty }); dirty = {}; toast('Saved — applies on next restart') }
       catch (e) { toast(e.message, true) }
     }
+    /** Valheim: modifiers only bite at world creation, so changing them means making a new world. */
+    window.regenerateWorld = async () => {
+      const id = sheetId
+      const name = (rowsById.get(id) || {}).name || 'this server'
+      // only the modifier picks travel — other edits still go through Save settings
+      const modifiers = Object.fromEntries(Object.entries(dirty).filter(([k]) => /^(Modifier|Key)/.test(k)))
+      if (!confirm(`Regenerate the world on "${name}"?\n\nThe current world is deleted and a new one is generated with the modifiers above. A backup is taken first, but everything built on the old world goes with it.`)) return
+      if (prompt('This deletes the current Valheim world. Type REGENERATE to confirm.') !== 'REGENERATE') return toast('Regenerate cancelled')
+      toast('Backing up and regenerating — the server restarts on a fresh world')
+      try {
+        // stop + backup + delete + start: a graceful stop alone can take a minute
+        const res = await request(id, 'regenerateWorld', { modifiers }, 150000)
+        dirty = {}
+        infoCache.delete(id)
+        sheetInfo = null
+        toast(res?.stamp ? `New world generating — the old one is in backups/${res.stamp}` : 'New world generating')
+        renderTab()
+      } catch (e) { toast(e.message, true) }
+    }
     window.setCommunity = async (on) => {
       try {
         await request(sheetId, 'setCommunity', { on })
@@ -2673,11 +2694,11 @@
       const saveNote = game === 'valheim'
         ? `<div class="au-note warn">Valheim ships no console, so there is no save command to send — this setting has no effect for it. The server still saves on its own schedule and on shutdown.</div>`
         : ''
-      // per-server memory sampling is Windows-only; on a Linux host the reading
-      // is permanently null, so the guard can never fire
+      // sampling covers Windows and Linux; a running server with no reading is
+      // either seconds old or on a launcher build too old to report one
       const memUnavailable = row.state === 'running' && row.memory_mb == null
       const memNote = memUnavailable
-        ? `<div class="au-note warn">This host does not report per-server memory (the sampler is Windows-only), so this guard will never trigger here. It saves fine and will start working if the server moves to a Windows host.</div>`
+        ? `<div class="au-note warn">This host isn't reporting per-server memory yet, so this guard has nothing to act on. It saves fine — readings appear within about ten seconds of a start, and if one never does, the host is on an older launcher build and needs updating.</div>`
         : ''
       const crashNote = `<div class="au-note">A crash within 90 seconds of starting is treated as a failed start, not a crash, so a broken server cannot restart-loop.</div>`
       const backupNote = `<div class="au-note">Backups are folder copies under <code>backups/</code>, not zips — fast, but they take real disk. Keep fewer if space is tight.</div>`
@@ -3108,13 +3129,12 @@
       if (running && row.started_at) {
         stats.push(`<div class="dstat"><div class="v">${fmtUptime(Date.now() - new Date(row.started_at).getTime())}</div><div class="l">Uptime</div></div>`)
       }
-      // The per-server sampler is Windows-only, so on a Linux host these are
-      // permanently null. Say that in words rather than showing a zero or a
-      // dash that reads like "not measured yet".
+      // A running server reads null only until its first sample lands, so name
+      // that wait rather than showing a zero that reads like it uses nothing.
       if (running) {
         stats.push(row.memory_mb != null
           ? `<div class="dstat"><div class="v">${(row.memory_mb / 1024).toFixed(1)}<u>GB</u></div><div class="l">Memory</div></div>`
-          : `<div class="dstat dead"><div class="v">Not on Linux</div><div class="l">Memory</div><div class="why">Sampler is Windows-only</div></div>`)
+          : `<div class="dstat dead"><div class="v">—</div><div class="l">Memory</div><div class="why">Waiting for first sample</div></div>`)
         if (row.cpu_percent != null) {
           stats.push(`<div class="dstat"><div class="v">${row.cpu_percent}<u>%</u></div><div class="l">CPU</div></div>`)
         }

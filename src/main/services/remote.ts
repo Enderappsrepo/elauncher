@@ -36,6 +36,7 @@ import {
   setServerLimitsOverride,
   setServerPorts,
   setServerProperties,
+  regenerateValheimWorld,
   startServer,
   stopServer,
   valheimWorldReady,
@@ -771,6 +772,12 @@ async function runPanelRequest(
         params.message ? String(params.message) : undefined
       )
       return { ok: true }
+    case 'regenerateWorld': {
+      // same posture as rebuild: destructive, but it's the customer's own world
+      const result = await regenerateValheimWorld(serverId, (params.modifiers as Record<string, string>) ?? {})
+      await startServer(serverId).catch(() => {}) // generating the world is the point
+      return result
+    }
     case 'ports':
       return getServerPorts(serverId)
     case 'setPorts':

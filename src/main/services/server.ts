@@ -1,6 +1,6 @@
 import { spawn, type ChildProcess } from 'child_process'
 import { chmodSync, copyFileSync, cpSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'fs'
-import { cp } from 'fs/promises'
+import { cp, readdir, readFile } from 'fs/promises'
 import { basename, dirname, join, relative, resolve, sep } from 'path'
 import { cpus, tmpdir } from 'os'
 import { createHash, randomUUID } from 'crypto'
@@ -1419,9 +1419,123 @@ function closeExtraPorts(id: string): void {
 const cpuSecondsPrev = new Map<number, { seconds: number; at: number }>()
 let sampling = false
 
+/** Resident memory and cumulative CPU time for one server, however many processes it is. */
+interface ProcSample {
+  memoryBytes: number
+  cpuSeconds: number
+}
+
 /** One PowerShell call samples every running server's working set + CPU time. */
+async function readWindowsSamples(pids: number[]): Promise<Map<number, ProcSample>> {
+  const samples = new Map<number, ProcSample>()
+  const json = await new Promise<string>((resolvePs, rejectPs) => {
+    const ps = spawn(
+      'powershell',
+      [
+        '-NoProfile',
+        '-Command',
+        `Get-Process -Id ${pids.join(',')} -ErrorAction SilentlyContinue | Select-Object Id,WorkingSet64,@{n='CpuSeconds';e={$_.TotalProcessorTime.TotalSeconds}} | ConvertTo-Json -Compress`
+      ],
+      { windowsHide: true }
+    )
+    let out = ''
+    ps.stdout?.on('data', (chunk: Buffer) => (out += chunk.toString()))
+    ps.on('error', rejectPs)
+    ps.on('exit', () => resolvePs(out.trim()))
+  })
+  if (!json) return samples
+  const parsed = JSON.parse(json) as
+    | { Id: number; WorkingSet64: number; CpuSeconds: number }
+    | { Id: number; WorkingSet64: number; CpuSeconds: number }[]
+  for (const row of Array.isArray(parsed) ? parsed : [parsed]) {
+    samples.set(row.Id, { memoryBytes: row.WorkingSet64, cpuSeconds: row.CpuSeconds })
+  }
+  return samples
+}
+
+/**
+ * Bytes per memory page, because /proc/<pid>/stat counts RSS in pages. Assuming
+ * 4 KiB is right on x86-64 but wrong on the 16 KiB and 64 KiB ARM64 kernels some
+ * hosts ship, where it would overstate memory by 4-16x. Derive it instead: our
+ * own status reports RSS in kB and statm reports the same figure in pages.
+ */
+let pageBytes = 0
+function linuxPageBytes(): number {
+  if (pageBytes > 0) return pageBytes
+  pageBytes = 4096
+  try {
+    const pages = Number(readFileSync('/proc/self/statm', 'utf8').split(' ')[1])
+    const kB = Number(/^VmRSS:\s+(\d+) kB/m.exec(readFileSync('/proc/self/status', 'utf8'))?.[1])
+    if (pages > 0 && kB > 0) pageBytes = Math.round((kB * 1024) / pages)
+  } catch {
+    // unreadable /proc — 4 KiB is right on every x86-64 kernel
+  }
+  return pageBytes
+}
+
+/**
+ * Linux reads /proc directly — no subprocess — and totals each server's whole
+ * process tree rather than just the pid we spawned. That part matters: PalServer.sh
+ * and the Steam wrappers stay alive as the parent of the real server, so the pid we
+ * hold is a shell sitting on a few MB while the game beside it holds gigabytes.
+ * Summing double-counts pages shared between parent and child, which for a wrapper
+ * and its game is a rounding error.
+ */
+async function readLinuxSamples(rootPids: number[]): Promise<Map<number, ProcSample>> {
+  const samples = new Map<number, ProcSample>()
+  const stats = new Map<number, { ppid: number; pages: number; ticks: number }>()
+  const children = new Map<number, number[]>()
+
+  await Promise.all(
+    (await readdir('/proc')).map(async (name) => {
+      const pid = Number(name)
+      if (!Number.isInteger(pid) || pid <= 0) return
+      let raw: string
+      try {
+        raw = await readFile(`/proc/${pid}/stat`, 'utf8')
+      } catch {
+        return // exited between the listing and the read — normal, skip it
+      }
+      // comm (field 2) is the raw executable name and may hold spaces and
+      // brackets, so the numeric fields only line up after the *last* ')'
+      const fields = raw.slice(raw.lastIndexOf(')') + 2).split(' ')
+      const ppid = Number(fields[1])
+      const ticks = Number(fields[11]) + Number(fields[12]) // utime + stime, in clock ticks
+      const pages = Number(fields[21]) // rss
+      if (!Number.isFinite(ppid) || !Number.isFinite(ticks) || !Number.isFinite(pages)) return
+      stats.set(pid, { ppid, pages, ticks })
+      const siblings = children.get(ppid)
+      if (siblings) siblings.push(pid)
+      else children.set(ppid, [pid])
+    })
+  )
+
+  for (const root of rootPids) {
+    if (!stats.has(root)) continue
+    let pages = 0
+    let ticks = 0
+    const seen = new Set<number>()
+    const stack = [root]
+    while (stack.length > 0) {
+      const pid = stack.pop() as number
+      if (seen.has(pid)) continue // a recycled pid can't send us round in circles
+      seen.add(pid)
+      const entry = stats.get(pid)
+      if (!entry) continue
+      pages += entry.pages
+      ticks += entry.ticks
+      for (const child of children.get(pid) ?? []) stack.push(child)
+    }
+    // USER_HZ is 100 on every Linux kernel Node runs on
+    samples.set(root, { memoryBytes: pages * linuxPageBytes(), cpuSeconds: ticks / 100 })
+  }
+  return samples
+}
+
+/** Sample every running server's memory and CPU, then apply the memory guard. */
 async function sampleProcessStats(): Promise<void> {
-  if (sampling || process.platform !== 'win32') return
+  const linux = process.platform === 'linux'
+  if (sampling || (process.platform !== 'win32' && !linux)) return
   const entries = [...procs.entries()].filter(([, proc]) => proc.pid !== undefined)
   if (entries.length === 0) {
     resourceStats.clear()
@@ -1430,45 +1544,29 @@ async function sampleProcessStats(): Promise<void> {
   sampling = true
   try {
     const pids = entries.map(([, proc]) => proc.pid as number)
-    const json = await new Promise<string>((resolve, reject) => {
-      const ps = spawn(
-        'powershell',
-        [
-          '-NoProfile',
-          '-Command',
-          `Get-Process -Id ${pids.join(',')} -ErrorAction SilentlyContinue | Select-Object Id,WorkingSet64,@{n='CpuSeconds';e={$_.TotalProcessorTime.TotalSeconds}} | ConvertTo-Json -Compress`
-        ],
-        { windowsHide: true }
-      )
-      let out = ''
-      ps.stdout?.on('data', (chunk: Buffer) => (out += chunk.toString()))
-      ps.on('error', reject)
-      ps.on('exit', () => resolve(out.trim()))
-    })
-    if (!json) return
-    const parsed = JSON.parse(json) as
-      | { Id: number; WorkingSet64: number; CpuSeconds: number }
-      | { Id: number; WorkingSet64: number; CpuSeconds: number }[]
-    const rows = Array.isArray(parsed) ? parsed : [parsed]
-    const byPid = new Map(rows.map((row) => [row.Id, row]))
+    const samples = linux ? await readLinuxSamples(pids) : await readWindowsSamples(pids)
+    // a read that came back with nothing is a failed read, not an idle box —
+    // leave the last good numbers up rather than blanking the dashboard
+    if (samples.size === 0) return
     const cores = cpus().length || 1
     const now = Date.now()
 
     for (const [id, proc] of entries) {
-      const row = byPid.get(proc.pid as number)
-      if (!row) {
+      const pid = proc.pid as number
+      const sample = samples.get(pid)
+      if (!sample) {
         resourceStats.delete(id)
         continue
       }
-      const prev = cpuSecondsPrev.get(row.Id)
+      const prev = cpuSecondsPrev.get(pid)
       let cpuPercent: number | null = null
       if (prev && now > prev.at) {
         cpuPercent = Math.round(
-          Math.max(0, Math.min(100, (((row.CpuSeconds - prev.seconds) * 1000) / (now - prev.at) / cores) * 100))
+          Math.max(0, Math.min(100, (((sample.cpuSeconds - prev.seconds) * 1000) / (now - prev.at) / cores) * 100))
         )
       }
-      cpuSecondsPrev.set(row.Id, { seconds: row.CpuSeconds, at: now })
-      const memoryMB = Math.round(row.WorkingSet64 / 1048576)
+      cpuSecondsPrev.set(pid, { seconds: sample.cpuSeconds, at: now })
+      const memoryMB = Math.round(sample.memoryBytes / 1048576)
       resourceStats.set(id, { memoryMB, cpuPercent })
       // push fresh stats to the UI (and the phone, via the next heartbeat)
       setState(id, states.get(id) ?? 'running')
@@ -2069,6 +2167,57 @@ export function valheimWorldReady(id: string): boolean {
   if (gameOf(record) !== 'valheim') return false
   const dir = serverDir(id)
   return valheimWorldExists(dir, getSteamGameSettings('valheim', dir).world)
+}
+
+/**
+ * Delete a Valheim server's world so the next start generates a fresh one with
+ * the chosen modifiers. Valheim bakes modifiers in while creating a world and
+ * ignores them from then on, so short of the in-game console this is the only
+ * way to change them.
+ *
+ * The old world is backed up first and a failed backup aborts the whole thing:
+ * once the .db is gone there is no other copy of it.
+ */
+export async function regenerateValheimWorld(
+  id: string,
+  updates: Record<string, string>
+): Promise<{ stamp: string | null; world: string }> {
+  const record = getServer(id)
+  if (gameOf(record) !== 'valheim') throw new Error('Only Valheim servers generate their world this way.')
+  const dir = serverDir(id)
+
+  if ((states.get(id) ?? 'stopped') !== 'stopped') {
+    stopServer(id)
+    if (!(await waitForState(id, 'stopped', 60_000))) throw new Error('The server would not stop — try again.')
+    await sleep(1_000)
+  }
+
+  // persist the picks before the old world goes, so the new one is built with them
+  const settings = setSteamGameSettings('valheim', dir, updates)
+  const world = (settings.world || 'Dedicated').trim()
+
+  let stamp: string | null = null
+  if (valheimWorldExists(dir, world)) {
+    stamp = (await makeServerBackup(id)).stamp
+    pushLog(id, `[ELauncher] Backed up the old world to backups/${stamp}`)
+  }
+
+  // walk the folder rather than building paths out of the world name, so a
+  // name with path characters in it can't reach outside the save directory
+  let removed = 0
+  for (const sub of ['worlds_local', 'worlds']) {
+    const folder = join(dir, 'save', sub)
+    if (!existsSync(folder)) continue
+    for (const entry of readdirSync(folder)) {
+      // <world>.db and .fwl, plus the .old copies valheim keeps beside them
+      if (entry === world || entry.startsWith(`${world}.`)) {
+        rmSync(join(folder, entry), { recursive: true, force: true })
+        removed += 1
+      }
+    }
+  }
+  pushLog(id, `[ELauncher] Removed ${removed} world file${removed === 1 ? '' : 's'} — "${world}" is generated fresh on the next start`)
+  return { stamp, world }
 }
 
 export function getServerProperties(id: string): Record<string, string> {
