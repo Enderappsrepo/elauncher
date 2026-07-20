@@ -502,6 +502,22 @@
     .p-tile { display: grid; place-items: center; border-radius: 9px; background: var(--card-2); color: var(--faint); font-weight: 700; }
 
     /* ---------- console: terminal treatment ---------- */
+    /* ---------- roster ---------- */
+    .rtabs { display: flex; gap: 5px; margin-bottom: 11px; flex-wrap: wrap; }
+    .rtabs button {
+      display: inline-flex; align-items: center; gap: 7px; padding: 7px 13px; border-radius: 11px;
+      font-size: 13px; font-weight: 650; background: var(--card-2); border: 1px solid var(--line); color: var(--dim);
+      transition: all 0.15s var(--ease);
+    }
+    .rtabs button:hover { color: var(--text); border-color: var(--line-strong); }
+    .rtabs button.on { background: var(--accent-soft); border-color: var(--accent-line); color: var(--accent); }
+    .rtabs .ct { font: 650 10.5px var(--mono); background: rgba(0,0,0,.25); border-radius: 99px; padding: 1px 6px; }
+    .prow .pn i { display: block; font-style: normal; font-size: 10.5px; color: var(--faint); font-family: var(--mono); overflow: hidden; text-overflow: ellipsis; }
+    /* head render over the initial tile: the tile shows through if the fetch fails */
+    .avatar { position: relative; overflow: hidden; }
+    .avatar img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; image-rendering: pixelated; }
+    .avatar b { font-weight: 800; }
+
     /* ---------- MOTD preview ---------- */
     /* Shaped like the multiplayer server list entry, because that is the only
        place these section codes are ever seen. */
@@ -2220,25 +2236,97 @@
       try { await request(sheetId, 'moderate', { action: 'unban', target: id }); $('palUnban').value = ''; toast('Unbanned ' + id) } catch (e) { toast(e.message, true) }
     }
 
-    function renderMcPlayers(body) {
-      const row = rowsById.get(sheetId) || {}
-      const online = (row.players || [])
-      body.innerHTML = `<div class="grouphead">Online now (${online.length})</div>
-        <div class="plister">${online.length ? online.map((n) => `<div class="prow">
-          <span class="avatar" style="background:${gradOf(n)}">${esc(n.charAt(0).toUpperCase())}</span>
-          <div class="pn" style="flex:1;min-width:0">${esc(n)}</div>
-          <button class="minibtn" onclick="mcCmd('kick ${esc(n)}')">Kick</button>
-          <button class="minibtn" onclick="mcCmd('op ${esc(n)}')">Op</button>
-          <button class="minibtn red" onclick="mcCmd('ban ${esc(n)}')">Ban</button></div>`).join('') : '<div class="loadrow">Nobody online.</div>'}</div>
-        <div class="grouphead">Whitelist</div>
-        <div class="cmdrow open"><input id="mcWl" placeholder="PlayerName"><button class="minibtn" onclick="mcCmd('whitelist add '+document.getElementById('mcWl').value.trim())">Add</button></div>
-        <div class="frow"><div class="hint2">Runs the matching server command. The server must be online.</div></div>`
+    // Minecraft head renders, same posture as the existing Mojang and Modrinth
+    // fetches. Falls back to the initial tile if the service is unreachable.
+    const headUrl = (name) => `https://mc-heads.net/avatar/${encodeURIComponent(name)}/40`
+    function avatarHtml(name, cls = 'avatar') {
+      return `<span class="${cls}" style="background:${gradOf(name)}">
+        <img src="${headUrl(name)}" alt="" loading="lazy" onerror="this.remove()" />
+        <b>${esc(name.charAt(0).toUpperCase())}</b></span>`
     }
+
+    const ROSTER_TABS = [['whitelist', 'Whitelist'], ['ops', 'Operators'], ['banned-players', 'Banned']]
+    let rosterTab = 'whitelist'
+    let rosterData = null
+
+    async function renderMcPlayers(body) {
+      const row = rowsById.get(sheetId) || {}
+      const online = row.players || []
+      const running = row.state === 'running'
+
+      body.innerHTML = `<div class="grouphead" style="margin-top:0">Online now (${online.length})</div>
+        <div class="plister">${online.length
+          ? online.map((n) => `<div class="prow">
+              ${avatarHtml(n)}
+              <div class="pn" style="flex:1;min-width:0">${esc(n)}</div>
+              <button class="minibtn" onclick="mcCmd('kick ${esc(n)}')">Kick</button>
+              <button class="minibtn" onclick="rosterEdit('ops','add','${esc(n)}')">Op</button>
+              <button class="minibtn red" onclick="rosterEdit('banned-players','add','${esc(n)}')">Ban</button>
+            </div>`).join('')
+          : `<div class="loadrow">${running ? 'Nobody online.' : 'The server is stopped.'}</div>`}</div>
+
+        <div class="grouphead">Player lists</div>
+        <div class="rtabs">${ROSTER_TABS.map(([k, l]) => `<button class="${k === rosterTab ? 'on' : ''}" onclick="rosterGo('${k}')">${l}<span class="ct" id="ct-${k}"></span></button>`).join('')}</div>
+        <div id="rosterBody"><div class="loadrow">Loading…</div></div>`
+
+      try {
+        rosterData = await request(sheetId, 'roster')
+        paintRoster()
+      } catch (e) {
+        $('rosterBody').innerHTML = `<div class="loadrow" style="color:var(--red)">${esc(e.message)}</div>`
+      }
+    }
+
+    window.rosterGo = (tab) => {
+      rosterTab = tab
+      document.querySelectorAll('.rtabs button').forEach((b) => b.classList.toggle('on', b.textContent.startsWith(ROSTER_TABS.find(([k]) => k === tab)[1])))
+      paintRoster()
+    }
+
+    function paintRoster() {
+      const el = $('rosterBody')
+      if (!el || !rosterData) return
+      for (const [k] of ROSTER_TABS) {
+        const c = $('ct-' + k)
+        if (c) c.textContent = String((rosterData[k] || []).length)
+      }
+      const list = rosterData[rosterTab] || []
+      const label = ROSTER_TABS.find(([k]) => k === rosterTab)[1]
+      const verb = rosterTab === 'banned-players' ? 'Unban' : 'Remove'
+      el.innerHTML = `
+        <div class="cmdrow open" style="margin-bottom:10px">
+          <input id="rosterAdd" placeholder="PlayerName" autocomplete="off"
+                 onkeydown="if(event.key==='Enter')rosterEdit('${rosterTab}','add',this.value)">
+          <button class="minibtn" onclick="rosterEdit('${rosterTab}','add',document.getElementById('rosterAdd').value)">Add</button>
+        </div>
+        <div class="plister">${list.length
+          ? list.map((p) => `<div class="prow">
+              ${avatarHtml(p.name)}
+              <div class="pn" style="flex:1;min-width:0">${esc(p.name)}${p.uuid ? `<i>${esc(p.uuid)}</i>` : ''}</div>
+              <button class="minibtn ${rosterTab === 'banned-players' ? '' : 'red'}" onclick="rosterEdit('${rosterTab}','remove','${esc(p.name)}')">${verb}</button>
+            </div>`).join('')
+          : `<div class="loadrow">${label} is empty.</div>`}</div>
+        <div class="frow"><div class="hint2">Edits apply whether the server is running or stopped — a running server is told over its console, a stopped one has its <code>${esc(rosterTab)}.json</code> edited directly.</div></div>`
+    }
+
+    window.rosterEdit = async (list, op, name) => {
+      const trimmed = String(name || '').trim()
+      if (!trimmed) return toast('Enter a player name.', true)
+      try {
+        rosterData = await request(sheetId, 'rosterEdit', { list, op, name: trimmed })
+        rosterTab = list
+        document.querySelectorAll('.rtabs button').forEach((b) => b.classList.toggle('on', b.textContent.startsWith(ROSTER_TABS.find(([k]) => k === list)[1])))
+        paintRoster()
+        toast(op === 'add' ? `${trimmed} added to ${list.replace('-players', '')}` : `${trimmed} removed`)
+      } catch (e) {
+        toast(e.message, true)
+      }
+    }
+
     window.mcCmd = async (cmd) => {
       if (!cmd.trim()) return
       try { await queue(sheetId, 'command', cmd); toast('Command sent') } catch (e) { toast(e.message, true) }
     }
-
     // valheim / 7dtd: names stream from the host's log or telnet polling
     function renderSteamPlayers(body) {
       const row = rowsById.get(sheetId) || {}
