@@ -3305,6 +3305,12 @@
       sheetInfo = info
       selectView(row.server_id)
     }
+    /** Order sheet, without a cloud: seeds the plan cache the way loadHosting would. */
+    window.__previewOrder = (plan) => {
+      window.__renderPreview([])
+      plansCache.set(plan.id, plan)
+      return window.orderPlan(plan.id)
+    }
 
     async function refresh() {
       if (!me || document.hidden) return
@@ -3566,6 +3572,25 @@
       return (await r.json()).hits || []
     }
 
+    /**
+     * One-click packs, shown above the search so ordering a themed server does
+     * not depend on knowing what to type. Ids are Modrinth *modpack* projects —
+     * the order flow resolves a .mrpack from the id, so a mod id will not work.
+     *
+     * Loader and version are shown, not chosen: an .mrpack declares its own, and
+     * these are recorded so the copy can't drift from what actually installs.
+     * Cobblemon has no Forge build on 1.21.1, which is exactly the sort of thing
+     * a customer picking a loader by hand gets wrong.
+     */
+    const FEATURED_PACKS = [
+      { id: '5FFgwNNP', name: 'Cobblemon', tag: 'Pokémon', loader: 'Fabric', mc: '1.21.1',
+        blurb: 'Catch, train and battle Pokémon. The official pack from the Cobblemon team.' },
+      { id: 'mHMxXbIu', name: 'Cobblemon · NeoForge', tag: 'Pokémon', loader: 'NeoForge', mc: '1.21.1',
+        blurb: 'The same official pack, built on NeoForge instead of Fabric.' },
+      { id: 'Jkb29YJU', name: 'COBBLEVERSE', tag: 'Pokémon', loader: 'Fabric', mc: '1.21.1',
+        blurb: 'All 1025 Pokémon, 32 gyms and four regions — an adventure rather than a sandbox.' }
+    ]
+
     let order = null
     window.orderPlan = async (planId) => {
       const plan = plansCache.get(planId)
@@ -3611,8 +3636,17 @@
             </select></div></div>
             <div class="frow"><div class="hint2">${o.loader === 'paper' ? 'Paper: fast, plugins.' : o.loader === 'vanilla' ? 'Vanilla: the official server.' : 'You can add mods after it is set up, from the Mods tab.'}</div></div>`
         } else {
-          cfg += `<div class="searchbar">${icons.chipIc}<input placeholder="Search Modrinth modpacks…" oninput="orderSearchPack(this.value)"></div>
-            <div id="packResults" class="plister">${o.modpack ? `<div class="hintline">Selected: <b>${esc(o.modpackName)}</b></div>` : '<div class="loadrow">Type to search modpacks.</div>'}</div>`
+          const featured = FEATURED_PACKS.map((p) => `
+            <button class="prow" style="width:100%;text-align:left;border:0;background:none" onclick="pickPack('${p.id}','${esc(p.name).replace(/'/g, '')}')">
+              <span class="tile" style="background:${gradOf(p.id)};width:34px;height:34px;border-radius:8px;font-size:14px">${esc(p.name.charAt(0))}</span>
+              <div style="flex:1;min-width:0"><div class="pn">${esc(p.name)}</div><div class="pm">${esc(p.blurb)}</div></div>
+              ${o.modpack === p.id ? '<span class="chip on">✓</span>' : `<span class="chip">${esc(p.loader)} ${esc(p.mc)}</span>`}
+            </button>`).join('')
+          cfg += `<div class="grouphead" style="margin-top:0">Popular packs</div>
+            <div class="plister">${featured}</div>
+            <div class="grouphead">Or search Modrinth</div>
+            <div class="searchbar">${icons.chipIc}<input placeholder="Search Modrinth modpacks…" oninput="orderSearchPack(this.value)"></div>
+            <div id="packResults" class="plister">${o.modpack ? `<div class="hintline">Selected: <b>${esc(o.modpackName)}</b></div>` : '<div class="loadrow">Type to search, or pick one above.</div>'}</div>`
         }
       }
       $('sheet').innerHTML = `<div class="sheet-bg" onclick="closeOrder()"></div>
