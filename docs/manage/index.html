@@ -567,6 +567,42 @@
     .au-preview b { color: var(--accent); font-weight: 700; }
     .au-preview i { display: block; font-style: normal; font-size: 11.5px; color: var(--faint); margin-top: 4px; }
 
+    /* ---------- network ---------- */
+    /* A port is a light and a sentence: is it open, and where does it reach. */
+    .np-row {
+      display: flex; align-items: center; gap: 11px; padding: 11px 13px;
+      border-radius: 13px; background: var(--card-2); border: 1px solid var(--line); margin-bottom: 8px;
+    }
+    .np-dot { width: 9px; height: 9px; border-radius: 50%; flex: none; background: var(--faint); }
+    .np-dot.on { background: var(--green); box-shadow: 0 0 0 3px var(--green-soft); }
+    .np-dot.warn { background: var(--yellow); box-shadow: 0 0 0 3px var(--yellow-soft); }
+    .np-dot.bad { background: var(--red); box-shadow: 0 0 0 3px var(--red-soft); }
+    .np-body { flex: 1; min-width: 0; }
+    .np-name { font-size: 13.5px; font-weight: 650; }
+    .np-meta { font-size: 11.5px; color: var(--faint); font-family: var(--mono); margin-top: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .np-why { font-size: 11.5px; line-height: 1.5; color: var(--amber); margin: -3px 0 10px; padding: 0 3px; }
+    .np-why.bad { color: var(--red); }
+    .np-new {
+      display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 11px 13px;
+      border-radius: 13px; border: 1px dashed var(--line-strong);
+    }
+    .np-new input, .np-new select {
+      padding: 5px 9px; border-radius: 9px; background: var(--input-bg);
+      border: 1px solid var(--line-strong); color: var(--text); font: 650 13px inherit; outline: none;
+    }
+    .np-new input[type=number] { width: 92px; }
+    .np-new input[type=text] { flex: 1; min-width: 140px; font-weight: 500; }
+    .np-new input:focus, .np-new select:focus { border-color: var(--accent-line); }
+    .np-presets { display: flex; flex-wrap: wrap; gap: 7px; }
+    .np-preset {
+      display: flex; align-items: center; gap: 7px; padding: 7px 11px; border-radius: 999px;
+      border: 1px solid var(--line); background: var(--card-2); color: var(--dim);
+      font: 600 12.5px inherit; cursor: pointer;
+    }
+    .np-preset:hover:not(:disabled) { border-color: var(--accent-line); color: var(--text); background: var(--accent-soft); }
+    .np-preset:disabled { opacity: 0.4; cursor: default; }
+    .np-preset u { text-decoration: none; font-family: var(--mono); font-size: 11px; color: var(--faint); }
+
     /* ---------- overview ---------- */
     .ov-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px; }
     .ov-card { border: 1px solid var(--line); border-radius: 14px; background: var(--card-2); overflow: hidden; }
@@ -1463,9 +1499,9 @@
     window.setDirty = (k, v) => { dirty[k] = v }
 
     const isModdable = () => sheetInfo && sheetInfo.game === 'minecraft' && ['paper', 'fabric', 'forge', 'neoforge'].includes(sheetInfo.kind)
-    const tabList = () => ['overview', 'console', 'settings', 'players', ...(isModdable() ? ['mods'] : []), 'files', 'automation']
-    const tabLabels = () => ({ overview: 'Overview', console: 'Console', settings: 'Settings', players: 'Players', mods: sheetInfo?.kind === 'paper' ? 'Plugins' : 'Mods', files: 'Files', automation: 'Automation' })
-    const tabIcons = () => ({ overview: icons.sliders, console: icons.term, settings: icons.sliders, players: icons.users, mods: icons.puzzle, files: icons.folder, automation: icons.zap })
+    const tabList = () => ['overview', 'console', 'settings', 'players', ...(isModdable() ? ['mods'] : []), 'files', 'network', 'automation']
+    const tabLabels = () => ({ overview: 'Overview', console: 'Console', settings: 'Settings', players: 'Players', mods: sheetInfo?.kind === 'paper' ? 'Plugins' : 'Mods', files: 'Files', network: 'Network', automation: 'Automation' })
+    const tabIcons = () => ({ overview: icons.sliders, console: icons.term, settings: icons.sliders, players: icons.users, mods: icons.puzzle, files: icons.folder, network: icons.globe, automation: icons.zap })
     // shared by the mobile modal and the desktop detail pane
     async function runTab(body) {
       body.innerHTML = '<div class="loadrow">Loading…</div>'
@@ -1480,6 +1516,7 @@
         }
         if (sheetTab === 'mods') return renderMods(body, await request(sheetId, 'mods'))
         if (sheetTab === 'files') return renderFiles(body)
+        if (sheetTab === 'network') return renderNetwork(body, await request(sheetId, 'ports'))
         if (sheetTab === 'automation') return renderAutomation(body, sheetInfo.automation || {})
       } catch (e) {
         body.innerHTML = `<div class="loadrow" style="color:var(--red)">${esc(e.message)}</div>`
@@ -2449,6 +2486,104 @@
       catch (e) { toast(e.message, true) }
     }
 
+    // ---------- network tab (the ports mods need beyond the game's own) ----------
+    // Rules are edited locally and saved in one go: a save is real router work,
+    // and the host answers with every port's live state, so the single round-trip
+    // both applies the change and refreshes the lights.
+    let netDraft = []
+    const netLive = new Map() // "TCP:8123" -> the host's status for that port
+    const netKey = (p) => `${p.protocol}:${p.port}`
+
+    function renderNetwork(body, view) {
+      window.__netView = view
+      netDraft = view.ports.filter((p) => !p.main).map((p) => ({ port: p.port, protocol: p.protocol, label: p.label }))
+      netLive.clear()
+      for (const p of view.ports) netLive.set(netKey(p), p)
+      paintNetwork(body)
+    }
+
+    /** One port: a light, what needs it, and where it reaches. `index` null = the game port, which isn't editable here. */
+    function netPortRow(p, live, index) {
+      const pending = !live
+      const dot = pending ? '' : live.open ? (live.warning ? 'warn' : 'on') : live.error ? 'bad' : ''
+      const where = pending
+        ? 'Not saved yet'
+        : live.open
+          ? (live.address ? `Open · ${esc(live.address)}` : 'Open')
+          : live.error ? 'Could not open' : 'Opens when the server starts'
+      // a router caveat or failure outranks the standing caution — it's what just happened
+      const caution = window.__netView.cautions[String(p.port)]
+      const why = !pending && live.error ? `<div class="np-why bad">${esc(live.error)}</div>`
+        : !pending && live.warning ? `<div class="np-why">${esc(live.warning)}</div>`
+        : caution ? `<div class="np-why">${esc(caution)}</div>` : ''
+      return `<div class="np-row">
+          <span class="np-dot ${dot}"></span>
+          <div class="np-body">
+            <div class="np-name">${esc(p.label)}</div>
+            <div class="np-meta">${p.protocol} ${p.port} · ${where}</div>
+          </div>
+          ${index == null ? '' : `<button class="minibtn red" onclick="netRemove(${index})">Remove</button>`}
+        </div>${why}`
+    }
+
+    function paintNetwork(body) {
+      const view = window.__netView
+      const main = view.ports.find((p) => p.main)
+      const used = new Set(netDraft.map(netKey))
+      const full = netDraft.length >= view.maxExtra
+      const off = full ? 'disabled' : ''
+
+      const presets = view.presets.map((p, i) => {
+        const already = used.has(netKey(p))
+        return `<button class="np-preset" ${already || full ? 'disabled' : ''} onclick="netPreset(${i})" title="${esc(p.note)}">
+          ${already ? '✓' : '+'} ${esc(p.label)} <u>${p.protocol} ${p.port}</u></button>`
+      }).join('')
+
+      body.innerHTML = `
+        <div class="grouphead" style="margin-top:0">The game's own port</div>
+        ${netPortRow(main, netLive.get(netKey(main)), null)}
+
+        <div class="grouphead">Ports your mods need</div>
+        <div class="au-note">Some mods listen on a port of their own — proximity voice chat, live web maps, Bedrock crossplay. ELauncher opens these on the router while this server runs and releases them when it stops.</div>
+        ${netDraft.length
+          ? netDraft.map((p, i) => netPortRow(p, netLive.get(netKey(p)), i)).join('')
+          : '<div class="loadrow">No extra ports. Add one below if a mod asks for it.</div>'}
+
+        <div class="grouphead">Add a port</div>
+        <div class="np-presets" style="margin-bottom:10px">${presets}</div>
+        <div class="np-new">
+          <input type="text" id="npLabel" placeholder="What needs it — e.g. Simple Voice Chat" ${off}>
+          <select id="npProto" ${off}><option value="UDP">UDP</option><option value="TCP">TCP</option></select>
+          <input type="number" id="npPort" min="1024" max="65535" placeholder="Port" ${off}>
+          <button class="minibtn acc" onclick="netAdd()" ${off}>Add</button>
+        </div>
+        ${full ? `<div class="np-why" style="margin-top:8px">That is the maximum of ${view.maxExtra} extra ports. Remove one to add another.</div>` : ''}
+
+        <div class="savebar"><button class="cta" onclick="netSave()">Save ports</button></div>`
+    }
+
+    window.netPreset = (i) => {
+      const p = window.__netView.presets[i]
+      netDraft.push({ port: p.port, protocol: p.protocol, label: p.label })
+      paintNetwork($('tabBody'))
+    }
+    window.netAdd = () => {
+      const port = Number($('npPort').value)
+      if (!Number.isInteger(port) || port < 1024 || port > 65535) return toast('Enter a port between 1024 and 65535.', true)
+      const rule = { port, protocol: $('npProto').value, label: $('npLabel').value.trim() || `Port ${port}` }
+      if (netDraft.some((r) => netKey(r) === netKey(rule))) return toast('That port is already on the list.', true)
+      netDraft.push(rule)
+      paintNetwork($('tabBody'))
+    }
+    window.netRemove = (i) => { netDraft.splice(i, 1); paintNetwork($('tabBody')) }
+    window.netSave = async () => {
+      try {
+        // the router work happens inside this call, so it gets a longer leash than a normal request
+        renderNetwork($('tabBody'), await request(sheetId, 'setPorts', { ports: netDraft }, 45000))
+        toast('Ports saved')
+      } catch (e) { toast(e.message, true) }
+    }
+
     function autoRow(html) { return `<div class="frow">${html}</div>` }
     function renderAutomation(body, a) {
       const row = rowsById.get(sheetId) || {}
@@ -2773,7 +2908,7 @@
       dirty = {}
       if (!SENTINELS.has(id)) {
         // a new server resets the tab; re-selecting the same one keeps your place
-        if (sheetId !== id) { sheetId = id; sheetInfo = null; filesRel = ''; fileView = null; if (!opts.fromHash) sheetTab = 'overview' }
+        if (sheetId !== id) { sheetId = id; sheetInfo = null; filesRel = ''; fileView = null; netDraft = []; if (!opts.fromHash) sheetTab = 'overview' }
       }
       document.body.classList.add('detail-open')
       if (!opts.fromHash) writeHash()

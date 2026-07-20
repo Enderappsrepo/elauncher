@@ -465,7 +465,45 @@ export interface LocalServer {
   limitsOverride?: PlanLimits
   /** scheduled saves/restarts/backups + lifecycle switches */
   automation?: ServerAutomation
+  /** extra router ports mods need (voice chat, web maps) — opened with the server */
+  extraPorts?: ExtraPort[]
   createdAt: number
+}
+
+/** A router port a mod needs beyond the game's own. */
+export interface ExtraPort {
+  port: number
+  protocol: 'UDP' | 'TCP'
+  /** what needs it ("Simple Voice Chat") — also the description the router lists */
+  label: string
+}
+
+/** One port's live exposure, for the panel's Network tab. */
+export interface PortStatus extends ExtraPort {
+  /** a router mapping (or a directly-public NIC) is live for this port */
+  open: boolean
+  /** where it's reachable once open, as host:port */
+  address?: string
+  /** router caveat — CGNAT, or a lease that has to be re-asserted */
+  warning?: string
+  /** why the last attempt to open it failed */
+  error?: string
+  /** the game's own port: shown for context, not editable as a mod port */
+  main?: boolean
+}
+
+/** A mod that's known to need a port, offered as a one-tap preset. */
+export interface PortPreset extends ExtraPort {
+  note: string
+}
+
+/** Everything the Network tab renders from. */
+export interface ServerPortsView {
+  ports: PortStatus[]
+  presets: PortPreset[]
+  /** port number -> why opening it deserves a second thought (RCON, admin APIs) */
+  cautions: Record<string, string>
+  maxExtra: number
 }
 
 /** Per-server automation. Everything is off unless set; timers run while the server is online. */

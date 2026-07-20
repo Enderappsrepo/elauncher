@@ -155,6 +155,15 @@ function findWanService(xml: string, baseUrl: string): { controlUrl: string; ser
 
 async function discoverGateway(): Promise<Gateway> {
   if (cachedGateway) return cachedGateway
+  // opening a server's mod ports maps several at once, and each SSDP sweep costs
+  // seconds across every NIC — so concurrent callers share one search
+  if (!discovering) discovering = searchForGateway().finally(() => (discovering = null))
+  return discovering
+}
+
+let discovering: Promise<Gateway> | null = null
+
+async function searchForGateway(): Promise<Gateway> {
   const locations = await ssdpSearch()
   if (locations.length === 0) {
     throw new Error('No UPnP router found. Enable UPnP in your router settings, or forward the port manually.')

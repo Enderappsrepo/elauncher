@@ -12,6 +12,7 @@ import {
   getPalworldPlayerDetails,
   getServerAutomation,
   getServerLogs,
+  getServerPorts,
   getServerProperties,
   getServerStates,
   installServerMod,
@@ -33,6 +34,7 @@ import {
   setCommunityServer,
   setServerAutomation,
   setServerLimitsOverride,
+  setServerPorts,
   setServerProperties,
   startServer,
   stopServer,
@@ -701,6 +703,12 @@ async function runPanelRequest(serverId: string, action: string, params: Record<
         params.message ? String(params.message) : undefined
       )
       return { ok: true }
+    case 'ports':
+      return getServerPorts(serverId)
+    case 'setPorts':
+      // the blocklist and the cross-server conflict check live in the service,
+      // so a hand-crafted request can't punch a hole this path wouldn't
+      return await setServerPorts(serverId, params.ports)
     case 'mods':
       return listServerMods(serverId)
     case 'files':

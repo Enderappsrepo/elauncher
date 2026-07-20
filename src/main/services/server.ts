@@ -15,11 +15,13 @@ import type {
   PalworldPlayerDetail,
   PlanLimits,
   PlayerListEntry,
+  PortStatus,
   ServerAutomation,
   ServerFileEntry,
   ServerGame,
   ServerLogEvent,
   ServerMod,
+  ServerPortsView,
   ServerSource,
   ServerStateEvent,
   ServerTaskEvent
@@ -72,6 +74,16 @@ import {
   type SteamGameHandle
 } from './steamgames'
 import { closePort, getMapping } from './upnp'
+import {
+  MAX_EXTRA_PORTS,
+  PORT_CAUTIONS,
+  PORT_PRESETS,
+  closeRules,
+  openRules,
+  portKey,
+  statusOf,
+  validateRules
+} from './ports'
 import { getAssignedHost, releaseHost } from './hostNames'
 import { getSettings } from './settings'
 import { notifyPhones, setNotificationLogSink } from './notifications'
@@ -941,6 +953,7 @@ export async function archiveServer(id: string): Promise<void> {
   if (!record) throw new Error('Server not found')
   await ensureStopped(id)
   void closePort(record.port, gameOf(record) === 'palworld' ? 'UDP' : 'TCP')
+  void closeRules(record.extraPorts ?? [])
   releaseHost(id)
   mkdirSync(serverArchivesDir, { recursive: true })
   renameSync(serverDir(id), archiveDirOf(id))
@@ -989,7 +1002,10 @@ export function removeServer(id: string): LocalServer[] {
   const state = states.get(id) ?? 'stopped'
   if (state !== 'stopped') throw new Error('Stop the server before deleting it.')
   const record = loadServers().find((s) => s.id === id)
-  if (record) void closePort(record.port, gameOf(record) === 'palworld' ? 'UDP' : 'TCP')
+  if (record) {
+    void closePort(record.port, gameOf(record) === 'palworld' ? 'UDP' : 'TCP')
+    void closeRules(record.extraPorts ?? [])
+  }
   releaseHost(id) // the pool name becomes available for the next hosted server
   rmSync(serverDir(id), { recursive: true, force: true })
   const remaining = loadServers().filter((s) => s.id !== id)
@@ -1285,6 +1301,109 @@ export function setServerAutomation(id: string, automation: ServerAutomation): L
     else stopAutomation(id)
   }
   return listLocalServers()
+}
+
+// ---------- extra ports: the ones mods need beyond the game's own ----------
+
+/** Which protocol a game's own port speaks. */
+function mainProtocol(server: LocalServer): 'UDP' | 'TCP' {
+  const game = gameOf(server)
+  if (game === 'palworld') return 'UDP'
+  if (isSteamGame(game)) return STEAM_GAMES[game as 'valheim' | 'sdtd'].protocol
+  return 'TCP'
+}
+
+/**
+ * Every port already claimed on this machine, minus `exceptId`'s own mod ports
+ * (it's re-submitting those). Game ports always count, including its own — a mod
+ * port that shadows the game port would fight it for the same mapping.
+ */
+function takenPorts(exceptId: string): Map<string, string> {
+  const taken = new Map<string, string>()
+  for (const other of loadServers()) {
+    const own = other.id === exceptId
+    taken.set(
+      portKey(other.port, mainProtocol(other)),
+      own ? 'it is this server\'s own game port' : `"${other.name}" uses it on this machine`
+    )
+    if (own) continue
+    for (const rule of other.extraPorts ?? []) {
+      taken.set(portKey(rule.port, rule.protocol), `"${other.name}" uses it for ${rule.label}`)
+    }
+  }
+  return taken
+}
+
+/** The game port plus every mod port, with live exposure state, for the panel. */
+export function getServerPorts(id: string): ServerPortsView {
+  const server = getServer(id)
+  const main = mainProtocol(server)
+  // same precedence publicAddress uses; the per-port mapping backstops it, since
+  // a mod port can be open while the game port isn't and we still know its IP
+  const host = getAssignedHost(id) ?? getSettings().publicHost
+  const live = (port: number, protocol: 'UDP' | 'TCP'): Partial<PortStatus> => {
+    const status = statusOf(port, protocol)
+    const at = host ?? getMapping(port, protocol)?.externalIp
+    return { ...status, address: status.open && at ? `${at}:${port}` : undefined }
+  }
+  return {
+    ports: [
+      { port: server.port, protocol: main, label: 'Game port', main: true, ...live(server.port, main) } as PortStatus,
+      ...(server.extraPorts ?? []).map((rule) => ({ ...rule, ...live(rule.port, rule.protocol) }) as PortStatus)
+    ],
+    presets: PORT_PRESETS,
+    cautions: PORT_CAUTIONS,
+    maxExtra: MAX_EXTRA_PORTS
+  }
+}
+
+/**
+ * Replace a server's mod ports. Releases what's gone and opens what's new right
+ * away when the server is up — whoever just typed the port wants to know now
+ * whether the router took it, not at the next restart. While it's stopped the
+ * rules are stored and opened when it starts.
+ */
+export async function setServerPorts(id: string, raw: unknown): Promise<ServerPortsView> {
+  const servers = loadServers()
+  const record = servers.find((s) => s.id === id)
+  if (!record) throw new Error('Server not found')
+  const rules = validateRules(raw, takenPorts(id))
+  const previous = record.extraPorts ?? []
+  record.extraPorts = rules
+  saveServers(servers)
+  const kept = new Set(rules.map((r) => portKey(r.port, r.protocol)))
+  await closeRules(previous.filter((r) => !kept.has(portKey(r.port, r.protocol))))
+  if ((states.get(id) ?? 'stopped') !== 'stopped') await openExtraPorts(record)
+  return getServerPorts(id)
+}
+
+/**
+ * Map a server's mod ports and say how it went in its console. Mappings are
+ * released at every stop, so this runs on each start rather than only when the
+ * rules change.
+ */
+async function openExtraPorts(server: LocalServer): Promise<void> {
+  const rules = server.extraPorts ?? []
+  if (rules.length === 0) return
+  for (const rule of rules) {
+    ensureFirewallPort(server.id, rule.port, rule.protocol.toLowerCase() as 'tcp' | 'udp')
+  }
+  await openRules(rules, server.name)
+  for (const rule of rules) {
+    const status = statusOf(rule.port, rule.protocol)
+    pushLog(
+      server.id,
+      status.open
+        ? `[ELauncher] Opened ${rule.protocol} port ${rule.port} for ${rule.label}${status.warning ? ` — ${status.warning}` : ''}`
+        : `[ELauncher] Could not open ${rule.protocol} port ${rule.port} for ${rule.label}${status.error ? ` — ${status.error}` : ''}`
+    )
+  }
+}
+
+/** Release a server's mod ports, re-read in case they changed while it ran. */
+function closeExtraPorts(id: string): void {
+  const rules = loadServers().find((s) => s.id === id)?.extraPorts ?? []
+  if (rules.length) void closeRules(rules)
 }
 
 // ---------- live process stats: memory/cpu sampling + memory guard ----------
@@ -1599,6 +1718,8 @@ export async function startServer(id: string): Promise<void> {
   if (current !== 'stopped') throw new Error('This server is already running.')
   const server = getServer(id)
   enforcePlanLimits(server)
+  // mod ports are released at every stop, so re-assert them as it comes back up
+  void openExtraPorts(server)
   if (gameOf(server) === 'palworld') return startPalworldServer(server)
   if (isSteamGame(gameOf(server))) return runSteamGameServer(server)
   const dir = serverDir(id)
@@ -1673,6 +1794,7 @@ export async function startServer(id: string): Promise<void> {
       const wasStopping = states.get(id) === 'stopping'
       pushLog(id, `[ELauncher] Server exited${code != null ? ` (code ${code})` : ''}`)
       stopTunnel(server.port)
+      closeExtraPorts(id)
       stopAutomation(id)
       const crashed = !wasStopping && code !== 0
       setState(id, 'stopped', crashed ? `The server crashed (exit code ${code}). Check the console.` : undefined)
@@ -1728,6 +1850,7 @@ async function runSteamGameServer(server: LocalServer): Promise<void> {
         const wasStopping = states.get(id) === 'stopping'
         pushLog(id, `[ELauncher] Server exited${code != null ? ` (code ${code})` : ''}`)
         void closePort(server.port, spec.protocol)
+        closeExtraPorts(id)
         stopAutomation(id)
         const crashed = !wasStopping && code !== 0 && code !== null
         notifyPhones(server.name, crashed ? `Crashed (exit code ${code}) — check the console` : 'Server stopped', `${id}:state`)
@@ -1799,6 +1922,7 @@ async function startPalworldServer(server: LocalServer): Promise<void> {
         const wasStopping = states.get(id) === 'stopping'
         pushLog(id, `[ELauncher] Server exited${code != null ? ` (code ${code})` : ''}`)
         void closePort(server.port, 'UDP')
+        closeExtraPorts(id)
         stopAutomation(id)
         const palCrashed = !wasStopping && code !== 0 && code !== null
         notifyPhones(
