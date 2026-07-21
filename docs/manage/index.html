@@ -774,26 +774,141 @@
     .nores { text-align: center; color: var(--faint); padding: 22px; font-size: 13px; }
 
     /* ---------- file manager ---------- */
-    .crumbs { display: flex; flex-wrap: wrap; gap: 2px; align-items: center; margin-bottom: 11px; font-size: 12.5px; color: var(--faint); }
+    .crumbs { display: flex; flex-wrap: wrap; gap: 1px; align-items: center; margin-bottom: 10px; font-size: 12.5px; color: var(--text-faint); }
     .crumbs button { color: var(--accent); font-weight: 650; padding: 5px 8px; border-radius: 8px; max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; transition: background 0.13s; }
     .crumbs button:hover { background: var(--accent-soft); }
-    .ficon { display: grid; place-items: center; width: 32px; height: 32px; border-radius: 9px; background: var(--card-2); border: 1px solid var(--line); color: var(--dim); flex: none; }
-    .ficon.fold { color: var(--accent); background: var(--accent-soft); border-color: rgba(124, 108, 255, 0.25); }
+    .crumbs button.here { color: var(--text); }
+    .crumbs .csep { opacity: 0.5; }
+    .crumbs .root svg { width: 13px; height: 13px; vertical-align: -2px; margin-right: 5px; }
+
+    /* toolbar: upload / new folder on the left, filter + view controls on the right */
+    .fmbar { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; margin-bottom: 11px; }
+    .fmsearch {
+      display: flex; align-items: center; gap: 8px; padding: 7px 11px; flex: 1 1 130px; min-width: 0;
+      border-radius: var(--radius-sm); background: var(--bg-elevated); border: 1px solid var(--border);
+      transition: border-color 0.15s, box-shadow 0.15s;
+    }
+    .fmsearch:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var(--focus-ring); }
+    .fmsearch input { flex: 1; min-width: 0; background: none; border: 0; outline: none; color: var(--text); font-size: 13px; }
+    .fmsearch svg { width: 14px; height: 14px; color: var(--text-faint); flex: none; }
+    .fmseg { display: flex; gap: 2px; padding: 3px; border-radius: 10px; background: var(--track-bg); border: 1px solid var(--border); flex: none; }
+    .fmseg button { padding: 6px 9px; border-radius: 7px; display: grid; place-items: center; color: var(--text-faint); transition: all 0.14s var(--ease-out); }
+    .fmseg button svg { width: 15px; height: 15px; }
+    .fmseg button.on { background: var(--bg-elevated); color: var(--text); box-shadow: var(--shadow-card); }
+    .minibtn svg { width: 14px; height: 14px; vertical-align: -2px; margin-right: 5px; }
+    .minibtn.icon { padding: 8px 9px; }
+    .minibtn.icon svg { margin: 0; display: block; }
+
+    /* everything below the toolbar accepts a file drop */
+    .fmzone { position: relative; min-height: 90px; }
+    .fmzone.drag::after {
+      content: ''; position: absolute; inset: -8px; z-index: 2; pointer-events: none;
+      border: 2px dashed var(--accent); border-radius: 16px; background: var(--accent-soft);
+    }
+    .fmzone .fmdrop {
+      display: none; position: absolute; inset: 0; z-index: 3; place-items: center; pointer-events: none;
+      font-size: 13.5px; font-weight: 700; color: var(--accent);
+    }
+    .fmzone.drag .fmdrop { display: grid; }
+
+    .fitem {
+      display: flex; align-items: center; gap: 11px; padding: 9px; margin: 0 -9px; border-radius: 11px;
+      cursor: pointer; border-top: 1px solid var(--border); transition: background 0.13s;
+    }
+    .flist .fitem:first-child { border-top: 0; }
+    .fitem:hover { background: var(--bg-hover); }
+    .fitem.sel { background: var(--accent-soft); }
+    .fitem .fmain { flex: 1; min-width: 0; }
+    .fitem .fname { font-weight: 650; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .fitem .fmeta { font-size: 11.5px; color: var(--text-faint); margin-top: 1px; }
+    .fitem > svg.chev { width: 15px; height: 15px; flex: none; color: var(--text-faint); }
+    .fchk {
+      width: 19px; height: 19px; border-radius: 6px; flex: none; display: grid; place-items: center;
+      border: 1.5px solid var(--border-strong); background: var(--input-bg); transition: all 0.13s;
+    }
+    .fchk svg { width: 12px; height: 12px; color: #fff; opacity: 0; }
+    .fitem.sel .fchk { background: var(--accent); border-color: var(--accent); }
+    .fitem.sel .fchk svg { opacity: 1; }
+    .fdots { padding: 6px; border-radius: 8px; color: var(--text-faint); flex: none; display: grid; place-items: center; }
+    .fdots svg { width: 16px; height: 16px; }
+    .fdots:hover { background: var(--bg-active); color: var(--text); }
+
+    /* icon chip, tinted by what the file is */
+    .ficon { display: grid; place-items: center; width: 32px; height: 32px; border-radius: 9px; background: var(--bg-elevated); border: 1px solid var(--border); color: var(--text-dim); flex: none; }
     .ficon svg { width: 15px; height: 15px; }
+    .ficon.fold { color: var(--accent); background: var(--accent-soft); border-color: rgba(124, 108, 255, 0.25); }
+    .ficon.img { color: var(--green); background: var(--green-soft); border-color: rgba(52, 211, 153, 0.22); }
+    .ficon.zip { color: var(--yellow); background: var(--yellow-soft); border-color: rgba(251, 191, 36, 0.22); }
+    .ficon.code { color: var(--accent-2); background: rgba(34, 211, 238, 0.12); border-color: rgba(34, 211, 238, 0.22); }
+    .ficon.world { color: var(--accent-3); background: rgba(217, 70, 239, 0.12); border-color: rgba(217, 70, 239, 0.22); }
+
     /* Icons carry a viewBox but no width/height, so they size purely from CSS.
        Every other one sits in a wrapper that gives it a size; the folder-row
        chevron is dropped straight into the flex row, where auto width resolved
        against the free space and drew it at 586px. */
     .plister .prow > svg { width: 15px; height: 15px; flex: none; color: var(--faint); }
+
+    /* tiles */
+    .fgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 9px; }
+    .fgrid .fitem {
+      flex-direction: column; text-align: center; gap: 9px; margin: 0; padding: 15px 9px 13px;
+      border: 1px solid var(--border); border-radius: 14px; background: var(--bg-card); position: relative;
+    }
+    .fgrid .fitem .ficon { width: 44px; height: 44px; border-radius: 13px; }
+    .fgrid .fitem .ficon svg { width: 21px; height: 21px; }
+    .fgrid .fitem .fmain { flex: none; width: 100%; }
+    .fgrid .fitem .fname { font-size: 12.5px; white-space: normal; word-break: break-word; line-height: 1.35; max-height: 2.7em; overflow: hidden; }
+    .fgrid .fitem .fmeta { font-size: 10.5px; }
+    .fgrid .fitem > svg.chev { display: none; }
+    .fgrid .fchk, .fgrid .fdots { position: absolute; top: 7px; }
+    .fgrid .fchk { left: 7px; }
+    .fgrid .fdots { right: 4px; }
+
+    /* selection action bar, replaces the toolbar while items are picked */
+    .fmsel {
+      display: flex; align-items: center; gap: 7px; flex-wrap: wrap; padding: 8px 8px 8px 12px; margin-bottom: 11px;
+      border-radius: var(--radius-sm); background: var(--accent-soft); border: 1px solid var(--accent-line);
+    }
+    .fmsel b { flex: 1; font-size: 13px; white-space: nowrap; }
+
+    /* row / sort popover */
+    .fmenu {
+      position: fixed; z-index: 60; min-width: 178px; padding: 6px; border-radius: 14px;
+      background: var(--pop-bg); border: 1px solid var(--border-strong); box-shadow: var(--shadow-pop);
+      backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); animation: fade 0.13s var(--ease-out);
+    }
+    .fmenu button { display: flex; align-items: center; gap: 10px; width: 100%; padding: 9px 10px; border-radius: 9px; font-size: 13px; font-weight: 600; color: var(--text); text-align: left; }
+    .fmenu button:hover { background: var(--bg-hover); }
+    .fmenu button svg { width: 15px; height: 15px; flex: none; color: var(--text-faint); }
+    .fmenu button.red, .fmenu button.red svg { color: var(--red); }
+    .fmenu button.on { color: var(--accent); }
+    .fmenu button.on svg { color: var(--accent); }
+    .fmenu .msep { height: 1px; margin: 5px 4px; background: var(--border); }
+
+    /* transfer tray */
+    .fups { margin-top: 12px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--bg-card); overflow: hidden; }
+    .fup { display: flex; align-items: center; gap: 10px; padding: 9px 11px; border-top: 1px solid var(--border); font-size: 12.5px; }
+    .fup:first-child { border-top: 0; }
+    .fup .fupname { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+    .fup .fuppct { color: var(--text-faint); font: 11.5px var(--mono); flex: none; }
+    .fup.bad .fupname { color: var(--red); }
+    .fup.done .fupname { color: var(--green); }
+    .fupbar { width: 78px; height: 4px; border-radius: 3px; background: var(--track-bg); overflow: hidden; flex: none; }
+    .fupbar i { display: block; height: 100%; width: 0; border-radius: 3px; background: linear-gradient(90deg, var(--accent), var(--accent-2)); transition: width 0.2s var(--ease-out); }
+
+    /* editor + preview */
     .filebar { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; flex-wrap: wrap; }
-    .filebar .fname { flex: 1; min-width: 130px; font: 12px var(--mono); color: var(--dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .filebar .fname { flex: 1; min-width: 130px; font: 12px var(--mono); color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .filebar .fname .dot { color: var(--yellow); }
     .fileedit {
       width: 100%; min-height: 44dvh; padding: 13px 14px; border-radius: 14px;
-      background: #060609; border: 1px solid var(--line-strong);
+      background: #060609; border: 1px solid var(--border-strong);
       color: #d7dbea; font: 12px/1.6 var(--mono); outline: none; resize: vertical;
       box-shadow: inset 0 2px 18px rgba(0, 0, 0, 0.5); transition: border-color 0.15s;
     }
     .fileedit:focus { border-color: var(--accent); }
+    .fprev { display: grid; place-items: center; padding: 20px; border-radius: 14px; background: var(--track-bg); border: 1px solid var(--border); min-height: 200px; }
+    .fprev img { max-width: 100%; max-height: 56dvh; border-radius: 10px; }
 
     /* ---------- skeletons / empty / toasts ---------- */
     .skel { height: 138px; border-radius: var(--radius); margin-bottom: 14px; border: 1px solid var(--line);
@@ -1211,7 +1326,24 @@
       zap: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>',
       sliders: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></svg>',
       x: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>',
-      shield: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/></svg>'
+      shield: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/></svg>',
+      // file manager
+      upload: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>',
+      download: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>',
+      trash: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>',
+      folderPlus: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/><line x1="12" y1="11" x2="12" y2="17"/><line x1="9" y1="14" x2="15" y2="14"/></svg>',
+      dots: '<svg viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="12" cy="19" r="1.7"/></svg>',
+      search: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>',
+      check: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>',
+      grid: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>',
+      rows: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3.5" y1="6" x2="3.6" y2="6"/><line x1="3.5" y1="12" x2="3.6" y2="12"/><line x1="3.5" y1="18" x2="3.6" y2="18"/></svg>',
+      sort: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="6" x2="13" y2="6"/><line x1="3" y1="12" x2="10" y2="12"/><line x1="3" y1="18" x2="7" y2="18"/><polyline points="16 15 19 18 22 15"/><line x1="19" y1="6" x2="19" y2="18"/></svg>',
+      pencil: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.83 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5z"/></svg>',
+      home: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>',
+      image: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>',
+      archive: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8"/><rect x="1" y="3" width="22" height="5" rx="1"/><line x1="10" y1="12" x2="14" y2="12"/></svg>',
+      code: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>',
+      database: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>'
     }
 
     function toast(message, bad = false) {
@@ -2558,74 +2690,624 @@
       try { await request(sheetId, 'removeMod', { fileName }); toast('Removed'); renderTab() } catch (e) { toast(e.message, true) }
     }
 
-    // ---------- files tab (browse, view, edit over the relay) ----------
+    // ---------- files tab (a small explorer over the relay) ----------
+    // Bytes travel base64'd inside a request row, so transfers are sliced: a few
+    // slices stay in flight at once because the host drains 20 requests a tick,
+    // and a separate commit is what moves a finished upload into place.
+    const XFER_CHUNK = 256 * 1024
+    const XFER_PARALLEL = 3
+    const XFER_TIMEOUT = 60_000
+    const PREVIEW_MAX = 8 * 1048576
+
     let filesRel = ''
-    let fileView = null // { rel, content } while a file is open in the editor
+    let fileView = null // { rel, content, dirty } while the editor is open
+    let filePreview = null // { rel, name, url } while an image is open
+    let fileEntries = [] // the folder as the host last reported it
+    let fileShown = [] // the filtered + sorted slice actually painted; row handlers index into this
+    let fileSel = new Set() // selected names — names survive re-sorting, indices don't
+    let fileQuery = ''
+    let fileSort = { key: 'name', dir: 1 }
+    let fileGrid = localStorage.getItem('fm.grid') === '1'
+    let fileAnchor = -1 // last row clicked, for shift-range selection
+    let transfers = [] // { id, name, sent, total, state, error }
+    let fileMenuEl = null
+
     const fmtBytes = (n) => (n >= 1048576 ? (n / 1048576).toFixed(1) + ' MB' : n >= 1024 ? (n / 1024).toFixed(0) + ' KB' : n + ' B')
+    const fmtWhen = (ms) => {
+      const diff = Date.now() - ms
+      if (diff < 60_000) return 'just now'
+      if (diff < 3_600_000) return `${Math.floor(diff / 60_000)} min ago`
+      if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)}h ago`
+      if (diff < 6 * 86_400_000) return `${Math.floor(diff / 86_400_000)}d ago`
+      return new Date(ms).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+    }
+    const relOf = (name) => (filesRel ? `${filesRel}/${name}` : name)
+    const extOf = (name) => (name.includes('.') ? name.split('.').pop().toLowerCase() : '')
+    const isImage = (name) => ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'ico'].includes(extOf(name))
+    const chevIcon = icons.chev.replace('<svg ', '<svg class="chev" ')
+
+    /** What a file looks like at a glance — the chip's glyph and tint. */
+    const FILE_KINDS = [
+      ['img', 'image', ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'ico', 'svg']],
+      ['zip', 'archive', ['zip', 'jar', 'gz', 'tgz', 'tar', 'rar', '7z', 'mrpack']],
+      ['code', 'code', ['json', 'json5', 'yml', 'yaml', 'toml', 'xml', 'properties', 'cfg', 'conf', 'ini', 'sh', 'bat', 'mcmeta', 'snbt']],
+      ['world', 'database', ['dat', 'dat_old', 'mca', 'mcr', 'db', 'sqlite', 'nbt', 'fwl', 'fld', 'old']]
+    ]
+    function kindOf(entry) {
+      if (entry.isDir) return { cls: 'fold', icon: icons.folder }
+      const ext = extOf(entry.name)
+      for (const [cls, icon, exts] of FILE_KINDS) if (exts.includes(ext)) return { cls, icon: icons[icon] }
+      return { cls: '', icon: icons.file }
+    }
+
+    // ---------- painting ----------
+    // renderFiles fetches; the paint* helpers repaint from what's already here, so
+    // typing in the filter or ticking a checkbox never costs a round trip.
 
     async function renderFiles(body) {
       if (fileView) return renderFileEditor(body)
-      const entries = (await request(sheetId, 'files', { path: filesRel })) || []
-      window.__fileEntries = entries
-      const segs = filesRel ? filesRel.split('/') : []
-      window.__crumbRels = segs.map((_, i) => segs.slice(0, i + 1).join('/'))
-      const crumbs = `<div class="crumbs"><button onclick="fileCrumb(-1)">${esc((rowsById.get(sheetId) || {}).name || 'server')}</button>` +
-        segs.map((s, i) => `<span>›</span><button onclick="fileCrumb(${i})">${esc(s)}</button>`).join('') + `</div>`
-      body.innerHTML = crumbs + `<div class="plister">${entries.length ? entries.map((e, i) => `
-        <div class="prow" style="cursor:pointer" onclick="fileTap(${i})">
-          <span class="ficon${e.isDir ? ' fold' : ''}">${e.isDir ? icons.folder : icons.file}</span>
-          <div style="flex:1;min-width:0"><div class="pn">${esc(e.name)}</div>
-            <div class="pm">${e.isDir ? 'Folder' : fmtBytes(e.sizeBytes)} · ${new Date(e.modifiedAt).toLocaleString()}</div></div>
-          ${e.isDir ? icons.chev : ''}
-        </div>`).join('') : '<div class="loadrow">Empty folder.</div>'}</div>
-        <div class="frow" style="margin-top:8px"><div class="hint2">Tap a text file to view or edit it — configs, logs, whitelists. Binary files (worlds, jars) can't be opened here.</div></div>`
+      if (filePreview) return renderFilePreview(body)
+      fileEntries = (await request(sheetId, 'files', { path: filesRel })) || []
+      paintFiles(body)
     }
-    window.fileCrumb = (i) => { filesRel = i < 0 ? '' : window.__crumbRels[i]; fileView = null; renderTab() }
-    window.fileTap = async (i) => {
-      const e = window.__fileEntries?.[i]
+
+    async function reloadFiles() {
+      if (sheetTab !== 'files' || !sheetId) return
+      try {
+        fileEntries = (await request(sheetId, 'files', { path: filesRel })) || []
+        for (const name of [...fileSel]) if (!fileEntries.some((e) => e.name === name)) fileSel.delete(name)
+        paintFiles()
+      } catch (e) {
+        toast(e.message, true)
+      }
+    }
+
+    function paintFiles(body) {
+      body = body || $('tabBody')
+      if (!body || sheetTab !== 'files' || fileView || filePreview) return
+      body.innerHTML = `<div id="fmHead"></div>
+        <div class="fmzone" id="fmZone"><div class="fmdrop">Drop to upload here</div><div id="fmList"></div></div>
+        <div id="fmTray"></div>`
+      wireDrop($('fmZone'))
+      paintFileHead()
+      paintFileList()
+      paintTray()
+    }
+
+    function paintFileHead() {
+      const head = $('fmHead')
+      if (!head) return
+      const segs = filesRel ? filesRel.split('/') : []
+      const crumbs = `<div class="crumbs">
+        <button class="root${segs.length ? '' : ' here'}" onclick="fileCrumb(-1)">${icons.home}${esc((rowsById.get(sheetId) || {}).name || 'server')}</button>` +
+        segs.map((s, i) => `<span class="csep">›</span><button class="${i === segs.length - 1 ? 'here' : ''}" onclick="fileCrumb(${i})">${esc(s)}</button>`).join('') + `</div>`
+      const bar = fileSel.size
+        ? `<div class="fmsel">
+            <b>${fileSel.size} selected</b>
+            <button class="minibtn" onclick="fileDownloadSel()">${icons.download}Download</button>
+            <button class="minibtn red" onclick="fileDeleteSel()">${icons.trash}Delete</button>
+            <button class="minibtn icon" onclick="fileClearSel()" title="Clear selection">${icons.x}</button>
+          </div>`
+        : `<div class="fmbar">
+            <button class="minibtn acc" onclick="filePick()">${icons.upload}Upload</button>
+            <button class="minibtn" onclick="fileNewFolder()">${icons.folderPlus}New folder</button>
+            <label class="fmsearch">${icons.search}<input id="fmQ" placeholder="Filter this folder…" value="${esc(fileQuery)}" oninput="fileFilter(this.value)"></label>
+            <button class="minibtn icon" onclick="fileSortMenu(event)" title="Sort">${icons.sort}</button>
+            <div class="fmseg">
+              <button class="${fileGrid ? '' : 'on'}" onclick="fileSetGrid(false)" title="List">${icons.rows}</button>
+              <button class="${fileGrid ? 'on' : ''}" onclick="fileSetGrid(true)" title="Tiles">${icons.grid}</button>
+            </div>
+          </div>`
+      head.innerHTML = crumbs + bar
+    }
+
+    function paintFileList() {
+      const list = $('fmList')
+      if (!list) return
+      const q = fileQuery.trim().toLowerCase()
+      const dir = fileSort.dir
+      fileShown = fileEntries
+        .filter((e) => !q || e.name.toLowerCase().includes(q))
+        // folders lead whichever way the sort runs, the way every file manager does it
+        .sort((a, b) => Number(b.isDir) - Number(a.isDir) || dir * (
+          fileSort.key === 'size' ? a.sizeBytes - b.sizeBytes
+            : fileSort.key === 'date' ? a.modifiedAt - b.modifiedAt
+              : a.name.localeCompare(b.name, undefined, { numeric: true })
+        ))
+      if (!fileShown.length) {
+        list.innerHTML = `<div class="empty" style="padding:34px 20px">
+          <b>${q ? 'Nothing matches that' : 'This folder is empty'}</b>
+          ${q ? esc(`No file here contains “${fileQuery.trim()}”.`) : 'Drop files anywhere here, or use Upload.'}</div>`
+        return
+      }
+      list.className = fileGrid ? 'fgrid' : 'flist'
+      list.innerHTML = fileShown.map((e, i) => {
+        const k = kindOf(e)
+        return `<div class="fitem${fileSel.has(e.name) ? ' sel' : ''}" onclick="fileTap(event, ${i})" oncontextmenu="fileMenu(event, ${i})">
+          <span class="fchk" onclick="fileToggle(event, ${i})">${icons.check}</span>
+          <span class="ficon ${k.cls}">${k.icon}</span>
+          <div class="fmain">
+            <div class="fname">${esc(e.name)}</div>
+            <div class="fmeta">${e.isDir ? 'Folder' : fmtBytes(e.sizeBytes)} · ${fmtWhen(e.modifiedAt)}</div>
+          </div>
+          <button class="fdots" onclick="fileMenu(event, ${i})" title="More">${icons.dots}</button>
+          ${e.isDir ? chevIcon : ''}
+        </div>`
+      }).join('')
+    }
+
+    function paintTray() {
+      const tray = $('fmTray')
+      if (!tray) return
+      tray.innerHTML = transfers.length
+        ? `<div class="fups">${transfers.map((t) => {
+          const pct = t.total ? Math.round((t.sent / t.total) * 100) : t.state === 'done' ? 100 : 0
+          const label = t.state === 'bad' ? esc(t.error || 'Failed') : t.state === 'done' ? 'Done' : `${pct}%`
+          return `<div class="fup ${t.state}">
+            <span class="fupname">${t.state === 'down' ? '↓' : t.state === 'up' ? '↑' : ''} ${esc(t.name)}</span>
+            ${t.state === 'up' || t.state === 'down' ? `<span class="fupbar"><i style="width:${pct}%"></i></span>` : ''}
+            <span class="fuppct">${label}</span>
+          </div>`
+        }).join('')}</div>`
+        : ''
+    }
+
+    // ---------- navigation and selection ----------
+
+    /** Moving to a different server must not carry a folder, a selection or a preview across. */
+    function resetFileState() {
+      filesRel = ''
+      fileView = null
+      clearPreview()
+      closeFileMenu()
+      fileEntries = []
+      fileShown = []
+      fileSel.clear()
+      fileQuery = ''
+      fileAnchor = -1
+      transfers = []
+    }
+
+    function goFolder(rel) {
+      filesRel = rel
+      fileView = null
+      clearPreview()
+      fileSel.clear()
+      fileQuery = ''
+      fileAnchor = -1
+      const body = $('tabBody')
+      if (body) body.innerHTML = '<div class="loadrow">Loading…</div>'
+      void reloadFiles()
+    }
+    window.fileCrumb = (i) => {
+      const segs = filesRel ? filesRel.split('/') : []
+      goFolder(i < 0 ? '' : segs.slice(0, i + 1).join('/'))
+    }
+    window.fileFilter = (v) => { fileQuery = v; paintFileList() }
+    window.fileSetGrid = (on) => {
+      fileGrid = on
+      localStorage.setItem('fm.grid', on ? '1' : '0')
+      paintFileHead()
+      paintFileList()
+    }
+    window.fileClearSel = () => { fileSel.clear(); paintFileHead(); paintFileList() }
+    window.fileToggle = (ev, i) => {
+      ev.stopPropagation()
+      const e = fileShown[i]
       if (!e) return
-      const rel = filesRel ? `${filesRel}/${e.name}` : e.name
-      if (e.isDir) { filesRel = rel; return renderTab() }
+      if (fileSel.has(e.name)) fileSel.delete(e.name)
+      else fileSel.add(e.name)
+      fileAnchor = i
+      paintFileHead()
+      paintFileList()
+    }
+    /** shift-click fills in everything between the last click and this one */
+    function selectRange(i) {
+      const from = fileAnchor < 0 ? i : fileAnchor
+      for (let j = Math.min(from, i); j <= Math.max(from, i); j++) {
+        if (fileShown[j]) fileSel.add(fileShown[j].name)
+      }
+      paintFileHead()
+      paintFileList()
+    }
+    window.fileTap = (ev, i) => {
+      const e = fileShown[i]
+      if (!e) return
+      if (ev.shiftKey) return selectRange(i)
+      // once anything is selected, tapping keeps picking rather than navigating
+      if (fileSel.size || ev.ctrlKey || ev.metaKey) return window.fileToggle(ev, i)
+      fileAnchor = i
+      openEntry(i, ev)
+    }
+
+    async function openEntry(i, ev) {
+      const e = fileShown[i]
+      if (!e) return
+      if (e.isDir) return goFolder(relOf(e.name))
+      if (isImage(e.name)) return window.filePreviewOpen(i)
+      if (!e.isText) return window.fileMenu(ev, i) // binaries have no default action — offer the menu
       const body = $('tabBody')
       if (body) body.innerHTML = '<div class="loadrow">Opening…</div>'
       try {
-        const res = await request(sheetId, 'readFile', { path: rel })
-        fileView = { rel, content: res?.content ?? '' }
+        const res = await request(sheetId, 'readFile', { path: relOf(e.name) })
+        fileView = { rel: relOf(e.name), content: res?.content ?? '', dirty: false }
       } catch (err) {
         toast(err.message, true)
         fileView = null
       }
       renderTab()
     }
+
+    // ---------- the row / sort popover ----------
+
+    function closeFileMenu() {
+      fileMenuEl?.remove()
+      fileMenuEl = null
+    }
+    /** items: { label, icon, cls?, run } — a null entry draws a separator */
+    function openPopover(anchor, items) {
+      closeFileMenu()
+      const menu = document.createElement('div')
+      menu.className = 'fmenu'
+      menu.innerHTML = items.map((it, i) => it
+        ? `<button class="${it.cls || ''}" data-i="${i}">${it.icon}<span>${esc(it.label)}</span></button>`
+        : '<div class="msep"></div>').join('')
+      document.body.appendChild(menu)
+      const r = anchor.getBoundingClientRect()
+      const left = Math.max(10, Math.min(r.right - menu.offsetWidth, innerWidth - menu.offsetWidth - 10))
+      const below = r.bottom + 6
+      menu.style.left = `${left}px`
+      menu.style.top = `${below + menu.offsetHeight > innerHeight - 10 ? Math.max(10, r.top - menu.offsetHeight - 6) : below}px`
+      menu.onclick = (ev) => {
+        const btn = ev.target.closest('button[data-i]')
+        if (!btn) return
+        closeFileMenu()
+        items[Number(btn.dataset.i)].run()
+      }
+      fileMenuEl = menu
+      setTimeout(() => document.addEventListener('click', closeFileMenu, { once: true }), 0)
+      // it is anchored, not attached — scrolling would leave it floating over nothing
+      addEventListener('scroll', closeFileMenu, { once: true, capture: true })
+    }
+
+    window.fileMenu = (ev, i) => {
+      ev.preventDefault()
+      ev.stopPropagation()
+      const e = fileShown[i]
+      if (!e) return
+      const items = []
+      if (e.isDir) items.push({ label: 'Open', icon: icons.folder, run: () => goFolder(relOf(e.name)) })
+      else {
+        if (isImage(e.name)) items.push({ label: 'Preview', icon: icons.image, run: () => window.filePreviewOpen(i) })
+        if (e.isText) items.push({ label: 'Edit', icon: icons.pencil, run: () => openEntry(i, ev) })
+        items.push({ label: 'Download', icon: icons.download, run: () => downloadRel(relOf(e.name), e.name) })
+      }
+      items.push({ label: 'Rename', icon: icons.tag, run: () => renameEntry(e) })
+      items.push({ label: fileSel.has(e.name) ? 'Deselect' : 'Select', icon: icons.check, run: () => window.fileToggle(ev, i) })
+      items.push(null)
+      items.push({ label: 'Delete', icon: icons.trash, cls: 'red', run: () => deletePaths([e.name]) })
+      openPopover(ev.currentTarget ?? ev.target, items)
+    }
+
+    window.fileSortMenu = (ev) => {
+      ev.stopPropagation()
+      const pick = (key) => () => {
+        fileSort = { key, dir: fileSort.key === key ? -fileSort.dir : 1 }
+        paintFileList()
+      }
+      const mark = (key) => (fileSort.key === key ? { cls: 'on', icon: icons.check } : { cls: '', icon: icons.sort })
+      openPopover(ev.currentTarget, [
+        { label: `Name${fileSort.key === 'name' ? (fileSort.dir > 0 ? ' (A–Z)' : ' (Z–A)') : ''}`, ...mark('name'), run: pick('name') },
+        { label: `Size${fileSort.key === 'size' ? (fileSort.dir > 0 ? ' (small first)' : ' (large first)') : ''}`, ...mark('size'), run: pick('size') },
+        { label: `Modified${fileSort.key === 'date' ? (fileSort.dir > 0 ? ' (oldest)' : ' (newest)') : ''}`, ...mark('date'), run: pick('date') }
+      ])
+    }
+
+    // ---------- create, rename, delete ----------
+
+    window.fileNewFolder = async () => {
+      const name = prompt('Name the new folder')?.trim()
+      if (!name) return
+      if (/[\\/:*?"<>|]/.test(name)) return toast('That name has characters a folder can\'t use.', true)
+      try {
+        await request(sheetId, 'mkdir', { path: relOf(name) })
+        toast('Folder created')
+        await reloadFiles()
+      } catch (e) {
+        toast(e.message, true)
+      }
+    }
+
+    async function renameEntry(entry) {
+      const name = prompt(`Rename “${entry.name}” to`, entry.name)?.trim()
+      if (!name || name === entry.name) return
+      if (/[\\/:*?"<>|]/.test(name)) return toast('That name has characters a file can\'t use.', true)
+      try {
+        await request(sheetId, 'movePath', { from: relOf(entry.name), to: relOf(name) })
+        fileSel.delete(entry.name)
+        toast('Renamed')
+        await reloadFiles()
+      } catch (e) {
+        toast(e.message, true)
+      }
+    }
+
+    async function deletePaths(names) {
+      const what = names.length === 1 ? `“${names[0]}”` : `${names.length} items`
+      if (!confirm(`Delete ${what}? Folders go with everything inside them, and this cannot be undone.`)) return
+      try {
+        const res = await request(sheetId, 'deleteFiles', { paths: names.map(relOf) }, 45_000)
+        const failed = res?.failed?.length ?? 0
+        toast(failed ? `Deleted ${res.deleted}, ${failed} could not be removed` : `Deleted ${res?.deleted ?? names.length}`, failed > 0)
+        names.forEach((n) => fileSel.delete(n))
+        await reloadFiles()
+      } catch (e) {
+        toast(e.message, true)
+      }
+    }
+    window.fileDeleteSel = () => deletePaths([...fileSel])
+
+    // ---------- transfers ----------
+
+    function track(name, state) {
+      const t = { id: `${name}-${transfers.length}-${performance.now()}`, name, sent: 0, total: 0, state }
+      transfers.push(t)
+      paintTray()
+      return t
+    }
+    /** Successful transfers fade out of the tray; failures stay until the next one. */
+    function settleTransfer(t, error) {
+      t.state = error ? 'bad' : 'done'
+      if (error) t.error = error
+      else t.sent = t.total
+      paintTray()
+      if (!error) {
+        setTimeout(() => {
+          transfers = transfers.filter((x) => x !== t)
+          paintTray()
+        }, 3500)
+      }
+    }
+
+    const b64Of = (blob) => new Promise((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = () => {
+        const url = String(reader.result)
+        resolve(url.slice(url.indexOf(',') + 1))
+      }
+      reader.onerror = () => reject(new Error('Could not read that file'))
+      reader.readAsDataURL(blob)
+    })
+
+    window.filePick = () => {
+      const input = document.createElement('input')
+      input.type = 'file'
+      input.multiple = true
+      input.onchange = () => { if (input.files?.length) void uploadFiles([...input.files]) }
+      input.click()
+    }
+
+    async function uploadFiles(files) {
+      const dest = filesRel
+      transfers = transfers.filter((t) => t.state === 'up' || t.state === 'down') // clear the last batch's leftovers
+      let ok = 0
+      for (const file of files) {
+        const t = track(file.name, 'up')
+        t.total = file.size
+        paintTray()
+        try {
+          await uploadOne(file, dest, t)
+          settleTransfer(t)
+          ok++
+        } catch (e) {
+          settleTransfer(t, e.message)
+        }
+      }
+      toast(ok === files.length ? `Uploaded ${ok} file${ok === 1 ? '' : 's'}` : `Uploaded ${ok} of ${files.length}`, ok !== files.length)
+      if (dest === filesRel) await reloadFiles()
+    }
+
+    async function uploadOne(file, destRel, t) {
+      const path = destRel ? `${destRel}/${file.name}` : file.name
+      const uploadId = (crypto.randomUUID?.() ?? `${Date.now()}${Math.random()}`).replace(/[^a-zA-Z0-9]/g, '')
+      const total = file.size
+      const chunks = Math.ceil(total / XFER_CHUNK)
+      let next = 0
+      const worker = async () => {
+        for (let i = next++; i < chunks; i = next++) {
+          const start = i * XFER_CHUNK
+          const slice = file.slice(start, Math.min(start + XFER_CHUNK, total))
+          const data = await b64Of(slice)
+          await request(sheetId, 'uploadChunk', { path, uploadId, offset: start, totalBytes: total, data }, XFER_TIMEOUT)
+          t.sent += slice.size
+          paintTray()
+        }
+      }
+      await Promise.all(Array.from({ length: Math.min(XFER_PARALLEL, Math.max(1, chunks)) }, worker))
+      // the commit is its own round trip so it can only land after every slice has
+      await request(sheetId, 'uploadChunk', { path, uploadId, totalBytes: total, final: true }, XFER_TIMEOUT)
+    }
+
+    async function fetchBlob(rel, t) {
+      const parts = []
+      let offset = 0
+      for (;;) {
+        const res = await request(sheetId, 'downloadChunk', { path: rel, offset, length: XFER_CHUNK }, XFER_TIMEOUT)
+        const bytes = Uint8Array.from(atob(res?.data || ''), (c) => c.charCodeAt(0))
+        parts.push(bytes)
+        offset += bytes.length
+        if (t) { t.total = res?.size ?? 0; t.sent = offset; paintTray() }
+        if (res?.eof || bytes.length === 0) break
+      }
+      return new Blob(parts)
+    }
+
+    async function downloadRel(rel, name) {
+      const t = track(name, 'down')
+      try {
+        const blob = await fetchBlob(rel, t)
+        const a = document.createElement('a')
+        a.href = URL.createObjectURL(blob)
+        a.download = name
+        a.click()
+        setTimeout(() => URL.revokeObjectURL(a.href), 2000)
+        settleTransfer(t)
+      } catch (e) {
+        settleTransfer(t, e.message)
+        toast(e.message, true)
+      }
+    }
+
+    window.fileDownloadSel = async () => {
+      const picked = [...fileSel]
+      const folders = picked.filter((n) => fileEntries.find((e) => e.name === n)?.isDir)
+      const files = picked.filter((n) => !folders.includes(n))
+      if (folders.length) toast(`Folders can't be downloaded — skipping ${folders.length}`, true)
+      for (const name of files) await downloadRel(relOf(name), name)
+    }
+
+    // ---------- editor and image preview ----------
+
     function renderFileEditor(body) {
       body.innerHTML = `
         <div class="filebar">
           <button class="minibtn" onclick="fileBack()">← Back</button>
-          <div class="fname">${esc(fileView.rel)}</div>
-          <button class="minibtn" onclick="fileDownload()">Download</button>
-          <button class="minibtn red" onclick="fileDelete()">Delete</button>
+          <div class="fname" id="fileName">${esc(fileView.rel)}</div>
+          <button class="minibtn icon" onclick="fileDownloadOpen()" title="Download">${icons.download}</button>
+          <button class="minibtn icon red" onclick="fileDeleteOpen()" title="Delete">${icons.trash}</button>
         </div>
-        <textarea id="fileText" class="fileedit" spellcheck="false">${esc(fileView.content)}</textarea>
-        <div class="savebar"><button class="cta" onclick="fileSave()">Save file</button></div>`
+        <textarea id="fileText" class="fileedit" spellcheck="false" oninput="fileTouch()">${esc(fileView.content)}</textarea>
+        <div class="savebar"><button class="cta" id="fileSaveBtn" onclick="fileSave()">Save file</button></div>`
     }
-    window.fileBack = () => { fileView = null; renderTab() }
+    window.fileTouch = () => {
+      if (fileView.dirty) return
+      fileView.dirty = true
+      const name = $('fileName')
+      if (name) name.innerHTML = `${esc(fileView.rel)} <span class="dot">●</span>`
+    }
+    window.fileBack = () => {
+      if (fileView?.dirty && !confirm('You have unsaved changes. Leave without saving?')) return
+      fileView = null
+      clearPreview()
+      renderTab()
+    }
     window.fileSave = async () => {
-      try { await request(sheetId, 'writeFile', { path: fileView.rel, content: $('fileText').value }); toast('Saved') }
-      catch (e) { toast(e.message, true) }
+      const btn = $('fileSaveBtn')
+      if (btn) { btn.disabled = true; btn.textContent = 'Saving…' }
+      try {
+        await request(sheetId, 'writeFile', { path: fileView.rel, content: $('fileText').value })
+        fileView.content = $('fileText').value
+        fileView.dirty = false
+        const name = $('fileName')
+        if (name) name.textContent = fileView.rel
+        toast('Saved')
+      } catch (e) {
+        toast(e.message, true)
+      }
+      if (btn) { btn.disabled = false; btn.textContent = 'Save file' }
     }
-    window.fileDownload = () => {
-      const blob = new Blob([$('fileText').value], { type: 'text/plain' })
-      const a = document.createElement('a')
-      a.href = URL.createObjectURL(blob)
-      a.download = fileView.rel.split('/').pop()
-      a.click()
-      URL.revokeObjectURL(a.href)
+    window.fileDownloadOpen = () => downloadRel(fileView.rel, fileView.rel.split('/').pop())
+    window.fileDeleteOpen = async () => {
+      const name = fileView.rel.split('/').pop()
+      if (!confirm(`Delete “${name}”? This cannot be undone.`)) return
+      try {
+        await request(sheetId, 'deleteFile', { path: fileView.rel })
+        toast('Deleted')
+        fileView = null
+        renderTab()
+      } catch (e) {
+        toast(e.message, true)
+      }
     }
-    window.fileDelete = async () => {
-      if (!confirm(`Delete ${fileView.rel}? This cannot be undone.`)) return
-      try { await request(sheetId, 'deleteFile', { path: fileView.rel }); toast('Deleted'); window.fileBack() }
-      catch (e) { toast(e.message, true) }
+
+    function clearPreview() {
+      if (filePreview?.url) URL.revokeObjectURL(filePreview.url)
+      filePreview = null
     }
+    window.filePreviewOpen = async (i) => {
+      const e = fileShown[i]
+      if (!e) return
+      if (e.sizeBytes > PREVIEW_MAX) return toast('That image is too large to preview — download it instead.', true)
+      const body = $('tabBody')
+      if (body) body.innerHTML = '<div class="loadrow">Loading preview…</div>'
+      try {
+        const blob = await fetchBlob(relOf(e.name))
+        clearPreview()
+        filePreview = { rel: relOf(e.name), name: e.name, url: URL.createObjectURL(blob) }
+      } catch (err) {
+        toast(err.message, true)
+        clearPreview()
+      }
+      renderTab()
+    }
+    function renderFilePreview(body) {
+      body.innerHTML = `
+        <div class="filebar">
+          <button class="minibtn" onclick="fileBack()">← Back</button>
+          <div class="fname">${esc(filePreview.rel)}</div>
+          <button class="minibtn icon" onclick="fileDownloadPreview()" title="Download">${icons.download}</button>
+        </div>
+        <div class="fprev"><img src="${filePreview.url}" alt="${esc(filePreview.name)}"></div>`
+    }
+    window.fileDownloadPreview = () => downloadRel(filePreview.rel, filePreview.name)
+
+    // ---------- drag-and-drop and keyboard ----------
+
+    const dragHasFiles = (ev) => [...(ev.dataTransfer?.types ?? [])].includes('Files')
+    function wireDrop(zone) {
+      if (!zone) return
+      let depth = 0
+      const end = () => { depth = 0; zone.classList.remove('drag') }
+      zone.addEventListener('dragenter', (ev) => {
+        if (!dragHasFiles(ev)) return
+        ev.preventDefault()
+        depth++
+        zone.classList.add('drag')
+      })
+      zone.addEventListener('dragover', (ev) => {
+        if (!dragHasFiles(ev)) return
+        ev.preventDefault()
+        ev.dataTransfer.dropEffect = 'copy'
+      })
+      zone.addEventListener('dragleave', () => { if (--depth <= 0) end() })
+      zone.addEventListener('drop', (ev) => {
+        if (!dragHasFiles(ev)) return
+        ev.preventDefault()
+        end()
+        // getAsFile has to run before any await — the item list empties as soon
+        // as the event finishes. Dropped folders arrive as unreadable entries.
+        const items = [...(ev.dataTransfer?.items ?? [])]
+        let folders = 0
+        const files = []
+        if (items.length && items[0].webkitGetAsEntry) {
+          for (const item of items) {
+            if (item.webkitGetAsEntry()?.isDirectory) { folders++; continue }
+            const file = item.getAsFile()
+            if (file) files.push(file)
+          }
+        } else {
+          files.push(...(ev.dataTransfer?.files ?? []))
+        }
+        if (folders) toast('Whole folders can\'t be dropped — zip them first.', true)
+        if (files.length) void uploadFiles(files)
+      })
+    }
+
+    document.addEventListener('keydown', (ev) => {
+      if (sheetTab !== 'files' || !sheetId) return
+      const tag = (ev.target?.tagName || '').toLowerCase()
+      if (tag === 'input' || tag === 'textarea' || tag === 'select') return
+      if (ev.key === 'Escape') {
+        if (fileMenuEl) return closeFileMenu()
+        if (fileSel.size) return window.fileClearSel()
+        if (fileView || filePreview) window.fileBack()
+        return
+      }
+      if ((ev.key === 'Delete' || ev.key === 'Backspace') && fileSel.size && !fileView && !filePreview) {
+        ev.preventDefault()
+        void window.fileDeleteSel()
+      }
+    })
 
     // ---------- network tab (the ports mods need beyond the game's own) ----------
     // Rules are edited locally and saved in one go: a save is real router work,
@@ -3121,7 +3803,7 @@
       dirty = {}
       if (!SENTINELS.has(id)) {
         // a new server resets the tab; re-selecting the same one keeps your place
-        if (sheetId !== id) { sheetId = id; sheetInfo = null; filesRel = ''; fileView = null; netDraft = []; if (!opts.fromHash) sheetTab = 'overview' }
+        if (sheetId !== id) { sheetId = id; sheetInfo = null; resetFileState(); netDraft = []; if (!opts.fromHash) sheetTab = 'overview' }
       }
       document.body.classList.add('detail-open')
       if (!opts.fromHash) writeHash()
@@ -3137,10 +3819,12 @@
       renderList([...rowsById.values()])
     }
     window.goTab = (t) => {
-      if (Object.keys(dirty).length && !confirm('Discard unsaved changes?')) return
+      // the file editor holds unsaved work of its own, and leaving the tab drops it
+      if ((Object.keys(dirty).length || fileView?.dirty) && !confirm('Discard unsaved changes?')) return
       sheetTab = t
       dirty = {}
       fileView = null
+      clearPreview()
       writeHash()
       document.querySelectorAll('.dtabs button').forEach((b) => {
         const on = b.dataset.t === t
@@ -3377,7 +4061,10 @@
       fileSel = new Set(opts.selected ?? [])
       fileEntries = entries
       transfers = opts.transfers ?? []
-      paintFiles($(opts.into ?? 'detail'))
+      // mirror the real detail pane, so the repaint helpers find #tabBody the way they would in the app
+      const host = $(opts.into ?? 'detail')
+      host.innerHTML = '<div class="dbody" id="tabBody"></div>'
+      paintFiles($('tabBody'))
     }
     /** Order sheet, without a cloud: seeds the plan cache the way loadHosting would. */
     window.__previewOrder = (plan) => {

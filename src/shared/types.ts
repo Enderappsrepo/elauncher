@@ -577,6 +577,11 @@ export interface ServerFileEntry {
   isDir: boolean
   sizeBytes: number
   modifiedAt: number
+  /**
+   * Whether the extension says this opens in the text editor. An affordance
+   * hint, not a promise — the read still sniffs for NUL bytes and can refuse.
+   */
+  isText?: boolean
 }
 
 /** whitelist.json / ops.json / banned-players.json entry */

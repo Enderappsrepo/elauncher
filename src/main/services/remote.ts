@@ -6,8 +6,10 @@ import { deviceId } from './device'
 import { collectHostVitals } from './hostHealth'
 import {
   archiveServer,
+  createServerFolder,
   deleteServer,
   deleteServerPath,
+  deleteServerPaths,
   editServerRoster,
   forceStopServer,
   getPalworldPlayerDetails,
@@ -23,11 +25,13 @@ import {
   listServerFiles,
   listServerMods,
   makeServerBackup,
+  moveServerPath,
   restoreServer,
   restoreServerBackup,
   palworldModerate,
   playerCapKey,
   readServerFile,
+  readServerFileChunk,
   readServerRoster,
   rebuildServer,
   removeServerMod,
@@ -40,6 +44,7 @@ import {
   regenerateValheimWorld,
   startServer,
   stopServer,
+  uploadServerFileChunk,
   valheimWorldReady,
   writeServerFile
 } from './server'
@@ -759,16 +764,19 @@ function guardCustomerLimits(serverId: string, action: string, params: Record<st
       automation.restartAboveMemoryMB = limits.memoryMb
     }
   }
-  if (action === 'writeFile') {
-    const target = String(params.path ?? '').replace(/\\/g, '/').toLowerCase()
-    if (
-      target.endsWith('palworldsettings.ini') ||
-      target.endsWith('server.properties') ||
-      target.endsWith('serverconfig.xml') ||
-      target.endsWith('elauncher-valheim.json')
-    ) {
-      throw new Error('Game settings on hosted servers are edited in the Settings tab, where plan limits apply.')
-    }
+  // every route that can put bytes at a path — typing them, uploading them, or
+  // moving a crafted file over one — lands on the same guarded filenames
+  if (action === 'writeFile' || action === 'uploadChunk') guardSettingsFile(params.path)
+  if (action === 'movePath') guardSettingsFile(params.to)
+}
+
+/** Config files whose contents carry plan-capped settings, so the Settings tab owns them. */
+const GUARDED_SETTINGS_FILES = ['palworldsettings.ini', 'server.properties', 'serverconfig.xml', 'elauncher-valheim.json']
+
+function guardSettingsFile(path: unknown): void {
+  const target = String(path ?? '').replace(/\\/g, '/').toLowerCase()
+  if (GUARDED_SETTINGS_FILES.some((name) => target.endsWith(name))) {
+    throw new Error('Game settings on hosted servers are edited in the Settings tab, where plan limits apply.')
   }
 }
 
@@ -856,6 +864,29 @@ async function runPanelRequest(
     case 'deleteFile':
       deleteServerPath(serverId, String(params.path ?? ''))
       return { ok: true }
+    case 'deleteFiles':
+      return deleteServerPaths(serverId, (params.paths as string[] | undefined)?.map(String) ?? [])
+    case 'mkdir':
+      createServerFolder(serverId, String(params.path ?? ''))
+      return { ok: true }
+    case 'movePath':
+      moveServerPath(serverId, String(params.from ?? ''), String(params.to ?? ''))
+      return { ok: true }
+    case 'uploadChunk':
+      return uploadServerFileChunk(serverId, String(params.path ?? ''), {
+        uploadId: String(params.uploadId ?? ''),
+        offset: Number(params.offset ?? 0),
+        totalBytes: Number(params.totalBytes ?? 0),
+        data: params.data === undefined ? undefined : String(params.data),
+        final: Boolean(params.final)
+      })
+    case 'downloadChunk':
+      return readServerFileChunk(
+        serverId,
+        String(params.path ?? ''),
+        Number(params.offset ?? 0),
+        Number(params.length ?? 0)
+      )
     case 'installMod':
       await installServerMod(serverId, String(params.projectId ?? ''))
       return { ok: true }

@@ -1,5 +1,5 @@
 import { spawn, type ChildProcess } from 'child_process'
-import { chmodSync, copyFileSync, cpSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'fs'
+import { chmodSync, closeSync, copyFileSync, cpSync, existsSync, mkdirSync, openSync, readdirSync, readFileSync, readSync, renameSync, rmSync, statSync, writeFileSync, writeSync } from 'fs'
 import { cp, readdir, readFile } from 'fs/promises'
 import { basename, dirname, join, relative, resolve, sep } from 'path'
 import { cpus, tmpdir } from 'os'
@@ -2572,6 +2572,18 @@ const TEXT_EXTENSIONS = new Set([
   'txt', 'json', 'json5', 'properties', 'toml', 'yml', 'yaml', 'cfg', 'conf', 'log', 'mcmeta', 'snbt', 'md', 'csv', 'tsv', 'bat', 'sh'
 ])
 const MAX_EDIT_BYTES = 512 * 1024
+/**
+ * Ceiling on one upload or download. Bytes travel base64'd through the relay's
+ * jsonb column, so this is a patience promise as much as a storage one: the
+ * panel moves roughly a megabyte per round trip.
+ */
+const MAX_TRANSFER_BYTES = 100 * 1024 * 1024
+/** Biggest slice one round trip may carry, before base64's 4/3 inflation. */
+const MAX_CHUNK_BYTES = 512 * 1024
+/** Abandoned uploads (tab closed mid-transfer) are swept once they go cold. */
+const UPLOAD_TEMP_TTL_MS = 6 * 60 * 60_000
+
+const fileExt = (path: string): string => (path.includes('.') ? path.split('.').pop()!.toLowerCase() : '')
 
 /** Resolve a relative path inside the server folder; anything escaping it is rejected. */
 function safePath(id: string, rel: string): string {
@@ -2592,7 +2604,8 @@ export function listServerFiles(id: string, rel: string): ServerFileEntry[] {
         name: e.name,
         isDir: e.isDirectory(),
         sizeBytes: e.isDirectory() ? 0 : st.size,
-        modifiedAt: st.mtimeMs
+        modifiedAt: st.mtimeMs,
+        isText: !e.isDirectory() && TEXT_EXTENSIONS.has(fileExt(e.name)) && st.size <= MAX_EDIT_BYTES
       })
     } catch {
       // file vanished mid-scan (server writing); skip
@@ -2605,17 +2618,18 @@ export function readServerFile(id: string, rel: string): { content: string } {
   const file = safePath(id, rel)
   const st = statSync(file)
   if (st.size > MAX_EDIT_BYTES) {
-    throw new Error(`This file is too large to edit here (${(st.size / 1024).toFixed(0)} KB). Use Open folder instead.`)
+    throw new Error(`This file is too large to edit here (${(st.size / 1024).toFixed(0)} KB). Download it instead.`)
   }
-  const ext = file.split('.').pop()?.toLowerCase() ?? ''
   const buf = readFileSync(file)
-  if (!TEXT_EXTENSIONS.has(ext) && buf.includes(0)) {
-    throw new Error('This is a binary file — use Open folder to manage it.')
+  if (!TEXT_EXTENSIONS.has(fileExt(file)) && buf.includes(0)) {
+    throw new Error('This is a binary file — download it to open it.')
   }
   return { content: buf.toString('utf-8') }
 }
 
 export function writeServerFile(id: string, rel: string, content: string): void {
+  // the editor refuses to open anything bigger, so it can't legitimately save one either
+  if (Buffer.byteLength(content, 'utf-8') > MAX_EDIT_BYTES) throw new Error('That file is too large to save here.')
   writeFileSync(safePath(id, rel), content, 'utf-8')
 }
 
@@ -2623,6 +2637,156 @@ export function deleteServerPath(id: string, rel: string): void {
   const target = safePath(id, rel)
   if (target === resolve(serverDir(id))) throw new Error('Cannot delete the server folder itself.')
   rmSync(target, { recursive: true, force: true })
+}
+
+/**
+ * Delete many paths in one round trip. One bad entry doesn't strand the rest —
+ * the caller gets a per-path tally so the panel can say exactly what survived.
+ */
+export function deleteServerPaths(id: string, rels: string[]): { deleted: number; failed: { path: string; error: string }[] } {
+  const failed: { path: string; error: string }[] = []
+  let deleted = 0
+  for (const rel of rels) {
+    try {
+      deleteServerPath(id, rel)
+      deleted++
+    } catch (e) {
+      failed.push({ path: rel, error: e instanceof Error ? e.message : String(e) })
+    }
+  }
+  return { deleted, failed }
+}
+
+export function createServerFolder(id: string, rel: string): void {
+  const dir = safePath(id, rel)
+  if (dir === resolve(serverDir(id))) throw new Error('Give the folder a name.')
+  if (existsSync(dir)) throw new Error('Something with that name is already here.')
+  mkdirSync(dir, { recursive: true })
+}
+
+/** Rename or move one entry. Same call either way — only the destination differs. */
+export function moveServerPath(id: string, from: string, to: string): void {
+  const src = safePath(id, from)
+  const dest = safePath(id, to)
+  const root = resolve(serverDir(id))
+  if (src === root) throw new Error('Cannot move the server folder itself.')
+  if (dest === root) throw new Error('Give it a name.')
+  if (src === dest) return
+  if (!existsSync(src)) throw new Error('That file is no longer here.')
+  // Windows and macOS match paths case-insensitively, so a pure case change
+  // ("Mods" -> "mods") looks like a collision with itself. It isn't.
+  if (dest.toLowerCase() !== src.toLowerCase() && existsSync(dest)) {
+    throw new Error('Something with that name is already here.')
+  }
+  if (dest.startsWith(src + sep)) throw new Error('Cannot move a folder inside itself.')
+  mkdirSync(dirname(dest), { recursive: true })
+  renameSync(src, dest)
+}
+
+const uploadTempPath = (uploadId: string): string => join(tmpdir(), `elauncher-upload-${uploadId}`)
+
+/** Drop temp files from uploads that were abandoned rather than committed. */
+function sweepStaleUploads(): void {
+  try {
+    for (const name of readdirSync(tmpdir())) {
+      if (!name.startsWith('elauncher-upload-')) continue
+      const path = join(tmpdir(), name)
+      try {
+        if (Date.now() - statSync(path).mtimeMs > UPLOAD_TEMP_TTL_MS) rmSync(path, { force: true })
+      } catch {
+        // in use or already gone — leave it
+      }
+    }
+  } catch {
+    // sweeping is housekeeping; never let it fail an upload
+  }
+}
+
+/**
+ * One slice of an upload. Slices land at their own offset in a temp file, so
+ * they may arrive in any order and the panel can keep several in flight; the
+ * separate `final` commit is what moves the finished file into place.
+ */
+export function uploadServerFileChunk(
+  id: string,
+  rel: string,
+  chunk: { uploadId: string; offset: number; totalBytes: number; data?: string; final?: boolean }
+): { received: number; done: boolean } {
+  const dest = safePath(id, rel)
+  if (dest === resolve(serverDir(id))) throw new Error('Give the file a name.')
+  const uploadId = String(chunk.uploadId ?? '').replace(/[^a-zA-Z0-9-]/g, '')
+  if (!uploadId) throw new Error('Upload is missing its id.')
+  const total = Number(chunk.totalBytes)
+  if (!Number.isFinite(total) || total < 0) throw new Error('Upload is missing its size.')
+  if (total > MAX_TRANSFER_BYTES) {
+    throw new Error(`Uploads here are capped at ${MAX_TRANSFER_BYTES / 1048576} MB — copy anything larger in from the launcher.`)
+  }
+
+  const temp = uploadTempPath(uploadId)
+  const buf = chunk.data ? Buffer.from(String(chunk.data), 'base64') : Buffer.alloc(0)
+  if (buf.length > 0) {
+    if (buf.length > MAX_CHUNK_BYTES) throw new Error('Upload slice is too large.')
+    const offset = Number(chunk.offset)
+    if (!Number.isFinite(offset) || offset < 0 || offset + buf.length > total) {
+      throw new Error('Upload slice is out of range.')
+    }
+    if (offset === 0) sweepStaleUploads()
+    const fd = openSync(temp, existsSync(temp) ? 'r+' : 'w')
+    try {
+      writeSync(fd, buf, 0, buf.length, offset)
+    } finally {
+      closeSync(fd)
+    }
+  }
+  if (!chunk.final) return { received: buf.length, done: false }
+
+  // an empty file sends no slices at all, so there is nothing to move — just make it
+  if (total === 0 && !existsSync(temp)) {
+    mkdirSync(dirname(dest), { recursive: true })
+    writeFileSync(dest, '')
+    return { received: 0, done: true }
+  }
+  if (!existsSync(temp)) throw new Error('Upload arrived empty — try again.')
+  if (statSync(temp).size !== total) {
+    rmSync(temp, { force: true })
+    throw new Error('Upload arrived incomplete — try again.')
+  }
+  mkdirSync(dirname(dest), { recursive: true })
+  try {
+    renameSync(temp, dest)
+  } catch {
+    // the temp folder and the server folder can sit on different drives, where rename fails
+    copyFileSync(temp, dest)
+    rmSync(temp, { force: true })
+  }
+  return { received: buf.length, done: true }
+}
+
+/** One slice of a download, base64'd. Drives real binary downloads in the panel. */
+export function readServerFileChunk(
+  id: string,
+  rel: string,
+  offset: number,
+  length: number
+): { data: string; size: number; eof: boolean } {
+  const file = safePath(id, rel)
+  const st = statSync(file)
+  if (st.isDirectory()) throw new Error('That is a folder, not a file.')
+  if (st.size > MAX_TRANSFER_BYTES) {
+    throw new Error(`Downloads here are capped at ${MAX_TRANSFER_BYTES / 1048576} MB — copy anything larger out from the launcher.`)
+  }
+  const start = Math.min(Math.max(0, Math.floor(Number(offset) || 0)), st.size)
+  const want = Math.floor(Number(length)) || MAX_CHUNK_BYTES
+  const buf = Buffer.alloc(Math.min(Math.max(0, Math.min(want, MAX_CHUNK_BYTES)), st.size - start))
+  if (buf.length > 0) {
+    const fd = openSync(file, 'r')
+    try {
+      readSync(fd, buf, 0, buf.length, start)
+    } finally {
+      closeSync(fd)
+    }
+  }
+  return { data: buf.toString('base64'), size: st.size, eof: start + buf.length >= st.size }
 }
 
 // ---------- player lists (whitelist / ops / bans) ----------
