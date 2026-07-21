@@ -1,6 +1,8 @@
 import { app } from 'electron'
+import { readFileSync } from 'fs'
 import { readFile, statfs } from 'fs/promises'
 import { cpus, freemem, hostname, loadavg, totalmem, uptime } from 'os'
+import { join } from 'path'
 import { dataRoot } from '../paths'
 import { HEADLESS } from './headless'
 
@@ -29,6 +31,24 @@ export interface HostVitals {
   diskTotalGB: number | null
   uptimeSeconds: number
   load1: number | null
+}
+
+/**
+ * The launcher's own version. Electron's app.getVersion() falls back to the
+ * Electron version when the app runs unpackaged — which is exactly how a VPS
+ * host runs it (git clone + build), so the fleet view would advertise "43.1.1"
+ * for every Linux box and hide the thing an admin actually wants to spot: a
+ * host still running old code.
+ */
+function launcherVersion(): string {
+  const version = app.getVersion()
+  if (version !== process.versions.electron) return version
+  try {
+    const pkg = JSON.parse(readFileSync(join(app.getAppPath(), 'package.json'), 'utf8')) as { version?: string }
+    return pkg.version ?? version
+  } catch {
+    return version
+  }
 }
 
 /**
@@ -101,7 +121,7 @@ export async function collectHostVitals(): Promise<HostVitals> {
   return {
     hostName: hostname(),
     platform: `${process.platform}-${process.arch}`,
-    appVersion: app.getVersion(),
+    appVersion: launcherVersion(),
     headless: HEADLESS,
     cpuModel: (list[0]?.model ?? 'Unknown CPU').replace(/\((R|TM|C)\)/gi, '').replace(/\s*@.*$/, '').replace(/\s+/g, ' ').trim(),
     cpuThreads: list.length,
