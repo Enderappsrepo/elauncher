@@ -1077,6 +1077,8 @@ function saveCommandFor(server: LocalServer): string {
   if (game === 'palworld') return 'save'
   if (game === 'sdtd') return 'saveworld'
   if (game === 'valheim') return '' // no console — valheim autosaves on its own schedule
+  if (game === 'zomboid') return 'save' // over RCON
+  if (game === 'tmodloader') return 'save' // terraria's console, over stdin
   return 'save-all'
 }
 
@@ -1170,6 +1172,9 @@ function backupSources(server: LocalServer): string[] {
   if (gameOf(server) === 'palworld') rel.push(join('Pal', 'Saved', 'SaveGames'))
   else if (gameOf(server) === 'valheim') rel.push('save')
   else if (gameOf(server) === 'sdtd') rel.push('UserData')
+  // zomboid's cachedir holds the saves and the .ini both; tModLoader keeps worlds of its own
+  else if (gameOf(server) === 'zomboid') rel.push('data')
+  else if (gameOf(server) === 'tmodloader') rel.push('Worlds')
   else {
     const level = getServerProperties(server.id)['level-name']?.trim() || 'world'
     for (const suffix of ['', '_nether', '_the_end']) rel.push(level + suffix)
@@ -1781,6 +1786,8 @@ export function playerCapKey(game: ServerGame): string | null {
   if (game === 'palworld') return 'ServerPlayerMaxNum'
   if (game === 'sdtd') return 'ServerMaxPlayerCount'
   if (game === 'valheim') return null // valheim is hard-capped at 10 by the game itself
+  if (game === 'zomboid') return 'MaxPlayers'
+  if (game === 'tmodloader') return 'maxplayers'
   return 'max-players'
 }
 

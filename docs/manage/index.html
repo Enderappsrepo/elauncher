@@ -1714,13 +1714,15 @@
       ['Players & access', '👥', /max-players|white|online-mode|idle|op-permission|enforce|prevent-proxy|hidden/i],
       ['Network & performance', '🌐', /port|server-ip|network|rate-limit|tick|entity-broadcast|sync-chunk|native|compression|status/i]
     ]
-    const GAME_LABEL = { minecraft: 'Minecraft', palworld: 'Palworld', valheim: 'Valheim', sdtd: '7 Days to Die' }
+    const GAME_LABEL = { minecraft: 'Minecraft', palworld: 'Palworld', valheim: 'Valheim', sdtd: '7 Days to Die', zomboid: 'Project Zomboid', tmodloader: 'tModLoader' }
     /** One line per game for the store, so a plan group says what you'd be renting. */
     const GAME_BLURB = {
       minecraft: 'Vanilla, Paper plugins, or a full modpack.',
       palworld: 'Survival and creature collecting with friends.',
       valheim: 'Co-op Viking survival and building.',
-      sdtd: 'Open-world zombie survival.'
+      sdtd: 'Open-world zombie survival.',
+      zomboid: 'Isometric zombie survival — brutal, slow-burn, co-op.',
+      tmodloader: 'Modded Terraria. Light on resources, heavy on content.'
     }
     const gameLabel = (g) => GAME_LABEL[g] || 'Minecraft'
     // per-game settings essentials for the non-minecraft, non-palworld games
@@ -1737,6 +1739,10 @@
         : `<div class="au-note">The world has not been generated yet, so these apply when the server first starts and are then baked into it.</div>`]
     ]
     const SDTD_ESS = [['ServerName', 'Server name'], ['ServerPassword', 'Join password'], ['ServerMaxPlayerCount', 'Max players'], ['GameDifficulty', 'Difficulty (0-5)'], ['DayNightLength', 'Day length (min)'], ['ServerDescription', 'Description']]
+    // Zomboid writes ~150 keys into its .ini, so the rest land in the grouped
+    // list below — these are the ones worth surfacing first.
+    const PZ_ESS = [['PublicName', 'Server name'], ['Password', 'Join password'], ['MaxPlayers', 'Max players'], ['PublicDescription', 'Description'], ['Public', 'List in the public browser'], ['PauseEmpty', 'Pause when empty']]
+    const TML_ESS = [['worldname', 'World name'], ['password', 'Join password'], ['maxplayers', 'Max players'], ['motd', 'Message of the day'], ['difficulty', 'Difficulty (0-3)']]
     const isPal = () => sheetInfo?.game === 'palworld'
     /** Destructive lifecycle controls (archive/delete/restore) are owner-or-admin only; the host enforces this too. */
     const canManage = (serverId) => isAdmin || ownerOf.get(serverId) === me
@@ -2211,7 +2217,8 @@
     }
 
     function renderSettings(body, props) {
-      const ess = isPal() ? PAL_ESS : sheetInfo.game === 'valheim' ? VAL_ESS : sheetInfo.game === 'sdtd' ? SDTD_ESS : MC_ESS
+      const ESS_BY_GAME = { palworld: PAL_ESS, valheim: VAL_ESS, sdtd: SDTD_ESS, zomboid: PZ_ESS, tmodloader: TML_ESS }
+      const ess = ESS_BY_GAME[sheetInfo.game] ?? MC_ESS
       const groups = isPal() ? PAL_GROUPS : sheetInfo.game === 'minecraft' ? MC_GROUPS : sheetInfo.game === 'valheim' ? VAL_GROUPS : []
       const essKeys = new Set(ess.map((e) => e[0]))
       const wideKeys = new Set(['ServerName', 'ServerDescription', 'motd', 'ServerPassword', 'level-seed', 'CrossplayPlatforms'])

@@ -362,7 +362,7 @@ alter table public.hosting_plans add column if not exists cpu_cores integer;
 -- widen the game list as new dedicated servers land (valheim, 7 days to die)
 alter table public.hosting_plans drop constraint if exists hosting_plans_game_check;
 alter table public.hosting_plans add constraint hosting_plans_game_check
-  check (game in ('minecraft', 'palworld', 'valheim', 'sdtd'));
+  check (game in ('minecraft', 'palworld', 'valheim', 'sdtd', 'zomboid', 'tmodloader'));
 
 create table if not exists public.hosting_settings (
   id integer primary key default 1 check (id = 1),
@@ -455,7 +455,10 @@ insert into public.hosting_plans (id, name, game, max_players, memory_mb, cpu_co
   ('pal-8', 'Palworld 8 slots', 'palworld', 8, 16384, 4, 8.00, 4),
   ('pal-16', 'Palworld 16 slots', 'palworld', 16, 16384, 6, 12.00, 5),
   ('val-10', 'Valheim', 'valheim', 10, 6144, 3, 6.00, 6),
-  ('sdtd-8', '7 Days to Die', 'sdtd', 8, 10240, 4, 9.00, 7)
+  ('sdtd-8', '7 Days to Die', 'sdtd', 8, 10240, 4, 9.00, 7),
+  -- zomboid is memory-hungry per player; tModLoader is the lightest server here
+  ('pz-8', 'Project Zomboid', 'zomboid', 8, 6144, 3, 7.00, 8),
+  ('tml-8', 'tModLoader', 'tmodloader', 8, 3072, 2, 5.00, 9)
 on conflict (id) do nothing;
 
 create table if not exists public.server_commands (
