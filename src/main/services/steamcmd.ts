@@ -1,5 +1,5 @@
 import { spawn } from 'child_process'
-import { chmodSync, copyFileSync, existsSync, mkdirSync, rmSync } from 'fs'
+import { chmodSync, copyFileSync, existsSync, mkdirSync, readFileSync, rmSync } from 'fs'
 import { homedir } from 'os'
 import { dirname, join } from 'path'
 import { app } from 'electron'
@@ -114,6 +114,31 @@ const PROGRESS_RE = /Update state \(0x\d+\) (\w+), progress: ([\d.]+)/
 const SUCCESS_RE = /Success! App '(\d+)' fully installed/
 
 /**
+ * An app whose depots anonymous login has no license for is not an error to
+ * SteamCMD: it "installs" the app, writes a manifest with an empty depot list,
+ * and prints its usual success line. tModLoader is one (its depots need a
+ * Terraria licence), and the only symptom downstream was a missing binary and a
+ * "retry the install" that could never succeed. Read the manifest it just wrote
+ * and treat installing nothing as the failure it is.
+ */
+function assertDepotsInstalled(appId: number, dir: string): void {
+  const manifest = join(dir, 'steamapps', `appmanifest_${appId}.acf`)
+  let acf: string
+  try {
+    acf = readFileSync(manifest, 'utf-8')
+  } catch {
+    throw new Error(`SteamCMD reported success for app ${appId} but wrote no manifest. Check disk space, then retry.`)
+  }
+  // "InstalledDepots" { "228990" { … } } — empty braces mean nothing landed
+  const depots = acf.match(/"InstalledDepots"\s*\{([\s\S]*?)\n\t\}/)
+  if (depots && !/"\d+"/.test(depots[1])) {
+    throw new Error(
+      `Steam has no anonymous download for app ${appId} — it installed no files. This game's server cannot be fetched with SteamCMD.`
+    )
+  }
+}
+
+/**
  * Install or update a Steam app into `dir` via anonymous login.
  * Emits phase/progress callbacks parsed from SteamCMD's own output.
  */
@@ -196,5 +221,6 @@ export async function installSteamApp(
       else reject(new Error(`SteamCMD exited with code ${code}. Check your connection and disk space, then retry.`))
     })
   })
+  assertDepotsInstalled(appId, dir)
   if (!IS_WIN) placeSteamClientLib()
 }

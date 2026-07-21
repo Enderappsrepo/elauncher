@@ -1,18 +1,21 @@
 import { spawn, type ChildProcess } from 'child_process'
-import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs'
+import { chmodSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'fs'
 import { dirname, join } from 'path'
 import { Socket } from 'net'
 import { randomBytes } from 'crypto'
+import AdmZip from 'adm-zip'
 import type { SteamServerGame } from '@shared/types'
 import { installSteamApp } from './steamcmd'
+import { downloadToFile } from './mods'
 import { killProcessTree } from './proctree'
 
 /**
- * Generic SteamCMD dedicated-server provider. Palworld came first and has its
- * own module (REST API, ini tuple format); every further Steam game rides this
- * spec table instead — adding one is a new entry plus, at most, a settings
- * seed. Currently: Valheim and 7 Days to Die, both with native Windows + Linux
- * builds and anonymous SteamCMD downloads.
+ * Generic Steam dedicated-server provider. Palworld came first and has its own
+ * module (REST API, ini tuple format); every further Steam game rides this spec
+ * table instead — adding one is a new entry plus, at most, a settings seed.
+ * Currently Valheim, 7 Days to Die, Project Zomboid and tModLoader; all have
+ * native Windows + Linux builds, and all but tModLoader install over SteamCMD
+ * anonymously.
  */
 
 const IS_WIN = process.platform === 'win32'
@@ -37,6 +40,8 @@ export const STEAM_GAMES: Record<SteamServerGame, SteamGameSpec> = {
   // port+1 is zomboid's second UDP channel, port+2 its RCON — bound to localhost,
   // so the step reserves it rather than exposing it
   zomboid: { label: 'Project Zomboid', appId: 380870, basePort: 16261, portStep: 3, protocol: 'UDP', memoryHintMb: 4096, hasConsole: true },
+  // appId is informational here — tModLoader's depots aren't anonymously
+  // licensed, so its server comes from GitHub (see installTModLoader)
   tmodloader: { label: 'tModLoader', appId: 1281930, basePort: 7777, portStep: 1, protocol: 'TCP', memoryHintMb: 3072, hasConsole: true }
 }
 
@@ -363,13 +368,42 @@ export interface SteamGameCreateSettings {
   port: number
 }
 
+/**
+ * tModLoader is the one game here SteamCMD cannot fetch: its depots need a
+ * Terraria licence, so an anonymous `app_update 1281930` installs nothing while
+ * still reporting success. Its dedicated server ships as a single zip on the
+ * team's own GitHub releases — the same source tModLoader's bundled
+ * DedicatedServerUtils script uses — which carries the launch scripts and
+ * serverconfig.txt the rest of this module already expects.
+ *
+ * Deliberately unpinned: players connect with whatever tModLoader Steam gave
+ * them, and a server on an older build refuses them outright.
+ */
+const TML_RELEASE_URL = 'https://github.com/tModLoader/tModLoader/releases/latest/download/tModLoader.zip'
+
+async function installTModLoader(dir: string, onProgress: (phase: string, progress: number) => void): Promise<void> {
+  mkdirSync(dir, { recursive: true })
+  const archive = join(dir, 'tModLoader-download.zip')
+  onProgress('Downloading tModLoader server', -1)
+  await downloadToFile(TML_RELEASE_URL, archive, (received, total) => {
+    if (total > 0) onProgress('Downloading tModLoader server', received / total)
+  })
+  onProgress('Extracting tModLoader server', -1)
+  try {
+    new AdmZip(archive).extractAllTo(dir, true)
+  } finally {
+    rmSync(archive, { force: true })
+  }
+}
+
 export async function installSteamGame(
   game: SteamGameId,
   dir: string,
   settings: SteamGameCreateSettings,
   onProgress: (phase: string, progress: number) => void
 ): Promise<void> {
-  await installSteamApp(STEAM_GAMES[game].appId, dir, onProgress)
+  if (game === 'tmodloader') await installTModLoader(dir, onProgress)
+  else await installSteamApp(STEAM_GAMES[game].appId, dir, onProgress)
   onProgress('Writing server configuration', -1)
   if (game === 'valheim') {
     if (!existsSync(join(dir, IS_WIN ? 'valheim_server.exe' : 'valheim_server.x86_64'))) {
