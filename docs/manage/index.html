@@ -4371,7 +4371,7 @@
     window.orderPlan = async (planId) => {
       const plan = plansCache.get(planId)
       if (!plan) return
-      order = { plan, name: '', mode: 'fresh', loader: 'paper', version: '', versions: [], modpack: null, modpackName: '' }
+      order = { plan, name: '', mode: 'fresh', loader: 'paper', version: '', versions: [], modpack: null, modpackName: '', modpackSource: 'modrinth' }
       renderOrder()
       if (plan.game === 'minecraft') {
         order.versions = await loadMcVersions()
@@ -4381,15 +4381,39 @@
     }
     window.closeOrder = () => { order = null; $('sheet').innerHTML = '' }
     window.setOrder = (k, v) => { order[k] = v; if (k === 'mode' || k === 'loader') renderOrder() }
+    // switching platform clears the pick — a Modrinth id means nothing to CurseForge
+    window.setPackSource = (s) => { order.modpackSource = s; order.modpack = null; order.modpackName = ''; renderOrder() }
     window.pickPack = (id, name) => { order.modpack = id; order.modpackName = name; renderOrder() }
+
+    /** One search-result row, shared by both platforms. */
+    function packRow(id, name, icon, downloads) {
+      return `<button class="prow" style="width:100%;text-align:left;border:0;background:none" onclick="pickPack('${id}','${esc(name).replace(/'/g, '')}')">
+        ${icon ? `<img src="${esc(icon)}" style="width:34px;height:34px;border-radius:8px">` : '<span class="p-tile" style="width:34px;height:34px">?</span>'}
+        <div style="flex:1;min-width:0"><div class="pn">${esc(name)}</div><div class="pm">${(downloads || 0).toLocaleString()} downloads</div></div>
+        ${order.modpack === id ? '<span class="chip on">✓</span>' : ''}</button>`
+    }
+
+    /**
+     * CurseForge modpack search, via our cf-proxy edge function so the customer
+     * needs no key — the shared key is injected server-side. Requires a signed-in
+     * session (the function rejects the bare anon key).
+     */
+    async function cfSearch(query) {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) throw new Error('sign in first')
+      const url = `${SUPABASE_URL}/functions/v1/cf-proxy/mods/search?gameId=432&classId=4471&sortField=2&sortOrder=desc&pageSize=12&searchFilter=${encodeURIComponent(query || '')}`
+      const r = await fetch(url, { headers: { Authorization: `Bearer ${session.access_token}`, apikey: SUPABASE_ANON_KEY } })
+      if (!r.ok) throw new Error('search failed')
+      return (await r.json()).data || []
+    }
+
     window.orderSearchPack = async (q) => {
       const box = $('packResults'); if (box) box.innerHTML = '<div class="loadrow">Searching…</div>'
       try {
-        const hits = await modrinthSearch(q, 'modpack')
-        if (box) box.innerHTML = hits.map((h) => `<button class="prow" style="width:100%;text-align:left;border:0;background:none" onclick="pickPack('${h.project_id}','${esc(h.title).replace(/'/g, '')}')">
-          ${h.icon_url ? `<img src="${esc(h.icon_url)}" style="width:34px;height:34px;border-radius:8px">` : '<span class="p-tile" style="width:34px;height:34px">?</span>'}
-          <div style="flex:1;min-width:0"><div class="pn">${esc(h.title)}</div><div class="pm">${(h.downloads || 0).toLocaleString()} downloads</div></div>
-          ${order.modpack === h.project_id ? '<span class="chip on">✓</span>' : ''}</button>`).join('') || '<div class="loadrow">No modpacks found.</div>'
+        const rows = order.modpackSource === 'curseforge'
+          ? (await cfSearch(q)).map((h) => packRow(String(h.id), h.name, h.logo && h.logo.thumbnailUrl, h.downloadCount))
+          : (await modrinthSearch(q, 'modpack')).map((h) => packRow(h.project_id, h.title, h.icon_url, h.downloads))
+        if (box) box.innerHTML = rows.join('') || '<div class="loadrow">No modpacks found.</div>'
       } catch { if (box) box.innerHTML = '<div class="loadrow" style="color:var(--red)">Search failed.</div>' }
     }
 
@@ -4412,17 +4436,27 @@
             </select></div></div>
             <div class="frow"><div class="hint2">${o.loader === 'paper' ? 'Paper: fast, plugins.' : o.loader === 'vanilla' ? 'Vanilla: the official server.' : 'You can add mods after it is set up, from the Mods tab.'}</div></div>`
         } else {
-          const featured = FEATURED_PACKS.map((p) => `
-            <button class="prow" style="width:100%;text-align:left;border:0;background:none" onclick="pickPack('${p.id}','${esc(p.name).replace(/'/g, '')}')">
-              <span class="tile" style="background:${gradOf(p.id)};width:34px;height:34px;border-radius:8px;font-size:14px">${esc(p.name.charAt(0))}</span>
-              <div style="flex:1;min-width:0"><div class="pn">${esc(p.name)}</div><div class="pm">${esc(p.blurb)}</div></div>
-              ${o.modpack === p.id ? '<span class="chip on">✓</span>' : `<span class="chip">${esc(p.loader)} ${esc(p.mc)}</span>`}
-            </button>`).join('')
-          cfg += `<div class="grouphead" style="margin-top:0">Popular packs</div>
-            <div class="plister">${featured}</div>
-            <div class="grouphead">Or search Modrinth</div>
-            <div class="searchbar">${icons.chipIc}<input placeholder="Search Modrinth modpacks…" oninput="orderSearchPack(this.value)"></div>
-            <div id="packResults" class="plister">${o.modpack ? `<div class="hintline">Selected: <b>${esc(o.modpackName)}</b></div>` : '<div class="loadrow">Type to search, or pick one above.</div>'}</div>`
+          const cf = o.modpackSource === 'curseforge'
+          cfg += `<div class="sheet-tabs" style="border:0;padding:0 0 10px">
+              <button class="${!cf ? 'on' : ''}" onclick="setPackSource('modrinth')">Modrinth</button>
+              <button class="${cf ? 'on' : ''}" onclick="setPackSource('curseforge')">CurseForge</button>
+            </div>`
+          if (!cf) {
+            // featured packs are curated Modrinth ids; CurseForge is search-only
+            const featured = FEATURED_PACKS.map((p) => `
+              <button class="prow" style="width:100%;text-align:left;border:0;background:none" onclick="pickPack('${p.id}','${esc(p.name).replace(/'/g, '')}')">
+                <span class="tile" style="background:${gradOf(p.id)};width:34px;height:34px;border-radius:8px;font-size:14px">${esc(p.name.charAt(0))}</span>
+                <div style="flex:1;min-width:0"><div class="pn">${esc(p.name)}</div><div class="pm">${esc(p.blurb)}</div></div>
+                ${o.modpack === p.id ? '<span class="chip on">✓</span>' : `<span class="chip">${esc(p.loader)} ${esc(p.mc)}</span>`}
+              </button>`).join('')
+            cfg += `<div class="grouphead" style="margin-top:0">Popular packs</div>
+              <div class="plister">${featured}</div>
+              <div class="grouphead">Or search Modrinth</div>`
+          } else {
+            cfg += `<div class="grouphead" style="margin-top:0">Search CurseForge</div>`
+          }
+          cfg += `<div class="searchbar">${icons.chipIc}<input placeholder="Search ${cf ? 'CurseForge' : 'Modrinth'} modpacks…" oninput="orderSearchPack(this.value)"></div>
+            <div id="packResults" class="plister">${o.modpack ? `<div class="hintline">Selected: <b>${esc(o.modpackName)}</b></div>` : `<div class="loadrow">Type to search${cf ? '.' : ', or pick one above.'}</div>`}</div>`
         }
       }
       $('sheet').innerHTML = `<div class="sheet-bg" onclick="closeOrder()"></div>
@@ -4441,8 +4475,11 @@
       if (!name) return toast('Name your server first', true)
       const config = {}
       if (o.plan.game === 'minecraft') {
-        if (o.mode === 'modpack') { if (!o.modpack) return toast('Pick a modpack, or choose Fresh server', true); config.modpack = o.modpack }
-        else { config.loader = o.loader; config.version = o.version }
+        if (o.mode === 'modpack') {
+          if (!o.modpack) return toast('Pick a modpack, or choose Fresh server', true)
+          config.modpack = o.modpack
+          if (o.modpackSource === 'curseforge') config.modpackSource = 'curseforge'
+        } else { config.loader = o.loader; config.version = o.version }
       }
       const base = { user_id: me, plan_id: o.plan.id, server_name: name, reference: REF() }
       let { error } = await supabase.from('hosting_orders').insert({ ...base, config })

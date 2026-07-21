@@ -549,7 +549,7 @@ export type ServerSource =
   | { type: 'palworld'; serverPassword?: string; maxPlayers?: number; communityServer?: boolean }
   /** Any other SteamCMD dedicated server from the generic registry (valheim, 7 days to die, …) */
   | { type: 'steamgame'; game: SteamServerGame; serverPassword?: string; maxPlayers?: number }
-  /** picks a local .mrpack via a file dialog */
+  /** picks a local pack export via a file dialog — .mrpack (Modrinth) or .zip (CurseForge) */
   | { type: 'mrpack' }
   /** installs a pack from the cloud modpack library */
   | { type: 'cloudPack'; packId: string }
@@ -569,6 +569,8 @@ export interface ServerMod {
   title?: string
   versionNumber?: string
   iconUrl?: string
+  /** which platform it came from; set whenever projectId is */
+  source?: ModSource
 }
 
 /** One entry in a server-folder listing (file manager). */

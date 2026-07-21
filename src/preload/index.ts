@@ -332,8 +332,8 @@ const api = {
       ): Promise<OperationResult> => ipcRenderer.invoke('server:pal:moderate', id, action, target, message)
     },
     listMods: (id: string): Promise<ServerMod[]> => ipcRenderer.invoke('server:mods:list', id),
-    installMod: (id: string, projectId: string): Promise<OperationResult> =>
-      ipcRenderer.invoke('server:mods:install', id, projectId),
+    installMod: (id: string, projectId: string, source?: ModSource): Promise<OperationResult> =>
+      ipcRenderer.invoke('server:mods:install', id, projectId, source),
     removeMod: (id: string, fileName: string): Promise<ServerMod[]> =>
       ipcRenderer.invoke('server:mods:remove', id, fileName),
     exportPack: (id: string): Promise<OperationResult> => ipcRenderer.invoke('server:exportPack', id),

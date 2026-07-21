@@ -6,6 +6,7 @@ import type {
   MinecraftVersionInfo,
   ModLoader,
   ModSearchHit,
+  ModSource,
   ServerGame,
   ServerKind,
   ServerMod,
@@ -338,7 +339,7 @@ function CreateServerModal({
             <label>Modpack</label>
             <div className="segmented" style={{ marginBottom: 8 }}>
               <button className={packSource === 'browse' ? 'active' : ''} onClick={() => setPackSource('browse')}>
-                Browse Modrinth
+                Browse
               </button>
               {cloudPacks.length > 0 && (
                 <button className={packSource === 'cloud' ? 'active' : ''} onClick={() => setPackSource('cloud')}>
@@ -346,7 +347,7 @@ function CreateServerModal({
                 </button>
               )}
               <button className={packSource === 'file' ? 'active' : ''} onClick={() => setPackSource('file')}>
-                .mrpack file
+                Pack file
               </button>
             </div>
             {packSource === 'browse' && (
@@ -420,8 +421,10 @@ function CreateServerModal({
             )}
             {packSource === 'file' && (
               <div className="hint">
-                You'll pick the .mrpack file when you press Create. The loader, version and server-side mods come from
-                the pack (client-only mods are skipped automatically).
+                You'll pick the file when you press Create — a Modrinth <b>.mrpack</b> or a <b>.zip</b> exported from the
+                CurseForge app (open the pack and use Export). The loader, version and mods come from the pack. Modrinth packs
+                skip client-only mods automatically; CurseForge packs don't mark them, so a client-only mod may need
+                removing in Files if the console complains. CurseForge zips need your API key from Settings.
               </div>
             )}
           </div>
@@ -606,10 +609,12 @@ function ServerModsCard({ server, running }: { server: LocalServer; running: boo
 
   const [installed, setInstalled] = useState<ServerMod[] | null>(null)
   const [query, setQuery] = useState('')
+  const [source, setSource] = useState<ModSource>('modrinth')
   const [hits, setHits] = useState<ModSearchHit[] | null>(null)
   const [totalHits, setTotalHits] = useState(0)
   const [offset, setOffset] = useState(0)
   const [searching, setSearching] = useState(false)
+  const [searchError, setSearchError] = useState<string | null>(null)
   const [installing, setInstalling] = useState<string | null>(null)
 
   const refresh = useCallback(() => {
@@ -622,13 +627,14 @@ function ServerModsCard({ server, running }: { server: LocalServer; running: boo
     (newOffset: number) => {
       if (!supported) return
       setSearching(true)
+      setSearchError(null)
       window.elauncher.mods
         .search({
           query,
           // plugins usually span many versions; only mods get the strict version filter
           mcVersion: isPaper ? undefined : server.minecraftVersion,
           loader: isPaper ? undefined : (server.kind as ModLoader),
-          source: 'modrinth',
+          source,
           projectType: isPaper ? 'plugin' : 'mod',
           offset: newOffset,
           limit: CONTENT_PAGE_SIZE
@@ -638,10 +644,15 @@ function ServerModsCard({ server, running }: { server: LocalServer; running: boo
           setTotalHits(r.totalHits)
           setOffset(newOffset)
         })
-        .catch(() => setHits([]))
+        .catch((e: Error) => {
+          // a missing/rejected CurseForge key is the usual cause, and the
+          // message says so — surfacing it beats an empty list
+          setSearchError(e.message)
+          setHits([])
+        })
         .finally(() => setSearching(false))
     },
-    [query, supported, isPaper, server.kind, server.minecraftVersion]
+    [query, source, supported, isPaper, server.kind, server.minecraftVersion]
   )
 
   useEffect(() => {
@@ -649,12 +660,12 @@ function ServerModsCard({ server, running }: { server: LocalServer; running: boo
     const t = setTimeout(() => search(0), 300)
     return () => clearTimeout(t)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [query, server.id])
+  }, [query, source, server.id])
 
   const install = async (hit: ModSearchHit): Promise<void> => {
     setInstalling(hit.projectId)
     try {
-      const res = await window.elauncher.server.installMod(server.id, hit.projectId)
+      const res = await window.elauncher.server.installMod(server.id, hit.projectId, hit.source)
       if (res.ok) toast.success(`Installed ${hit.title}${running ? ' — restart the server to load it' : ''}`)
       else toast.error(res.error ?? 'Install failed')
       refresh()
@@ -680,14 +691,17 @@ function ServerModsCard({ server, running }: { server: LocalServer; running: boo
     )
   }
 
-  const installedIds = new Set((installed ?? []).map((m) => m.projectId).filter(Boolean))
+  // project ids are only unique per platform, so the same number can be two mods
+  const installedKeys = new Set(
+    (installed ?? []).filter((m) => m.projectId).map((m) => `${m.source ?? 'modrinth'}:${m.projectId}`)
+  )
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
       <div className="row" style={{ justifyContent: 'space-between', flexWrap: 'wrap' }}>
         <div className="muted small">
           {isPaper
-            ? `Paper plugins from Modrinth — installed into the plugins folder`
+            ? `Paper plugins — installed into the plugins folder`
             : `Server-side mods for ${server.minecraftVersion} ${server.kind}`}
         </div>
         {installed && installed.length > 0 && (
@@ -696,6 +710,15 @@ function ServerModsCard({ server, running }: { server: LocalServer; running: boo
             {installed.length === 1 ? '' : 's'} installed
           </span>
         )}
+      </div>
+
+      <div className="segmented" style={{ maxWidth: 300 }}>
+        <button className={source === 'modrinth' ? 'active' : ''} onClick={() => setSource('modrinth')}>
+          Modrinth
+        </button>
+        <button className={source === 'curseforge' ? 'active' : ''} onClick={() => setSource('curseforge')}>
+          CurseForge
+        </button>
       </div>
 
       <div className="search-wrap">
@@ -707,6 +730,19 @@ function ServerModsCard({ server, running }: { server: LocalServer; running: boo
         />
       </div>
 
+      {source === 'curseforge' && !searchError && (
+        <div className="hint">
+          CurseForge needs your API key from Settings. It doesn't flag client-only {noun}s the way Modrinth does — if
+          the console complains about one on the next start, remove it in Files.
+        </div>
+      )}
+      {searchError && (
+        <div className="error-banner" style={{ marginBottom: 0 }}>
+          <IconAlert size={16} />
+          <span>{searchError}</span>
+        </div>
+      )}
+
       {hits === null || (searching && hits.length === 0) ? (
         <div className="mod-list">
           {[0, 1, 2, 3].map((i) => (
@@ -716,9 +752,9 @@ function ServerModsCard({ server, running }: { server: LocalServer; running: boo
       ) : (
         <div className="mod-list">
           {hits.map((hit) => {
-            const done = installedIds.has(hit.projectId)
+            const done = installedKeys.has(`${hit.source}:${hit.projectId}`)
             return (
-              <div className="mod-row" key={hit.projectId}>
+              <div className="mod-row" key={`${hit.source}:${hit.projectId}`}>
                 {hit.iconUrl ? (
                   <img className="mod-icon" src={hit.iconUrl} alt="" loading="lazy" />
                 ) : (
@@ -759,7 +795,7 @@ function ServerModsCard({ server, running }: { server: LocalServer; running: boo
               </div>
             )
           })}
-          {hits.length === 0 && <div className="hint">No compatible {noun}s found for that search.</div>}
+          {hits.length === 0 && !searchError && <div className="hint">No compatible {noun}s found for that search.</div>}
         </div>
       )}
 

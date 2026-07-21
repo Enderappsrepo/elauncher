@@ -325,9 +325,9 @@ export function registerIpc(): void {
     server.announceServerByPort(port)
   })
   ipcMain.handle('server:mods:list', (_e, id: string) => server.listServerMods(id))
-  ipcMain.handle('server:mods:install', async (_e, id: string, projectId: string) => {
+  ipcMain.handle('server:mods:install', async (_e, id: string, projectId: string, source?: ModSource) => {
     try {
-      await server.installServerMod(id, projectId)
+      await server.installServerMod(id, projectId, source)
       return { ok: true }
     } catch (e) {
       return { ok: false, error: e instanceof Error ? e.message : String(e) }

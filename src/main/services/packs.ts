@@ -8,7 +8,17 @@ import type { Instance, ModLoader, ModSource, PackLink, PackTaskEvent } from '@s
 import { instanceDir } from '../paths'
 import { readJson, writeJson } from '../store'
 import { createInstance, getInstance, removeInstance, updateInstance } from './instances'
-import { curseforgeFetch, downloadToFile, listInstalledMods, modrinthFetch, readModsMeta, type ModRecord } from './mods'
+import {
+  cfAccessFromSettings,
+  cfRequest,
+  curseforgeFetch,
+  downloadToFile,
+  listInstalledMods,
+  modrinthFetch,
+  readModsMeta,
+  type CfAccess,
+  type ModRecord
+} from './mods'
 import { getSettings } from './settings'
 import { broadcast, emitProgress, setInstallingState } from './game'
 
@@ -456,9 +466,6 @@ export async function importPackFromUrl(url: string): Promise<Instance> {
 
 // ---------- modpack install from the mod browser (Modrinth + CurseForge) ----------
 
-const CF_API = 'https://api.curseforge.com/v1'
-const CF_UA = 'ELauncher/0.1.0 (custom launcher)'
-
 /** Newest downloadable .mrpack URL for a Modrinth modpack project. */
 export async function resolveModrinthModpackUrl(projectId: string): Promise<string> {
   const versions = (await modrinthFetch(`/project/${projectId}/version`)) as {
@@ -506,16 +513,33 @@ export function forgeCdnUrl(fileId: number, fileName: string): string {
   return `https://edge.forgecdn.net/files/${Number(s.slice(0, 4))}/${Number(s.slice(4))}/${encodeURIComponent(fileName)}`
 }
 
-/** Resolve many CurseForge file ids to their download info in one (chunked) call. */
-export async function curseforgeFilesBulk(fileIds: number[]): Promise<CfFile[]> {
-  if (fileIds.length === 0) return []
+/**
+ * The CurseForge API key, or an error naming where to set one. Callers that can
+ * check before doing expensive work (downloading a server binary, running the
+ * Forge installer) should call this up front so a missing key fails in a second
+ * instead of five minutes in.
+ */
+export function requireCurseforgeKey(): string {
   const key = getSettings().curseforgeApiKey?.trim()
-  if (!key) throw new Error('A CurseForge API key is required to install CurseForge modpacks. Add one in Settings.')
+  if (!key) throw new Error('A CurseForge API key is required to install CurseForge content. Add one in Settings.')
+  return key
+}
+
+/**
+ * Resolve many CurseForge file ids to their download info in one (chunked) call.
+ * Defaults to the personal key; the hosting provisioner passes a proxy access so
+ * a paid CurseForge pack installs without the customer owning a key.
+ */
+export async function curseforgeFilesBulk(
+  fileIds: number[],
+  access: CfAccess = cfAccessFromSettings()
+): Promise<CfFile[]> {
+  if (fileIds.length === 0) return []
   const out: CfFile[] = []
   for (let i = 0; i < fileIds.length; i += 250) {
-    const res = await fetch(`${CF_API}/mods/files`, {
+    const res = await cfRequest('/mods/files', access, {
       method: 'POST',
-      headers: { 'x-api-key': key, 'Content-Type': 'application/json', 'User-Agent': CF_UA },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ fileIds: fileIds.slice(i, i + 250) })
     })
     if (!res.ok) throw new Error(`CurseForge API error ${res.status}: ${await res.text()}`)
@@ -525,8 +549,8 @@ export async function curseforgeFilesBulk(fileIds: number[]): Promise<CfFile[]> 
 }
 
 /** Latest pack-file download URL for a CurseForge modpack project. */
-export async function resolveCurseforgeModpackUrl(projectId: string): Promise<string> {
-  const { data } = (await curseforgeFetch(`/mods/${projectId}`)) as {
+export async function resolveCurseforgeModpackUrl(projectId: string, access?: CfAccess): Promise<string> {
+  const { data } = (await curseforgeFetch(`/mods/${projectId}`, access ?? cfAccessFromSettings())) as {
     data: { mainFileId: number; latestFiles: CfFile[] }
   }
   const files = data.latestFiles ?? []

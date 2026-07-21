@@ -23,10 +23,52 @@ import { instanceDir } from '../paths'
 import { readJson, writeJson } from '../store'
 import { getInstance } from './instances'
 import { getSettings } from './settings'
+import { SUPABASE_URL, SUPABASE_ANON_KEY } from '@shared/cloudConfig'
 
 const MODRINTH = 'https://api.modrinth.com/v2'
 const CURSEFORGE = 'https://api.curseforge.com/v1'
 const USER_AGENT = 'ELauncher/0.1.0 (custom launcher)'
+
+/**
+ * How a CurseForge API call authenticates.
+ *  - 'key':   the user's own key from Settings — every desktop CurseForge
+ *             feature (create dialog, mod browsers, instance installs).
+ *  - 'proxy': the paid-hosting provisioner, which owns no personal key. It goes
+ *             through our cf-proxy edge function with the hosting account's
+ *             session token; the shared key is injected server-side so the
+ *             customer never needs one. See supabase/functions/cf-proxy.
+ */
+export type CfAccess = { mode: 'key'; key: string } | { mode: 'proxy'; token: string }
+
+/** Default CF access for desktop calls: the personal key from Settings, or a clear error. */
+export function cfAccessFromSettings(): CfAccess {
+  const key = getSettings().curseforgeApiKey?.trim()
+  if (!key) {
+    throw new Error('A CurseForge API key is required. Add one in Settings (console.curseforge.com).')
+  }
+  return { mode: 'key', key }
+}
+
+const CF_PROXY = `${SUPABASE_URL}/functions/v1/cf-proxy`
+
+/**
+ * Low-level CurseForge request, either straight to the API with a personal key
+ * or through the cf-proxy edge function with a session token. Callers layer
+ * status handling and JSON parsing on top.
+ */
+export async function cfRequest(path: string, access: CfAccess, init?: RequestInit): Promise<Response> {
+  const headers: Record<string, string> = {
+    'User-Agent': USER_AGENT,
+    ...(init?.headers as Record<string, string> | undefined)
+  }
+  if (access.mode === 'proxy') {
+    headers.Authorization = `Bearer ${access.token}`
+    headers.apikey = SUPABASE_ANON_KEY
+    return fetch(`${CF_PROXY}${path}`, { ...init, headers })
+  }
+  headers['x-api-key'] = access.key
+  return fetch(`${CURSEFORGE}${path}`, { ...init, headers })
+}
 
 /** Metadata for mods installed through the launcher, kept per instance. */
 export interface ModRecord {
@@ -76,22 +118,24 @@ async function modrinthPost(path: string, body: unknown): Promise<unknown> {
   return res.json()
 }
 
-export async function curseforgeFetch(path: string): Promise<unknown> {
-  const key = getSettings().curseforgeApiKey?.trim()
-  if (!key) throw new Error('CurseForge API key is not set. Add one in Settings to use CurseForge.')
-  const res = await fetch(`${CURSEFORGE}${path}`, {
-    headers: { 'x-api-key': key, 'User-Agent': USER_AGENT }
-  })
+export async function curseforgeFetch(path: string, access: CfAccess = cfAccessFromSettings()): Promise<unknown> {
+  const res = await cfRequest(path, access)
+  if (res.status === 401) {
+    // only the proxy path can 401 — the hosting account's session lapsed
+    throw new Error('The hosting account is not signed in, so CurseForge could not be reached.')
+  }
   if (res.status === 403) {
     throw new Error(
-      'CurseForge rejected your API key for this request (403). Fresh keys can take a while to fully activate — try regenerating the key at console.curseforge.com and saving the new one in Settings. Modrinth search works without any key in the meantime.'
+      access.mode === 'proxy'
+        ? 'CurseForge rejected the hosting key (403). The launcher owner may need to refresh CURSEFORGE_API_KEY on the cf-proxy function.'
+        : 'CurseForge rejected your API key for this request (403). Fresh keys can take a while to fully activate — try regenerating the key at console.curseforge.com and saving the new one in Settings. Modrinth search works without any key in the meantime.'
     )
   }
   if (!res.ok) throw new Error(`CurseForge API error ${res.status}: ${await res.text()}`)
   return res.json()
 }
 
-const CF_LOADER_TYPES: Record<Exclude<ModLoader, 'vanilla'>, number> = {
+export const CF_LOADER_TYPES: Record<Exclude<ModLoader, 'vanilla'>, number> = {
   forge: 1,
   fabric: 4,
   neoforge: 6

@@ -11,6 +11,7 @@ import type {
   CreateServerOptions,
   LocalServer,
   LocalServerState,
+  ModSource,
   PalworldModerationAction,
   PalworldPlayerDetail,
   PlanLimits,
@@ -30,7 +31,7 @@ import { archivedServersFile, instanceDir, javaDir, serverArchivesDir, serverDir
 import { readJson, writeJson } from '../store'
 import { killProcessTree } from './proctree'
 import { downloadAgent, withRetries } from '../net'
-import { downloadToFile, listInstalledMods, modrinthFetch, readModsMeta } from './mods'
+import { CF_LOADER_TYPES, curseforgeFetch, downloadToFile, listInstalledMods, modrinthFetch, readModsMeta, type CfAccess } from './mods'
 import {
   curseforgeFilesBulk,
   downloadPackToTemp,
@@ -40,6 +41,7 @@ import {
   parseCfLoader,
   parseDependencies,
   parseIndex,
+  requireCurseforgeKey,
   resolveCurseforgeModpackUrl,
   resolveModrinthModpackUrl,
   type CfManifest,
@@ -426,9 +428,13 @@ interface CreationPlan {
 }
 
 /** CF packs use manifest.json instead of the mrpack index; map it onto a plan. */
-function planFromCfZip(zip: AdmZip): CreationPlan {
+function planFromCfZip(zip: AdmZip, cfAccess?: CfAccess): CreationPlan {
   const entry = zip.getEntry('manifest.json')
   if (!entry) throw new Error('Not a CurseForge modpack: manifest.json is missing.')
+  // every file in a CF manifest resolves through the API, so no key = no pack.
+  // Checked here so it fails at the picker, not after the binary is installed.
+  // The provisioner supplies proxy access instead of a local key, so skip then.
+  if (!cfAccess || cfAccess.mode === 'key') requireCurseforgeKey()
   const manifest = JSON.parse(entry.getData().toString('utf-8')) as CfManifest
   if (!manifest.minecraft?.version) throw new Error('CurseForge modpack does not declare a Minecraft version.')
   const primary = manifest.minecraft.modLoaders?.find((l) => l.primary) ?? manifest.minecraft.modLoaders?.[0]
@@ -448,19 +454,34 @@ function planFromZip(zip: AdmZip): CreationPlan {
   return { kind: loader, minecraftVersion: mcVersion, loaderVersion, packName: index.name, zip }
 }
 
+/**
+ * A pack file the user picked themselves, which is either format: Modrinth
+ * exports .mrpack (modrinth.index.json), CurseForge exports .zip
+ * (manifest.json). Sniff rather than trust the extension — CF packs are plain
+ * .zip and plenty of people rename an .mrpack to .zip to get it past a
+ * chat/upload filter.
+ */
+function planFromPackZip(zip: AdmZip): CreationPlan {
+  if (zip.getEntry('modrinth.index.json')) return planFromZip(zip)
+  if (zip.getEntry('manifest.json')) return planFromCfZip(zip)
+  throw new Error(
+    'That file is not a modpack export — it has neither modrinth.index.json (Modrinth) nor manifest.json (CurseForge). In the CurseForge app, open the pack and use Export to get an installable zip.'
+  )
+}
+
 /** Resolves the source into a concrete plan. Returns null when the user cancels a file dialog. */
-async function planFromSource(source: ServerSource): Promise<CreationPlan | null> {
+async function planFromSource(source: ServerSource, cfAccess?: CfAccess): Promise<CreationPlan | null> {
   switch (source.type) {
     case 'fresh':
       return { kind: source.kind, minecraftVersion: source.minecraftVersion }
     case 'mrpack': {
       const picked = await dialog.showOpenDialog({
         title: 'Choose a modpack to host',
-        filters: [{ name: 'Modrinth modpack', extensions: ['mrpack', 'zip'] }],
+        filters: [{ name: 'Modpack export (Modrinth or CurseForge)', extensions: ['mrpack', 'zip'] }],
         properties: ['openFile']
       })
       if (picked.canceled || picked.filePaths.length === 0) return null
-      return planFromZip(new AdmZip(picked.filePaths[0]))
+      return planFromPackZip(new AdmZip(picked.filePaths[0]))
     }
     case 'cloudPack': {
       emitTask('Downloading modpack from the cloud', -1)
@@ -479,13 +500,13 @@ async function planFromSource(source: ServerSource): Promise<CreationPlan | null
     }
     case 'curseforgePack': {
       emitTask('Resolving modpack on CurseForge', -1)
-      const url = await resolveCurseforgeModpackUrl(source.projectId)
+      const url = await resolveCurseforgeModpackUrl(source.projectId, cfAccess)
       const tmp = join(tmpdir(), `elauncher-cfsrv-${randomUUID()}.zip`)
       emitTask('Downloading modpack file', -1)
       await downloadToFile(url, tmp, (received, total) => {
         if (total > 0) emitTask('Downloading modpack file', received / total)
       })
-      const plan = planFromCfZip(new AdmZip(tmp))
+      const plan = planFromCfZip(new AdmZip(tmp), cfAccess)
       plan.tempZipPath = tmp
       return plan
     }
@@ -593,13 +614,16 @@ async function applyPackToServer(dir: string, zip: AdmZip): Promise<void> {
  * no client/server flags, so a client-only mod may need removing via Files if
  * the console complains on first start.
  */
-async function applyCfPackToServer(dir: string, zip: AdmZip): Promise<void> {
+async function applyCfPackToServer(dir: string, zip: AdmZip, cfAccess?: CfAccess): Promise<void> {
   const entry = zip.getEntry('manifest.json')
   if (!entry) throw new Error('Not a CurseForge modpack: manifest.json is missing.')
   const manifest = JSON.parse(entry.getData().toString('utf-8')) as CfManifest
 
   emitTask('Resolving pack files on CurseForge', -1)
-  const files = await curseforgeFilesBulk(manifest.files.map((f) => f.fileID))
+  const files = await curseforgeFilesBulk(
+    manifest.files.map((f) => f.fileID),
+    cfAccess
+  )
   const modsDir = join(dir, 'mods')
   mkdirSync(modsDir, { recursive: true })
 
@@ -689,7 +713,13 @@ async function copyInstanceToServer(dir: string, instanceId: string): Promise<vo
 
 const LOADER_KINDS = new Set(['fabric', 'neoforge', 'forge'])
 
-export async function createServer(opts: CreateServerOptions): Promise<LocalServer | null> {
+/**
+ * `cfAccess` is an internal-only argument (never crosses IPC): the paid-hosting
+ * provisioner passes proxy access so a CurseForge modpack order installs through
+ * cf-proxy with the shared key. Desktop callers omit it and use the personal
+ * key from Settings.
+ */
+export async function createServer(opts: CreateServerOptions, cfAccess?: CfAccess): Promise<LocalServer | null> {
   if (opts.source.type === 'palworld') return createPalworldServer(opts, opts.source)
   if (opts.source.type === 'steamgame') return createSteamGameServer(opts, opts.source)
   if (!opts.acceptEula) {
@@ -697,7 +727,7 @@ export async function createServer(opts: CreateServerOptions): Promise<LocalServ
   }
   const servers = loadServers()
   try {
-    const plan = await planFromSource(opts.source)
+    const plan = await planFromSource(opts.source, cfAccess)
     if (!plan) {
       emitTask('Cancelled', 1, true)
       return null
@@ -714,16 +744,16 @@ export async function createServer(opts: CreateServerOptions): Promise<LocalServ
     emitTask(`Resolving ${plan.kind} server for ${plan.minecraftVersion}`, -1)
     const meta = await mojangServerMeta(plan.minecraftVersion)
     const name = opts.name.trim() || plan.packName?.trim() || 'My Server'
-    const modded = Boolean(plan.zip || plan.instanceId)
+    const fromPack = Boolean(plan.zip || plan.cfZip || plan.instanceId)
     const server: LocalServer = {
       id: randomUUID(),
       name,
       kind: plan.kind,
       minecraftVersion: plan.minecraftVersion,
       loaderVersion: plan.loaderVersion,
-      packName: plan.zip || plan.instanceId ? plan.packName : undefined,
+      packName: fromPack ? plan.packName : undefined,
       port: nextFreePort(servers),
-      memoryMax: opts.memoryMax && opts.memoryMax >= 1024 ? opts.memoryMax : modded ? 4096 : 2048,
+      memoryMax: opts.memoryMax && opts.memoryMax >= 1024 ? opts.memoryMax : fromPack ? 4096 : 2048,
       javaComponent: meta.javaComponent,
       eulaAccepted: true,
       orderId: opts.orderId,
@@ -735,7 +765,7 @@ export async function createServer(opts: CreateServerOptions): Promise<LocalServ
     try {
       await ensureServerBinary(dir, plan, meta.url, server.javaComponent)
       if (plan.zip) await applyPackToServer(dir, plan.zip)
-      if (plan.cfZip) await applyCfPackToServer(dir, plan.cfZip)
+      if (plan.cfZip) await applyCfPackToServer(dir, plan.cfZip, cfAccess)
       if (plan.instanceId) await copyInstanceToServer(dir, plan.instanceId)
 
       // the checkbox in the create dialog is the user's EULA acceptance
@@ -2371,6 +2401,8 @@ interface ServerModRecord {
   title: string
   versionNumber: string
   iconUrl?: string
+  /** which platform it came from; absent on records written before CurseForge support */
+  source?: ModSource
 }
 
 /** Where installable content lives for a server, and which Modrinth loaders match it. */
@@ -2410,7 +2442,9 @@ export function listServerMods(id: string): ServerMod[] {
       projectId: record?.projectId,
       title: record?.title,
       versionNumber: record?.versionNumber,
-      iconUrl: record?.iconUrl
+      iconUrl: record?.iconUrl,
+      // pre-CurseForge records are all Modrinth
+      source: record ? (record.source ?? 'modrinth') : undefined
     })
   }
   return mods.sort((a, b) => (a.title ?? a.fileName).localeCompare(b.title ?? b.fileName))
@@ -2435,22 +2469,41 @@ interface ModrinthVersionLite {
   dependencies: { project_id?: string; dependency_type: string }[]
 }
 
-/**
- * Install a Modrinth mod (modded servers) or plugin (Paper) plus its required
- * dependencies. Client-only mods are refused up front instead of crashing the
- * server; plugins fall back to a loaders-only match because they usually
- * support many game versions without listing every one.
- */
-export async function installServerMod(id: string, projectId: string, depth = 0): Promise<void> {
-  if (depth > 5) return
-  const server = getServer(id)
-  const targets = contentTargets(server)
-  if (!targets) {
-    throw new Error('Vanilla servers have no mod loader. Use a Paper server for plugins, or Fabric/NeoForge/Forge for mods.')
-  }
-  const meta = readServerModsMeta(id)
-  if (Object.values(meta).some((m) => m.projectId === projectId)) return
+interface CfFileLite {
+  id: number
+  fileName: string
+  displayName: string
+  downloadUrl: string | null
+  dependencies: { modId: number; relationType: number }[]
+}
 
+type ContentTargets = NonNullable<ReturnType<typeof contentTargets>>
+
+/** One server-side download resolved from either platform. */
+interface ResolvedServerMod {
+  /** the platform's canonical id, which can differ from the id/slug asked for */
+  projectId: string
+  fileName: string
+  url: string
+  title: string
+  versionNumber: string
+  iconUrl?: string
+  /** required dependency project ids, on the same platform */
+  dependencies: string[]
+}
+
+/**
+ * Modrinth resolution. Client-only mods are refused up front instead of
+ * crashing the server; plugins fall back to a loaders-only match because they
+ * usually support many game versions without listing every one. Returns null
+ * when a *dependency* doesn't apply here — that's a skip, not a failure.
+ */
+async function resolveModrinthServerMod(
+  server: LocalServer,
+  targets: ContentTargets,
+  projectId: string,
+  depth: number
+): Promise<ResolvedServerMod | null> {
   const project = (await modrinthFetch(`/project/${projectId}`)) as {
     id: string
     title: string
@@ -2458,7 +2511,7 @@ export async function installServerMod(id: string, projectId: string, depth = 0)
     server_side: string
   }
   if (project.server_side === 'unsupported') {
-    if (depth > 0) return // optional-platform dependency of something else; skip quietly
+    if (depth > 0) return null // optional-platform dependency of something else; skip quietly
     throw new Error(
       `${project.title} is a client-only mod — it can't run on a server. Players add it to their own instances instead.`
     )
@@ -2473,30 +2526,109 @@ export async function installServerMod(id: string, projectId: string, depth = 0)
     versions = (await modrinthFetch(`/project/${projectId}/version?${loose}`)) as ModrinthVersionLite[]
   }
   if (versions.length === 0) {
-    if (depth > 0) return
+    if (depth > 0) return null
     throw new Error(`No ${server.kind}-compatible ${targets.noun} build of ${project.title} for ${server.minecraftVersion}.`)
   }
   const version = versions[0]
   const file = version.files.find((f) => f.primary) ?? version.files[0]
+  return {
+    projectId: project.id,
+    fileName: file.filename,
+    url: file.url,
+    title: project.title,
+    versionNumber: version.version_number,
+    iconUrl: project.icon_url,
+    dependencies: version.dependencies
+      .filter((d) => d.dependency_type === 'required' && d.project_id)
+      .map((d) => d.project_id!)
+  }
+}
+
+/**
+ * CurseForge resolution. CF carries no client/server flag, so unlike Modrinth
+ * there's no way to refuse a client-only mod here — one that sneaks in shows up
+ * as a crash on the next start and gets removed via Files. Files whose author
+ * disabled third-party downloads come back with a null downloadUrl; the CDN
+ * path is derivable from the file id, which is what the pack installer uses.
+ */
+async function resolveCfServerMod(
+  server: LocalServer,
+  targets: ContentTargets,
+  projectId: string,
+  depth: number
+): Promise<ResolvedServerMod | null> {
+  const params = new URLSearchParams({ gameVersion: server.minecraftVersion, pageSize: '1' })
+  // bukkit plugins aren't loader-tagged; only the modded kinds take the filter
+  if (targets.noun === 'mod' && server.kind !== 'vanilla' && server.kind !== 'paper') {
+    params.set('modLoaderType', String(CF_LOADER_TYPES[server.kind]))
+  }
+  const files = (await curseforgeFetch(`/mods/${projectId}/files?${params}`)) as { data: CfFileLite[] }
+  const file = files.data[0]
+  if (!file) {
+    if (depth > 0) return null
+    throw new Error(`No ${server.kind}-compatible ${targets.noun} build for ${server.minecraftVersion} on CurseForge.`)
+  }
+  const mod = (await curseforgeFetch(`/mods/${projectId}`)) as {
+    data: { id: number; name: string; logo?: { thumbnailUrl?: string } }
+  }
+  return {
+    projectId: String(mod.data.id),
+    fileName: file.fileName,
+    url: file.downloadUrl ?? forgeCdnUrl(file.id, file.fileName),
+    title: mod.data.name,
+    versionNumber: file.displayName,
+    iconUrl: mod.data.logo?.thumbnailUrl,
+    dependencies: file.dependencies.filter((d) => d.relationType === 3).map((d) => String(d.modId))
+  }
+}
+
+/**
+ * Install a mod (modded servers) or plugin (Paper) from either platform, plus
+ * its required dependencies. A dependency that fails is logged and skipped
+ * rather than failing the whole install — half the time it's an optional
+ * platform shim the server doesn't need.
+ */
+export async function installServerMod(
+  id: string,
+  projectId: string,
+  source: ModSource = 'modrinth',
+  depth = 0
+): Promise<void> {
+  if (depth > 5) return
+  const server = getServer(id)
+  const targets = contentTargets(server)
+  if (!targets) {
+    throw new Error('Vanilla servers have no mod loader. Use a Paper server for plugins, or Fabric/NeoForge/Forge for mods.')
+  }
+  const meta = readServerModsMeta(id)
+  // ids are only unique per platform, so the same number can mean two things
+  if (Object.values(meta).some((m) => m.projectId === projectId && (m.source ?? 'modrinth') === source)) return
+
+  const resolved =
+    source === 'curseforge'
+      ? await resolveCfServerMod(server, targets, projectId, depth)
+      : await resolveModrinthServerMod(server, targets, projectId, depth)
+  if (!resolved) return
 
   const dir = join(serverDir(id), targets.dir)
   mkdirSync(dir, { recursive: true })
-  await downloadToFile(file.url, join(dir, file.filename))
+  await downloadToFile(resolved.url, join(dir, resolved.fileName))
 
   const fresh = readServerModsMeta(id)
-  fresh[file.filename] = {
-    projectId: project.id,
-    title: project.title,
-    versionNumber: version.version_number,
-    iconUrl: project.icon_url
+  fresh[resolved.fileName] = {
+    projectId: resolved.projectId,
+    title: resolved.title,
+    versionNumber: resolved.versionNumber,
+    iconUrl: resolved.iconUrl,
+    source
   }
   writeJson(serverModsMetaFile(id), fresh)
 
-  for (const dep of version.dependencies.filter((d) => d.dependency_type === 'required' && d.project_id)) {
+  for (const dep of resolved.dependencies) {
     try {
-      await installServerMod(id, dep.project_id!, depth + 1)
+      await installServerMod(id, dep, source, depth + 1)
     } catch (e) {
-      console.warn(`Server ${targets.noun} dependency ${dep.project_id} failed:`, e)
+      console.warn(`Server ${targets.noun} dependency ${dep} failed:`, e)
     }
   }
 }

@@ -1,8 +1,9 @@
 import { resolve4 } from 'dns/promises'
 import type { LocalServer, ServerGame } from '@shared/types'
 import { isCloudConfigured } from '@shared/cloudConfig'
-import { getClient } from './cloud'
+import { getAccessToken, getClient } from './cloud'
 import { deviceId } from './device'
+import type { CfAccess } from './mods'
 import { getShareInfo, startTunnel, stopTunnel } from './hosting'
 import { assignHost, hostPool, listAssignedHosts, updateDuckDns } from './hostNames'
 import { notifyPhones } from './notifications'
@@ -66,7 +67,7 @@ interface OrderRow {
   server_id: string | null
   paid_until: string | null
   note: string
-  config: { loader?: string; version?: string; modpack?: string } | null
+  config: { loader?: string; version?: string; modpack?: string; modpackSource?: string } | null
 }
 
 let running = false
@@ -246,12 +247,32 @@ async function checkPublicHostDns(): Promise<void> {
 /** Build the Minecraft content source from the customer's order config. */
 async function minecraftSource(
   config: OrderRow['config']
-): Promise<{ type: 'fresh'; kind: 'vanilla' | 'paper' | 'fabric' | 'neoforge' | 'forge'; minecraftVersion: string } | { type: 'modrinthPack'; projectId: string }> {
-  if (config?.modpack) return { type: 'modrinthPack', projectId: config.modpack }
+): Promise<
+  | { type: 'fresh'; kind: 'vanilla' | 'paper' | 'fabric' | 'neoforge' | 'forge'; minecraftVersion: string }
+  | { type: 'modrinthPack'; projectId: string }
+  | { type: 'curseforgePack'; projectId: string }
+> {
+  // config.modpack is a project id on either platform; modpackSource says which
+  if (config?.modpack) {
+    return config.modpackSource === 'curseforge'
+      ? { type: 'curseforgePack', projectId: config.modpack }
+      : { type: 'modrinthPack', projectId: config.modpack }
+  }
   const kind = (['vanilla', 'paper', 'fabric', 'neoforge', 'forge'].includes(config?.loader ?? '')
     ? config!.loader
     : 'paper') as 'vanilla' | 'paper' | 'fabric' | 'neoforge' | 'forge'
   return { type: 'fresh', kind, minecraftVersion: config?.version || (await latestMinecraftRelease()) }
+}
+
+/**
+ * Proxy access to CurseForge for the provisioner. It owns no personal CF key —
+ * it authenticates to the cf-proxy edge function with the hosting account's
+ * session token, and the shared key is injected server-side.
+ */
+async function hostingCfAccess(): Promise<CfAccess> {
+  const token = await getAccessToken()
+  if (!token) throw new Error('the hosting account is not signed in — cannot fetch the CurseForge modpack')
+  return { mode: 'proxy', token }
 }
 
 async function provision(order: OrderRow, plan: PlanRow, me: string): Promise<void> {
@@ -268,12 +289,16 @@ async function provision(order: OrderRow, plan: PlanRow, me: string): Promise<vo
   if (!server) {
     // tell the customer it's happening before the (possibly long) download starts
     await note(plan.game === 'minecraft' ? 'Setting up your server…' : 'Setting up your server — downloading the game (this can take a few minutes)…')
-    server =
-      plan.game === 'palworld'
-        ? await createServer({ name, acceptEula: true, orderId: order.id, source: { type: 'palworld', maxPlayers: plan.max_players } })
-        : plan.game === 'valheim' || plan.game === 'sdtd'
-          ? await createServer({ name, acceptEula: true, orderId: order.id, source: { type: 'steamgame', game: plan.game, maxPlayers: plan.max_players } })
-          : await createServer({ name, memoryMax: plan.memory_mb, acceptEula: true, orderId: order.id, source: await minecraftSource(order.config) })
+    if (plan.game === 'palworld') {
+      server = await createServer({ name, acceptEula: true, orderId: order.id, source: { type: 'palworld', maxPlayers: plan.max_players } })
+    } else if (plan.game === 'valheim' || plan.game === 'sdtd') {
+      server = await createServer({ name, acceptEula: true, orderId: order.id, source: { type: 'steamgame', game: plan.game, maxPlayers: plan.max_players } })
+    } else {
+      const source = await minecraftSource(order.config)
+      // a paid CurseForge pack resolves through cf-proxy so the buyer needs no key
+      const cfAccess = source.type === 'curseforgePack' ? await hostingCfAccess() : undefined
+      server = await createServer({ name, memoryMax: plan.memory_mb, acceptEula: true, orderId: order.id, source }, cfAccess)
+    }
   }
   if (!server) throw new Error('server creation was cancelled')
 

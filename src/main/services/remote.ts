@@ -888,7 +888,11 @@ async function runPanelRequest(
         Number(params.length ?? 0)
       )
     case 'installMod':
-      await installServerMod(serverId, String(params.projectId ?? ''))
+      await installServerMod(
+        serverId,
+        String(params.projectId ?? ''),
+        params.source === 'curseforge' ? 'curseforge' : 'modrinth'
+      )
       return { ok: true }
     case 'removeMod':
       return removeServerMod(serverId, String(params.fileName ?? ''))

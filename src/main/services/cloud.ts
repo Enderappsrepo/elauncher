@@ -85,6 +85,17 @@ export function cloudAvailable(): boolean {
   return isCloudConfigured()
 }
 
+/**
+ * The signed-in session's access token, for authenticating to our own edge
+ * functions (e.g. the hosting provisioner calling cf-proxy). Null when the
+ * cloud isn't configured or nobody is signed in.
+ */
+export async function getAccessToken(): Promise<string | null> {
+  if (!isCloudConfigured()) return null
+  const { data } = await getClient().auth.getSession()
+  return data.session?.access_token ?? null
+}
+
 // ---------- auth ----------
 
 export async function getUser(): Promise<CloudUser | null> {
