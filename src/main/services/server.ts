@@ -178,6 +178,22 @@ function logName(id: string): string {
   return name
 }
 
+/**
+ * Relay hook: the cloud panel needs console output as it happens, not on the
+ * next heartbeat. services/remote.ts registers itself here.
+ *
+ * A callback rather than an import because remote.ts already imports this
+ * module — going the other way would make a cycle. It receives only the server
+ * id; the relay reads the tail through getServerLogs so the buffer stays the
+ * single source of truth for what the console contains.
+ */
+type LogBatchSink = (serverId: string) => void
+let logBatchSink: LogBatchSink | null = null
+
+export function onLogBatch(sink: LogBatchSink | null): void {
+  logBatchSink = sink
+}
+
 function pushLog(id: string, line: string): void {
   if (LOG_CONSOLE) console.log(`[${logName(id)}] ${line}`)
   const buffer = logs.get(id) ?? []
@@ -193,6 +209,8 @@ function pushLog(id: string, line: string): void {
       logFlushTimer = null
       for (const [serverId, lines] of pendingLogs) {
         broadcast('server:log', { serverId, line: lines.join('\n') } satisfies ServerLogEvent)
+        // the desktop window and the cloud panel learn on the same beat
+        logBatchSink?.(serverId)
       }
       pendingLogs.clear()
     }, 250)

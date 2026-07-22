@@ -27,6 +27,7 @@ import {
   listServerMods,
   makeServerBackup,
   moveServerPath,
+  onLogBatch,
   restoreServer,
   restoreServerBackup,
   palworldModerate,
@@ -613,6 +614,66 @@ async function publishHeartbeat(): Promise<void> {
  * Publish every local server's snapshot: grantees see the shared ones, and you
  * can monitor your own from a launcher on another device (work, laptop, …).
  */
+/**
+ * Console streaming.
+ *
+ * The heartbeat republishes every server's whole row on a 5s beat, so console
+ * output reached the panel up to five seconds after it happened — the desktop
+ * window, fed by the 250ms log flush in services/server.ts, was twenty times
+ * quicker. These push the same flush to the cloud so both surfaces learn on the
+ * same beat.
+ *
+ * Only the console columns go up, and only for the servers that actually
+ * produced output. Re-running the full heartbeat instead would rewrite every
+ * row on the box — an 80-line tail each — several times a second while a busy
+ * server is talking.
+ */
+// Purely a coalescing window, not a rate limit: services/server.ts already
+// batches log lines on a 250ms flush and calls the sink once per server inside
+// one synchronous loop, so a few milliseconds is enough to fold a whole box's
+// servers into a single round-trip. Making this larger would only add latency —
+// the publish rate is governed upstream by that flush.
+const CONSOLE_PUSH_MS = 50
+/** servers the heartbeat has published in full at least once (see pushConsoleTails) */
+const publishedInFull = new Set<string>()
+const consolePending = new Set<string>()
+let consoleTimer: NodeJS.Timeout | null = null
+
+function scheduleConsolePush(serverId: string): void {
+  // Until the heartbeat has written a complete row, a partial upsert that had to
+  // INSERT would create one with a default name and state, and the panel would
+  // flicker to it. The first heartbeat is at most 5s out; skipping until then
+  // costs nothing a viewer can perceive.
+  if (!publishedInFull.has(serverId)) return
+  consolePending.add(serverId)
+  if (consoleTimer) return
+  consoleTimer = setTimeout(() => {
+    consoleTimer = null
+    const ids = [...consolePending]
+    consolePending.clear()
+    void pushConsoleTails(ids)
+  }, CONSOLE_PUSH_MS)
+}
+
+async function pushConsoleTails(ids: string[]): Promise<void> {
+  const me = hostUserId
+  if (!me || ids.length === 0 || !isCloudConfigured()) return
+  try {
+    await getClient()
+      .from('server_status')
+      .upsert(
+        ids.map((id) => ({
+          server_id: id,
+          owner_id: me,
+          console: getServerLogs(id).slice(-CONSOLE_TAIL_LINES).join('\n'),
+          updated_at: new Date().toISOString()
+        }))
+      )
+  } catch {
+    // never worth surfacing: the next heartbeat carries the same tail anyway
+  }
+}
+
 async function publishStatuses(supabase: ReturnType<typeof getClient>, me: string, local: LocalServer[]): Promise<void> {
   // archived servers publish too (state 'archived') so the owner/admin panel can offer restore
   const archived = listArchivedServers()
@@ -686,6 +747,8 @@ async function publishStatuses(supabase: ReturnType<typeof getClient>, me: strin
   if (!statusHasStatsColumns) {
     await supabase.from('server_status').upsert(allRows(false))
   }
+  // a complete row exists now, so the fast path may patch these servers' consoles
+  for (const server of local) publishedInFull.add(server.id)
 }
 
 /**
@@ -992,6 +1055,8 @@ export function startRemoteHost(): void {
   loopTimer = setInterval(() => void hostTick(), TICK_MS)
   // its own timer, so a long-running command can never starve the beat
   heartbeatTimer = setInterval(() => void publishHeartbeat(), HEARTBEAT_MS)
+  // console output rides the log flush rather than waiting out the heartbeat
+  onLogBatch(scheduleConsolePush)
 }
 
 /** Remove every grant for a server (used on archive — the owner re-shares when the customer returns). */
@@ -1009,6 +1074,10 @@ async function dropShares(serverId: string): Promise<void> {
 
 /** Drop the cloud rows for a deleted server so other devices stop listing a ghost. */
 export async function forgetServer(serverId: string): Promise<void> {
+  // the row is going away, so the fast console path must stop patching it —
+  // otherwise a late log line would resurrect it as a ghost with default fields
+  publishedInFull.delete(serverId)
+  consolePending.delete(serverId)
   if (!isCloudConfigured()) return
   try {
     const supabase = getClient()
