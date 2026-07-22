@@ -1,10 +1,46 @@
 import type { RunState } from '@web/ui'
 
-/** One row of public.server_status, as the panel consumes it. */
+/** Games a server can be. Published by the host; older clouds send nothing. */
+export type Game =
+  | 'minecraft' | 'palworld' | 'valheim' | 'sdtd' | 'zomboid' | 'tmodloader' | 'ark' | 'arksa'
+
+export const GAME_LABEL: Record<Game, string> = {
+  minecraft: 'Minecraft',
+  palworld: 'Palworld',
+  valheim: 'Valheim',
+  sdtd: '7 Days to Die',
+  zomboid: 'Project Zomboid',
+  tmodloader: 'tModLoader',
+  ark: 'ARK: Survival Evolved',
+  arksa: 'ARK: Survival Ascended'
+}
+
+/**
+ * A colour per game, so a list of eight servers is scannable without reading a
+ * word of it. Hue only — the badge takes its lightness from the theme, or the
+ * light one would be unreadable.
+ */
+export const GAME_HUE: Record<Game, number> = {
+  minecraft: 140,
+  palworld: 202,
+  valheim: 28,
+  sdtd: 8,
+  zomboid: 96,
+  tmodloader: 268,
+  ark: 178,
+  arksa: 318
+}
+
+export function gameLabel(game: string | null): string {
+  return game && game in GAME_LABEL ? GAME_LABEL[game as Game] : 'Server'
+}
+
 export interface ServerRow {
   server_id: string
   /** whose machine runs it — a server shared with you is queued against its owner */
   owner_id: string
+  /** null on clouds that predate the column, or hosts that have not updated */
+  game: string | null
   name: string
   state: RunState
   players: string[]
@@ -36,6 +72,7 @@ export function mockServers(): ServerRow[] {
       server_id: '1',
       owner_id: '00000000-0000-4000-8000-000000000001',
       name: 'Survival',
+      game: 'minecraft',
       state: 'running',
       players: ['Enderkiller124', 'Nova', 'pip'],
       address: '80.190.76.136:25565',
@@ -56,6 +93,7 @@ export function mockServers(): ServerRow[] {
       server_id: '2',
       owner_id: '00000000-0000-4000-8000-000000000001',
       name: 'Palworld — Dedicated',
+      game: 'palworld',
       state: 'starting',
       players: [],
       address: '80.190.76.136:8211',
@@ -69,6 +107,7 @@ export function mockServers(): ServerRow[] {
       server_id: '3',
       owner_id: '00000000-0000-4000-8000-000000000001',
       name: 'ATM10',
+      game: 'minecraft',
       state: 'error',
       players: [],
       address: '80.190.76.136:25566',
@@ -86,6 +125,7 @@ export function mockServers(): ServerRow[] {
       server_id: '4',
       owner_id: '00000000-0000-4000-8000-000000000001',
       name: 'Creative',
+      game: 'valheim',
       state: 'stopped',
       players: [],
       address: '80.190.76.136:25567',

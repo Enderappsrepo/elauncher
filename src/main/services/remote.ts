@@ -329,6 +329,7 @@ let heartbeatTimer: NodeJS.Timeout | null = null
 let statusHasStatsColumns = true
 /** false once the cloud rejects just the newer community column */
 let statusHasCommunityColumn = true
+let statusHasGameColumn = true
 let statsRetryAt = 0
 let sharedServerIds: Set<string> = new Set()
 let sharesDirty = true
@@ -699,6 +700,10 @@ async function publishStatuses(supabase: ReturnType<typeof getClient>, me: strin
       row.version = status?.version ?? null
       // palworld community-browser listing — panels show a badge and a toggle
       if (statusHasCommunityColumn) row.community = Boolean(server.communityServer)
+      // its own probe rather than riding community's: a cloud can have one
+      // migration and not the other, and sharing a flag would make a missing
+      // 'game' column look like a missing 'community' one and retry wrong
+      if (statusHasGameColumn) row.game = server.game ?? 'minecraft'
     }
     return row
   }
@@ -719,6 +724,9 @@ async function publishStatuses(supabase: ReturnType<typeof getClient>, me: strin
       row.started_at = null
       row.version = null
       if (statusHasCommunityColumn) row.community = false
+      // an archived server still has a game, and the panel lists it alongside
+      // the live ones — without this it would be the one card with no badge
+      if (statusHasGameColumn) row.game = a.game ?? 'minecraft'
     }
     return row
   }
@@ -730,12 +738,18 @@ async function publishStatuses(supabase: ReturnType<typeof getClient>, me: strin
   if (!statusHasStatsColumns && Date.now() > statsRetryAt) {
     statusHasStatsColumns = true
     statusHasCommunityColumn = true
+    statusHasGameColumn = true
   }
   if (statusHasStatsColumns) {
     let { error } = await supabase.from('server_status').upsert(allRows(true))
     // a cloud with stats but not the newer community column: retry without just that field
     if (error && statusHasCommunityColumn && /community/i.test(error.message ?? '')) {
       statusHasCommunityColumn = false
+      ;({ error } = await supabase.from('server_status').upsert(allRows(true)))
+    }
+    // and the same again for the newer game column, which arrived separately
+    if (error && statusHasGameColumn && /\bgame\b/i.test(error.message ?? '')) {
+      statusHasGameColumn = false
       ;({ error } = await supabase.from('server_status').upsert(allRows(true)))
     }
     // clouds that haven't run the stats migration yet fall back to the legacy shape

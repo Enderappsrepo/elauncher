@@ -3,8 +3,8 @@ import type { Session } from '@supabase/supabase-js'
 import { supabase } from '@web/lib/supabase'
 import { Button, Console, Skeleton, StatusPill, Tabs } from '@web/ui'
 import { Auth } from './Auth'
-import { mockServers, uptime } from './data'
-import type { ServerRow } from './data'
+import { GAME_HUE, gameLabel, mockServers, uptime } from './data'
+import type { Game, ServerRow } from './data'
 import { primeSenderName, queueCommand } from './relay'
 import { makeAsk } from './tabs/types'
 import { Access } from './tabs/Access'
@@ -290,6 +290,7 @@ function ServerCard({
     <article className="surface card-server" style={{ '--i': index } as React.CSSProperties}>
       <button className="card-hit" onClick={onOpen} aria-label={`Open ${row.name}`} />
       <div className="row">
+        <GameBadge game={row.game} />
         <h2>{row.name}</h2>
         <span className="spacer" />
         <StatusPill state={row.state} />
@@ -315,6 +316,31 @@ function ServerCard({
         </Button>
       </div>
     </article>
+  )
+}
+
+/**
+ * Which game a card is for.
+ *
+ * A hosting account is a list of eight servers with names their owners chose,
+ * and "Creative" says nothing about whether it is Minecraft or Valheim. The
+ * initial and its hue carry that at a glance; the full name is still written out
+ * next to it in the detail header, and in the title attribute here, so the
+ * colour is never the only thing saying it.
+ */
+function GameBadge({ game, big }: { game: string | null; big?: boolean }): React.JSX.Element {
+  const known = game && game in GAME_HUE
+  const hue = known ? GAME_HUE[game as Game] : null
+  const label = gameLabel(game)
+  return (
+    <span
+      className={`gbadge${big ? ' big' : ''}`}
+      title={label}
+      style={hue === null ? undefined : ({ '--hue': hue } as React.CSSProperties)}
+      aria-hidden
+    >
+      {label.slice(0, 1)}
+    </span>
   )
 }
 
@@ -423,7 +449,11 @@ function Detail({
         </Button>
       </div>
       <div className="row detail-title">
-        <h1>{row.name}</h1>
+        <GameBadge game={row.game} big />
+        <div>
+          <h1>{row.name}</h1>
+          <p className="dim gname">{gameLabel(row.game)}</p>
+        </div>
         <span className="spacer" />
         <StatusPill state={row.state} />
       </div>

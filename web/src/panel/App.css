@@ -136,6 +136,41 @@ h2 {
   margin-top: -4px;
 }
 
+/* Game identity. The hue comes from the game, the lightness from the theme —
+ * a fixed colour that reads well on the dark surface is mud on the light one. */
+.gbadge {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 26px;
+  height: 26px;
+  border-radius: var(--radius-xs);
+  background: hsl(var(--hue, 250) 70% 55% / 0.16);
+  border: 1px solid hsl(var(--hue, 250) 70% 60% / 0.34);
+  color: hsl(var(--hue, 250) 80% 72%);
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+:root[data-theme='light'] .gbadge {
+  color: hsl(var(--hue, 250) 70% 34%);
+  background: hsl(var(--hue, 250) 70% 50% / 0.12);
+}
+
+.gbadge.big {
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-sm);
+  font-size: 17px;
+}
+
+/* the game's full name, under the server's own name in the detail header */
+.gname {
+  font-size: var(--fs-small);
+  margin-top: 1px;
+}
+
 .metrics {
   display: grid;
   grid-template-columns: repeat(4, 1fr);

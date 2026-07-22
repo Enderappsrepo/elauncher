@@ -247,6 +247,11 @@ alter table public.server_status add column if not exists started_at timestamptz
 alter table public.server_status add column if not exists version text;
 -- palworld: whether the server lists itself in the official community browser
 alter table public.server_status add column if not exists community boolean;
+-- which game a server runs. The panel used to learn this only after opening a
+-- server, via the host's 'info' request, so a list of them was eight rows that
+-- all looked alike. One column costs nothing and is worth more than any label
+-- the name happens to carry.
+alter table public.server_status add column if not exists game text;
 
 -- phone notifications (web push). The launcher generates a per-account VAPID
 -- keypair; the dashboard registers each phone's push subscription.

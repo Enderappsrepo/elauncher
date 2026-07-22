@@ -32,6 +32,7 @@ function toRow(raw: Record<string, unknown>): ServerRow {
   return {
     server_id: String(raw.server_id),
     owner_id: String(raw.owner_id ?? ''),
+    game: raw.game ? String(raw.game) : null,
     name: String(raw.name ?? 'Server'),
     state: toState(raw.state),
     players: Array.isArray(raw.players) ? (raw.players as string[]) : [],
