@@ -45,6 +45,7 @@ export async function queueCommand(
 }
 
 export type RequestAction =
+  | 'info'
   | 'files' | 'readFile' | 'writeFile' | 'deleteFile' | 'deleteFiles' | 'mkdir' | 'movePath'
   | 'downloadChunk' | 'uploadChunk'
   | 'mods' | 'installMod' | 'removeMod'
@@ -55,6 +56,23 @@ export type RequestAction =
   | 'shares' | 'share' | 'unshare'
 
 const REQUEST_TIMEOUT_MS = 22_000
+
+/**
+ * Some requests do real work before they can answer — downloading a mod and its
+ * dependencies, rebuilding a server, moving a chunk of a large file. Giving up
+ * on those at the default deadline reports a failure for something that is still
+ * running and will succeed.
+ *
+ * Kept here rather than passed by each caller so the knowledge of what is slow
+ * lives in one place, and a tab cannot get it wrong by omission.
+ */
+const SLOW_ACTIONS: Partial<Record<RequestAction, number>> = {
+  installMod: 40_000,
+  rebuild: 120_000,
+  uploadChunk: 60_000,
+  downloadChunk: 60_000,
+  writeFile: 40_000
+}
 
 /**
  * Ask the host something and wait for its answer.
@@ -80,7 +98,7 @@ export async function sendRequest<T = unknown>(
   if (error) throw new Error(error.message)
 
   const id = (data as { id: string }).id
-  const deadline = Date.now() + REQUEST_TIMEOUT_MS
+  const deadline = Date.now() + (SLOW_ACTIONS[action] ?? REQUEST_TIMEOUT_MS)
   for (;;) {
     await new Promise((r) => setTimeout(r, 900))
     const { data: row } = await supabase

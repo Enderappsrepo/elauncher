@@ -1,0 +1,69 @@
+/* Access tab.
+ *
+ * One list of people and one field. The only thing worth styling is the row: a
+ * name, what that name can do, and the control that takes it away — which has to
+ * stay reachable with a thumb and must never be the thing that wraps off screen.
+ */
+
+.access-group h2 {
+  color: var(--text-dim);
+  font-size: var(--fs-small);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.access-person {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  min-height: 44px;
+  flex-wrap: wrap;
+}
+
+/* Sized up from the list avatar: this one carries an initial, and 26px cannot. */
+.access-face {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: var(--radius-sm);
+  color: var(--text-dim);
+  font-size: var(--fs-small);
+  font-weight: 700;
+}
+
+/* Usernames are chosen by other people and some of them are very long, so the
+ * name truncates and the control it belongs to keeps its place. */
+.access-who {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  flex: 1;
+  min-width: 120px;
+  overflow: hidden;
+}
+
+.access-who b {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.access-who i {
+  color: var(--text-faint);
+  font-size: var(--fs-small);
+  font-style: normal;
+}
+
+.access-confirm {
+  display: flex;
+  gap: 6px;
+  flex: none;
+}
+
+.access-fine {
+  font-size: var(--fs-small);
+  line-height: 1.6;
+}
