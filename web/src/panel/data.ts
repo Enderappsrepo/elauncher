@@ -34,7 +34,7 @@ export function mockServers(): ServerRow[] {
   return [
     {
       server_id: '1',
-      owner_id: 'preview-owner',
+      owner_id: '00000000-0000-4000-8000-000000000001',
       name: 'Survival',
       state: 'running',
       players: ['Enderkiller124', 'Nova', 'pip'],
@@ -54,7 +54,7 @@ export function mockServers(): ServerRow[] {
     },
     {
       server_id: '2',
-      owner_id: 'preview-owner',
+      owner_id: '00000000-0000-4000-8000-000000000001',
       name: 'Palworld — Dedicated',
       state: 'starting',
       players: [],
@@ -67,7 +67,7 @@ export function mockServers(): ServerRow[] {
     },
     {
       server_id: '3',
-      owner_id: 'preview-owner',
+      owner_id: '00000000-0000-4000-8000-000000000001',
       name: 'ATM10',
       state: 'error',
       players: [],
@@ -84,7 +84,7 @@ export function mockServers(): ServerRow[] {
     },
     {
       server_id: '4',
-      owner_id: 'preview-owner',
+      owner_id: '00000000-0000-4000-8000-000000000001',
       name: 'Creative',
       state: 'stopped',
       players: [],

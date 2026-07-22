@@ -1,0 +1,128 @@
+/* Network tab.
+ *
+ * The whole screen is a list of ports and a light for each, so the light is what
+ * the layout is built around: colour alone never carries it — every row states
+ * where the port reaches, or why it doesn't, in words. */
+
+.net select.input,
+.net input.input {
+  font-family: inherit;
+}
+
+.port + .port {
+  border-top: 1px solid var(--border);
+  padding-top: 12px;
+}
+
+.port-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  flex: none;
+  background: var(--text-faint);
+}
+
+.port-dot.on {
+  background: var(--green);
+  box-shadow: 0 0 0 3px var(--green-soft);
+}
+
+.port-dot.warn {
+  background: var(--yellow);
+  box-shadow: 0 0 0 3px var(--yellow-soft);
+}
+
+.port-dot.bad {
+  background: var(--red);
+  box-shadow: 0 0 0 3px var(--red-soft);
+}
+
+.port-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.port-name {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.port-meta {
+  color: var(--text-dim);
+  overflow-wrap: anywhere;
+}
+
+.port-why {
+  margin-top: 6px;
+  padding-left: 21px;
+  color: var(--text-faint);
+  font-size: var(--fs-small);
+  line-height: 1.45;
+}
+
+.port-why.bad {
+  color: var(--red);
+}
+
+.port-presets {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(auto-fill, minmax(232px, 1fr));
+}
+
+.port-preset {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 3px;
+  padding: 10px 14px;
+  font-weight: 500;
+  text-align: left;
+}
+
+.port-preset .port-name {
+  flex: 1;
+}
+
+.port-note {
+  color: var(--text-faint);
+  font-size: var(--fs-small);
+  font-weight: 400;
+  line-height: 1.4;
+  white-space: normal;
+}
+
+/* Stacked on a phone, one line once there is room for it. */
+.port-new {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: 1fr;
+}
+
+@media (min-width: 560px) {
+  .port-new {
+    grid-template-columns: 1fr 104px 116px auto;
+    align-items: center;
+  }
+}
+
+.port-choice {
+  flex-wrap: wrap;
+}
+
+/* Sticky action dock, so the save is under the thumb rather than at the end of
+ * however many rules this server has. */
+.port-dock {
+  position: sticky;
+  bottom: 0;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  padding-bottom: calc(12px + env(safe-area-inset-bottom));
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  background: var(--glass-bg);
+  backdrop-filter: blur(16px) saturate(1.3);
+  box-shadow: var(--shadow-lift);
+}

@@ -6,22 +6,58 @@ import { Auth } from './Auth'
 import { mockServers, uptime } from './data'
 import type { ServerRow } from './data'
 import { primeSenderName, queueCommand } from './relay'
+import { makeAsk } from './tabs/types'
+import { Access } from './tabs/Access'
+import { Automation } from './tabs/Automation'
+import { Files } from './tabs/Files'
+import { Mods } from './tabs/Mods'
+import { Network } from './tabs/Network'
+import { Players } from './tabs/Players'
+import { Settings } from './tabs/Settings'
+import { Admin } from './views/Admin'
+import { Billing } from './views/Billing'
+import { Health } from './views/Health'
 import { useServers } from './useServers'
-
-/** Send an instruction to the machine running a server. */
-type Control = (row: ServerRow, action: 'start' | 'stop' | 'command', payload?: string) => Promise<void>
 import '@web/styles/ui.css'
 import './App.css'
 
+/** Send an instruction to the machine running a server. */
+type Control = (row: ServerRow, action: 'start' | 'stop' | 'command', payload?: string) => Promise<void>
+
 type Phase = { kind: 'loading' } | { kind: 'signedOut' } | { kind: 'signedIn'; session: Session | null }
 
-const TABS = ['overview', 'console', 'players', 'settings'] as const
+const TABS = [
+  'overview',
+  'console',
+  'settings',
+  'players',
+  'mods',
+  'files',
+  'network',
+  'automation',
+  'access'
+] as const
 type Tab = (typeof TABS)[number]
 const TAB_LABELS: Record<Tab, string> = {
   overview: 'Overview',
   console: 'Console',
+  settings: 'Settings',
   players: 'Players',
-  settings: 'Settings'
+  mods: 'Mods',
+  files: 'Files',
+  network: 'Network',
+  automation: 'Automation',
+  access: 'Access'
+}
+
+/** Account-wide screens, as opposed to the per-server tabs above. */
+const SECTIONS = ['servers', 'health', 'billing', 'admin'] as const
+type Section = (typeof SECTIONS)[number]
+const SECTION_LABELS: Record<Section, string> = {
+  servers: 'Servers',
+  health: 'Health',
+  billing: 'Billing',
+  admin: 'Admin'
 }
 
 export function App(): React.JSX.Element {
@@ -40,8 +76,20 @@ export function App(): React.JSX.Element {
   const live = useServers(userId, !mock && phase.kind === 'signedIn')
   const servers = mock ?? live.rows
 
+  const [section, setSection] = useState<Section>('servers')
+  const [isAdmin, setIsAdmin] = useState(false)
+
   useEffect(() => {
-    if (userId) void primeSenderName(userId)
+    if (!userId) return
+    void primeSenderName(userId)
+    // decides only whether the Admin tab is offered; Admin.tsx re-checks for
+    // itself, and the policies are what actually enforce it
+    void supabase
+      .from('profiles')
+      .select('is_admin')
+      .eq('id', userId)
+      .maybeSingle()
+      .then(({ data }) => setIsAdmin(Boolean((data as { is_admin?: boolean } | null)?.is_admin)))
   }, [userId])
 
   const control = useCallback<Control>(
@@ -103,14 +151,39 @@ export function App(): React.JSX.Element {
       <main className="wrap page">
         {phase.kind === 'loading' && <ListSkeleton />}
         {phase.kind === 'signedOut' && <Auth />}
-        {phase.kind === 'signedIn' &&
-          (open ? (
-            <Detail row={open} control={control} onBack={() => setOpenId(null)} />
-          ) : live.loading && !mock ? (
-            <ListSkeleton />
-          ) : (
-            <ServerList rows={servers} error={live.error} control={control} onOpen={setOpenId} />
-          ))}
+        {phase.kind === 'signedIn' && (
+          <>
+            {/* the section switcher is hidden inside a server, where the tab strip
+                is already carrying the navigation and two rows of it would compete */}
+            {!open && (
+              <div className="sections">
+                <Tabs
+                  tabs={isAdmin ? SECTIONS : SECTIONS.filter((s) => s !== 'admin')}
+                  value={section}
+                  onChange={setSection}
+                  labels={SECTION_LABELS}
+                />
+              </div>
+            )}
+            {section === 'servers' &&
+              (open ? (
+                <Detail
+                  row={open}
+                  userId={userId ?? ''}
+                  preview={Boolean(mock)}
+                  control={control}
+                  onBack={() => setOpenId(null)}
+                />
+              ) : live.loading && !mock ? (
+                <ListSkeleton />
+              ) : (
+                <ServerList rows={servers} error={live.error} control={control} onOpen={setOpenId} />
+              ))}
+            {section === 'health' && <Health userId={userId ?? ''} />}
+            {section === 'billing' && <Billing userId={userId ?? ''} />}
+            {section === 'admin' && isAdmin && <Admin userId={userId ?? ''} />}
+          </>
+        )}
       </main>
     </div>
   )
@@ -318,14 +391,30 @@ function ConsoleTab({ row, control }: { row: ServerRow; control: Control }): Rea
 
 function Detail({
   row,
+  userId,
+  preview,
   control,
   onBack
 }: {
   row: ServerRow
+  userId: string
+  preview: boolean
   control: Control
   onBack: () => void
 }): React.JSX.Element {
   const [tab, setTab] = useState<Tab>('console')
+  // rebuilt only when the server changes, because several tabs treat `ask` as a
+  // dependency and a fresh identity each render would loop them
+  const ask = useMemo(() => {
+    // Preview data has no machine behind it. Letting the request go anyway put a
+    // Postgres type error on screen in every tab — the tabs were reporting it
+    // correctly, but the fixture had no business asking in the first place.
+    if (preview) {
+      return (() =>
+        Promise.reject(new Error('Preview mode — no host is connected.'))) as ReturnType<typeof makeAsk>
+    }
+    return makeAsk(row, userId)
+  }, [preview, row.server_id, row.owner_id, userId])
   return (
     <div className="detail rise">
       <div className="head">
@@ -351,22 +440,13 @@ function Detail({
             </div>
           </div>
         )}
-        {tab === 'players' && (
-          <div className="surface pad stack">
-            {row.players.length === 0 && <p className="dim">Nobody online.</p>}
-            {row.players.map((p) => (
-              <div key={p} className="row player">
-                <span className="avatar" aria-hidden />
-                {p}
-              </div>
-            ))}
-          </div>
-        )}
-        {tab === 'settings' && (
-          <div className="surface pad">
-            <p className="dim">Settings port pending.</p>
-          </div>
-        )}
+        {tab === 'settings' && <Settings row={row} userId={userId} ask={ask} />}
+        {tab === 'players' && <Players row={row} userId={userId} ask={ask} />}
+        {tab === 'mods' && <Mods row={row} userId={userId} ask={ask} />}
+        {tab === 'files' && <Files row={row} userId={userId} ask={ask} />}
+        {tab === 'network' && <Network row={row} userId={userId} ask={ask} />}
+        {tab === 'automation' && <Automation row={row} userId={userId} ask={ask} />}
+        {tab === 'access' && <Access row={row} userId={userId} ask={ask} />}
       </div>
     </div>
   )

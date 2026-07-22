@@ -1,0 +1,135 @@
+/* Settings tab.
+ *
+ * Everything here is layout for a screen whose contents are unknown until the
+ * host answers — a hundred and fifty keys for Zomboid, four for Valheim — so it
+ * is built out of a flow that copes with either, rather than a fixed form. */
+
+/* One column on a phone; fills out to as many as fit after that. Prose and
+ * passwords take the full width wherever they land, because a name truncated to
+ * half a phone is a name you cannot check. */
+.set-grid {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+}
+
+.set-grid > .full {
+  grid-column: 1 / -1;
+}
+
+/* Inputs don't inherit the page font, and a settings screen full of Times New
+ * Roman selects is the tell that nobody looked at it. */
+.set select.input,
+.set input.input {
+  font-family: inherit;
+}
+
+/* Matches the <label> styling ui.css gives a .field, for the rows whose control
+ * is a button group and so has no label to point at. */
+.set .field > .set-label {
+  color: var(--text-dim);
+  font-size: var(--fs-small);
+  font-weight: 600;
+}
+
+.set-hint {
+  color: var(--text-faint);
+  font-size: var(--fs-small);
+  line-height: 1.45;
+}
+
+/* The whole row is the target, not the 20px box. */
+.set-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  min-height: 44px;
+  padding: 7px 0;
+  cursor: pointer;
+}
+
+.set-check input {
+  width: 20px;
+  height: 20px;
+  margin: 3px 0 0;
+  flex: none;
+  accent-color: var(--accent);
+}
+
+.set-checkbody {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.set-checklabel {
+  font-weight: 600;
+}
+
+/* Preset buttons beside their own field: rates, crossplay platforms. Wraps
+ * rather than scrolls — a control that leaves the screen sideways on a phone is
+ * a control that never gets pressed. */
+.set-seg {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.set-seg .input {
+  flex: 1 1 110px;
+  min-width: 110px;
+}
+
+.set-grouphead {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 52px;
+  padding: 0 16px;
+  border-radius: var(--radius);
+  font-size: var(--fs-h3);
+  font-weight: 700;
+  text-align: left;
+}
+
+.set-grouptitle {
+  flex: 1;
+  min-width: 0;
+}
+
+.set-chev {
+  color: var(--text-faint);
+  font-size: 18px;
+  transition: transform 0.24s var(--ease-out);
+}
+
+.set-chev.open {
+  transform: rotate(90deg);
+}
+
+.set-groupbody {
+  padding: 4px 16px 16px;
+  border-top: 1px solid var(--border);
+}
+
+/* Sticky action dock. It appears only when there is something to save or
+ * something to report, so the screen keeps its full height the rest of the
+ * time, and it sits at the bottom where a thumb already is. */
+.set-dock {
+  position: sticky;
+  bottom: 0;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  padding-bottom: calc(12px + env(safe-area-inset-bottom));
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  background: var(--glass-bg);
+  backdrop-filter: blur(16px) saturate(1.3);
+  box-shadow: var(--shadow-lift);
+  animation: rise 0.32s var(--ease-spring) both;
+}
