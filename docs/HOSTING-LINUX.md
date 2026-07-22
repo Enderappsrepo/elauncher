@@ -121,8 +121,10 @@ EnvironmentFile=/etc/elauncher.env
 # often noexec (breaks the Java runtime) and wiped on reboot (loses worlds)
 Environment=HOME=/root
 Environment=XDG_CONFIG_HOME=/root/.config
-# xvfb-run gives Electron a virtual display; --no-sandbox is required as root
-ExecStart=/usr/bin/xvfb-run -a /root/elauncher/node_modules/.bin/electron ./out/main/index.js --headless --no-sandbox
+# xvfb-run gives Electron a virtual display; --no-sandbox is required as root;
+# --disable-gpu because there is no GPU behind Xvfb (see notes — without it the
+# host FATALs every couple of minutes)
+ExecStart=/usr/bin/xvfb-run -a /root/elauncher/node_modules/.bin/electron ./out/main/index.js --headless --no-sandbox --disable-gpu
 Restart=always
 RestartSec=5
 
@@ -181,6 +183,15 @@ cd /root/elauncher && git pull && npm ci && npm run build && systemctl restart e
 ---
 
 ## 8. Notes & gotchas
+
+- **`--disable-gpu` is not optional.** Without it the host dies every couple of
+  minutes with `FATAL:electron_browser_main_parts.cc:527] Failed to shutdown.`
+  and `exited with signal SIGTRAP`, and systemd restarts it. Electron still
+  starts a GPU process under Xvfb, where there is no GPU for it to talk to, and
+  when that process goes down it takes the browser process with it. On an empty
+  box this only looks untidy in the journal; once the box is hosting, the
+  graceful-shutdown handler stops and restarts every running game server on each
+  cycle. Confirmed on Ubuntu 24.04 / Electron 43, 2026-07-22.
 
 - **Palworld on Linux** installs the Linux depot via SteamCMD (`steamcmd_linux.tar.gz`)
   and launches `PalServer.sh`. SteamCMD's binary is 32-bit — without `lib32gcc-s1`
