@@ -3,6 +3,7 @@ import type { LocalServer, LocalServerState, ManagedServer, PlanLimits, ServerSh
 import { isCloudConfigured } from '@shared/cloudConfig'
 import { getClient, getUser } from './cloud'
 import { deviceId } from './device'
+import { HOSTING_NODE } from './headless'
 import { collectHostVitals } from './hostHealth'
 import {
   archiveServer,
@@ -586,9 +587,16 @@ async function publishHeartbeat(): Promise<void> {
     if (!me) return
     hostUserId = me
     const local = listLocalServers()
-    if (local.length === 0 && listArchivedServers().length === 0) return
-    await publishStatuses(supabase, me, local)
-    lastPublish = Date.now()
+    // an empty hosting node still publishes vitals: a freshly built VPS holds no
+    // servers yet, and that is exactly when you're looking at the fleet view to
+    // check whether it came up. Ordinary launchers stay silent until they host
+    // something, so the view still never becomes a window onto players' PCs.
+    const idle = local.length === 0 && listArchivedServers().length === 0
+    if (idle && !HOSTING_NODE) return
+    if (!idle) {
+      await publishStatuses(supabase, me, local)
+      lastPublish = Date.now()
+    }
     // vitals move far slower than server state — they ride a slower beat
     if (Date.now() - lastHealthPublish >= HOST_HEALTH_MS) {
       lastHealthPublish = Date.now()
