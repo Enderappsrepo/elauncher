@@ -18,6 +18,8 @@
     "start": "electron-vite preview",
     "icon": "node scripts/make-ico.mjs",
     "docs": "node scripts/serve-docs.mjs",
+    "web:dev": "vite --config vite.web.config.ts",
+    "web:build": "vite build --config vite.web.config.ts",
     "sync:tokens": "node scripts/sync-tokens.mjs",
     "dist": "electron-vite build && electron-builder --win",
     "release": "electron-vite build && electron-builder --win --publish always",

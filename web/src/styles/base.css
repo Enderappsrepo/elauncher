@@ -1,0 +1,86 @@
+/* Foundation for both Pages apps.
+ *
+ * The design tokens are the same file the Electron renderer uses — imported
+ * here rather than spliced in by scripts/sync-tokens.mjs, which existed only
+ * because these pages had no bundler. One source of truth, no generated blocks.
+ */
+@import '@fontsource-variable/inter';
+@import '@shared/tokens.css';
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Inter Variable', system-ui, -apple-system, sans-serif;
+  font-size: var(--fs-body);
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  /* the panel is used from phones far more than from desktops */
+  overscroll-behavior-y: none;
+}
+
+/* Ambient aurora. Fixed and behind everything, so scrolling moves content over
+ * a still field of light rather than dragging the gradient with it — the thing
+ * that makes a page feel like a surface instead of a document. */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(60ch 60ch at 12% -10%, var(--aurora-1), transparent 70%),
+    radial-gradient(50ch 50ch at 92% 8%, var(--aurora-2), transparent 70%),
+    radial-gradient(45ch 45ch at 55% 108%, var(--aurora-3), transparent 70%);
+}
+
+h1,
+h2,
+h3,
+p {
+  margin: 0;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  border: 0;
+  background: none;
+  cursor: pointer;
+}
+
+:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+  border-radius: var(--radius-xs);
+}
+
+/* Respect the setting rather than animating regardless — the panel is a tool
+ * people reach for when something is already wrong. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

@@ -1,0 +1,109 @@
+.shell {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+}
+
+/* Sticky glass bar. --glass-bg is the surface (translucent by itself) rather
+ * than --glass, which is an overlay and would kill the backdrop blur. */
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px max(16px, env(safe-area-inset-left)) 12px max(16px, env(safe-area-inset-right));
+  background: var(--glass-bg);
+  border-bottom: 1px solid var(--border);
+  backdrop-filter: blur(20px) saturate(1.4);
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.mark {
+  width: 22px;
+  height: 22px;
+  border-radius: 7px;
+  background: linear-gradient(135deg, var(--accent), var(--accent-2));
+  box-shadow: 0 0 0 1px var(--accent-line), 0 6px 18px var(--accent-glow);
+}
+
+.wordmark {
+  font-size: var(--fs-h2);
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.chip {
+  padding: 2px 8px;
+  border: 1px solid var(--accent-line);
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: var(--fs-small);
+  font-weight: 600;
+}
+
+.stage {
+  flex: 1;
+  display: grid;
+  place-items: center;
+  padding: 24px 16px calc(24px + env(safe-area-inset-bottom));
+}
+
+.card {
+  width: min(420px, 100%);
+  padding: 28px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background-color: var(--bg-card);
+  background-image: var(--glass);
+  box-shadow: var(--shadow-lift);
+}
+
+.card h1 {
+  font-size: var(--fs-h1);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.dim {
+  color: var(--text-dim);
+  margin-top: 6px;
+}
+
+/* Entrances use the spring curve; the slight overshoot is what separates
+ * "appeared" from "arrived". */
+.rise {
+  animation: rise 0.42s var(--ease-spring) both;
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.985);
+  }
+}
+
+/* Held frame while the session resolves. Not a spinner — at this duration a
+ * spinner is just a flash of anxiety. */
+.settle {
+  width: min(420px, 100%);
+  height: 148px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: linear-gradient(100deg, var(--bg-card) 30%, var(--bg-hover) 50%, var(--bg-card) 70%)
+    0 0 / 300% 100%;
+  animation: sweep 1.4s ease-in-out infinite;
+}
+
+@keyframes sweep {
+  to {
+    background-position: -200% 0;
+  }
+}
