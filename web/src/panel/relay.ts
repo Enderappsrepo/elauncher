@@ -71,7 +71,11 @@ const SLOW_ACTIONS: Partial<Record<RequestAction, number>> = {
   rebuild: 120_000,
   uploadChunk: 60_000,
   downloadChunk: 60_000,
-  writeFile: 40_000
+  writeFile: 40_000,
+  // a world folder is tens of thousands of small files, and the host deletes
+  // them before it answers
+  deleteFile: 45_000,
+  deleteFiles: 45_000
 }
 
 /**

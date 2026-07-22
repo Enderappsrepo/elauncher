@@ -1,0 +1,339 @@
+/* File manager.
+ *
+ * The one screen in the panel with an unbounded amount of content — a mods
+ * folder is four hundred rows of names nobody can shorten — so every rule here
+ * is really about the same thing: a long name must never widen the page. Names
+ * truncate, meta lines truncate, the crumb trail scrolls inside itself, and
+ * nothing in a row is allowed to size itself from its text.
+ */
+
+.fm {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* ---------- crumbs ---------- */
+
+.fm-crumbs {
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  /* the trail grows a segment per folder and is the one thing here that is
+   * genuinely wider than a phone, so it scrolls rather than wraps */
+  mask-image: linear-gradient(90deg, transparent, #000 10px);
+}
+
+.fm-crumbs::-webkit-scrollbar {
+  display: none;
+}
+
+.fm-crumb {
+  flex: none;
+  max-width: 44vw;
+  min-height: 44px;
+  padding: 0 10px;
+  border-radius: var(--radius-xs);
+  color: var(--text-dim);
+  font-size: var(--fs-small);
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.fm-crumb.here {
+  color: var(--text);
+  background: var(--bg-hover);
+}
+
+.fm-sep {
+  flex: none;
+  color: var(--text-faint);
+}
+
+/* ---------- toolbar ---------- */
+
+/* Wraps instead of scrolling: these are the actions, and an action that has
+ * scrolled off the side of a phone may as well not exist. */
+.fm-tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.fm-find {
+  flex: 1 1 150px;
+  min-width: 0;
+}
+
+.fm-sort {
+  flex: 0 1 auto;
+  width: auto;
+  padding-inline: 10px;
+}
+
+/* ---------- listing ---------- */
+
+.fm-zone {
+  position: relative;
+}
+
+.fm-drop {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  border: 2px dashed var(--accent);
+  border-radius: var(--radius);
+  background: var(--accent-soft);
+  backdrop-filter: blur(2px);
+  color: var(--text);
+  font-weight: 700;
+  pointer-events: none;
+}
+
+.fm-list {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.fm-item + .fm-item {
+  border-top: 1px solid var(--border);
+}
+
+.fm-row {
+  display: flex;
+  align-items: center;
+  min-height: 56px;
+  padding-right: 4px;
+}
+
+.fm-row.on {
+  background: var(--accent-soft);
+}
+
+.fm-check {
+  flex: none;
+  width: 44px;
+  align-self: stretch;
+  display: grid;
+  place-items: center;
+}
+
+.fm-box {
+  width: 20px;
+  height: 20px;
+  display: grid;
+  place-items: center;
+  border: 1.5px solid var(--border-strong);
+  border-radius: 6px;
+  color: transparent;
+  font-size: 12px;
+  line-height: 1;
+  transition:
+    background-color 0.14s var(--ease-out),
+    border-color 0.14s var(--ease-out);
+}
+
+.fm-row.on .fm-box {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #fff;
+}
+
+/* min-width:0 on both the button and the text column — without it the flex
+ * items size to their longest word and the row pushes the page sideways. */
+.fm-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 6px 8px 0;
+  text-align: left;
+}
+
+.fm-icon {
+  flex: none;
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--radius-xs);
+  background: var(--track-bg);
+  color: var(--text-faint);
+  font-size: 9.5px;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  overflow: hidden;
+}
+
+.fm-icon.dir {
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.fm-text {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.fm-name,
+.fm-meta {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.fm-name {
+  font-weight: 600;
+}
+
+.fm-meta {
+  color: var(--text-faint);
+  font-size: 11.5px;
+}
+
+.fm-more {
+  flex: none;
+  width: 44px;
+  align-self: stretch;
+  color: var(--text-dim);
+  font-size: 17px;
+  line-height: 1;
+  border-radius: var(--radius-xs);
+}
+
+.fm-more[aria-expanded='true'] {
+  color: var(--text);
+  background: var(--bg-hover);
+}
+
+/* Row actions open in place rather than in a floating menu: a popover anchored
+ * to a row in a scrolling list is the thing that goes wrong on a phone. */
+.fm-acts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 0 12px 12px;
+}
+
+.fm-empty {
+  padding: 34px 20px;
+  text-align: center;
+}
+
+/* ---------- selection ---------- */
+
+.fm-sel {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--accent-line);
+  border-radius: var(--radius-sm);
+  background: var(--accent-soft);
+}
+
+/* ---------- editor and preview ---------- */
+
+.fm-edit {
+  width: 100%;
+  min-height: 44vh;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--track-bg);
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 12.5px;
+  line-height: 1.6;
+  resize: vertical;
+}
+
+.fm-edit:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--focus-ring);
+}
+
+.fm-dirty {
+  color: var(--yellow);
+}
+
+.fm-prev {
+  display: grid;
+  place-items: center;
+  padding: 12px;
+  background: var(--track-bg);
+  border-radius: var(--radius-sm);
+}
+
+.fm-prev img {
+  max-width: 100%;
+  max-height: 58vh;
+  border-radius: var(--radius-xs);
+}
+
+/* ---------- transfers ---------- */
+
+.fm-xfer {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--track-bg);
+  font-size: var(--fs-small);
+}
+
+.fm-xfer.bad {
+  color: var(--red);
+  border-color: color-mix(in srgb, var(--red) 32%, transparent);
+  background: var(--red-soft);
+}
+
+.fm-xname {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.fm-track {
+  flex: none;
+  width: 72px;
+  height: 5px;
+  border-radius: 999px;
+  background: var(--bg-active);
+  overflow: hidden;
+}
+
+.fm-fill {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, var(--accent), var(--accent-2));
+  transition: width 0.2s var(--ease-out);
+}
+
+.fm-xpct {
+  flex: none;
+  min-width: 42px;
+  text-align: right;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+}
+
+.fm-xfer.done .fm-xpct {
+  color: var(--green);
+}
