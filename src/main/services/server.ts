@@ -25,11 +25,15 @@ import type {
   ServerPortsView,
   ServerSource,
   ServerStateEvent,
-  ServerTaskEvent
+  ServerTaskEvent,
+  ServerTimeline,
+  TimelineEventKind
 } from '@shared/types'
 import { archivedServersFile, instanceDir, javaDir, serverArchivesDir, serverDir, serversFile } from '../paths'
 import { readJson, writeJson } from '../store'
 import { killProcessTree } from './proctree'
+import { startSleeper, type SleeperHandle } from './sleeper'
+import { addEvent, addSample, flushTimelines, forgetTimeline, readTimeline } from './timeline'
 import { downloadAgent, withRetries } from '../net'
 import { CF_LOADER_TYPES, curseforgeFetch, downloadToFile, listInstalledMods, modrinthFetch, readModsMeta, type CfAccess } from './mods'
 import {
@@ -1092,6 +1096,10 @@ export async function deleteServer(id: string): Promise<LocalServer[]> {
     return listLocalServers()
   }
   await ensureStopped(id)
+  // drop any buffered timeline first, or the next flush would recreate a file
+  // inside the folder we just deleted
+  forgetTimeline(serverDir(id))
+  await clearSleeper(id)
   return removeServer(id)
 }
 
@@ -1287,6 +1295,9 @@ const restartInFlight = new Set<string>()
 /** Warn players, save, stop, wait, start again. Bails out if someone stops the server manually. */
 async function scheduledRestart(id: string, reason: string): Promise<void> {
   if (restartInFlight.has(id)) return
+  // a memory-driven restart is the one worth telling apart on the timeline —
+  // it is the visible end of a leak the samples were already drawing
+  recordEvent(id, /memory/i.test(reason) ? 'oom' : 'restart', reason)
   restartInFlight.add(id)
   try {
     await runScheduledRestart(id, reason)
@@ -1438,6 +1449,24 @@ function startAutomation(id: string): void {
   if (auto.backupIntervalHours && auto.backupIntervalHours > 0) {
     timers.push(setInterval(() => void backupServer(id), auto.backupIntervalHours * 3_600_000))
   }
+  if (auto.sleepWhenEmptyMin && auto.sleepWhenEmptyMin > 0) {
+    const idleMs = auto.sleepWhenEmptyMin * 60_000
+    // the clock starts now, not at boot: a server that has just come up has had
+    // no chance to be joined yet, and sleeping it instantly would fight anyone
+    // who is still loading in
+    emptySince.set(id, Date.now())
+    timers.push(
+      setInterval(() => {
+        if ((states.get(id) ?? 'stopped') !== 'running') return
+        if ((players.get(id)?.size ?? 0) > 0) {
+          emptySince.set(id, Date.now())
+          return
+        }
+        const since = emptySince.get(id) ?? Date.now()
+        if (Date.now() - since >= idleMs) void sleepServer(id)
+      }, 30_000)
+    )
+  }
   automationTimers.set(id, timers)
 }
 
@@ -1446,9 +1475,101 @@ function stopAutomation(id: string): void {
   automationTimers.delete(id)
 }
 
+// ---------- sleep when empty ----------
+// An idle server costs its whole memory footprint for nobody. Sleeping stops it
+// and leaves a listener on the port that starts it again when someone connects,
+// so a box can carry far more servers than it could ever run at once.
+
+/**
+ * Note an event on a server's timeline, if it keeps one. Silent no-op otherwise,
+ * so callers never have to check the setting themselves.
+ */
+function recordEvent(id: string, kind: TimelineEventKind, detail: string): void {
+  const server = loadServers().find((s) => s.id === id)
+  if (!server?.automation?.timeline) return
+  addEvent(serverDir(id), kind, detail)
+}
+
+/** Everything the panel needs to draw one server's history. */
+export function getTimeline(id: string): ServerTimeline {
+  return readTimeline(serverDir(id))
+}
+
+const sleepers = new Map<string, SleeperHandle>()
+/** when each running server last had someone on it — reset on every join */
+const emptySince = new Map<string, number>()
+
+export function isSleeping(id: string): boolean {
+  return sleepers.has(id)
+}
+
+/**
+ * Put a server to sleep: stop it, then hold its port.
+ *
+ * The listener binds only after the game has genuinely exited — bind too early
+ * and it loses the race for the port, leaving a server that is neither running
+ * nor reachable.
+ */
+async function sleepServer(id: string): Promise<void> {
+  const server = loadServers().find((s) => s.id === id)
+  if (!server || sleepers.has(id)) return
+  if ((states.get(id) ?? 'stopped') !== 'running') return
+
+  pushLog(id, '[ELauncher] Empty — sleeping to free its memory. It starts again when someone connects.')
+  recordEvent(id, 'sleep', 'Slept while empty')
+  stopServer(id)
+  const stopped = await waitForState(id, 'stopped', 180_000)
+  if (!stopped) {
+    pushLog(id, "[ELauncher] Sleep cancelled — the server didn't stop in time, so its port is still in use.")
+    return
+  }
+  // a start that arrived while we were stopping wins; never sleep on top of it
+  if ((states.get(id) ?? 'stopped') !== 'stopped') return
+
+  const game = gameOf(server)
+  const handle = startSleeper({
+    port: server.port,
+    game: game === 'minecraft' ? 'minecraft' : 'other',
+    protocol: mainProtocol(server),
+    motd: `${server.name} is asleep · join to wake it (about a minute)`,
+    onLog: (line) => pushLog(id, line),
+    onWake: () => void wakeServer(id, 'a player connected')
+  })
+  sleepers.set(id, handle)
+  setState(id, 'sleeping')
+}
+
+/** Take a server out of sleep and start it for real. */
+export async function wakeServer(id: string, why = 'woken'): Promise<void> {
+  const handle = sleepers.get(id)
+  if (!handle) return
+  sleepers.delete(id)
+  await handle.stop() // must fully release the port before the game rebinds it
+  setState(id, 'stopped')
+  pushLog(id, `[ELauncher] Waking up — ${why}`)
+  recordEvent(id, 'wake', why)
+  try {
+    await startServer(id)
+  } catch (e) {
+    pushLog(id, `[ELauncher] Could not wake: ${e instanceof Error ? e.message : String(e)}`)
+  }
+}
+
+/** Drop the listener without starting anything — a deliberate stop while asleep. */
+export async function clearSleeper(id: string): Promise<void> {
+  const handle = sleepers.get(id)
+  if (!handle) return
+  sleepers.delete(id)
+  await handle.stop()
+  emptySince.delete(id)
+}
+
 /** Crash follow-up shared by both games' exit paths. */
 function handleCrashRestart(id: string): void {
   const server = loadServers().find((s) => s.id === id)
+  // recorded before the restartOnCrash check: the crash happened either way, and
+  // a timeline that only shows crashes you chose to recover from is a lie
+  recordEvent(id, 'crash', 'Server exited unexpectedly')
   if (!server?.automation?.restartOnCrash) return
   if (Date.now() - (lastStartAt.get(id) ?? 0) < 90_000) {
     pushLog(id, '[ELauncher] Crashed right after starting — automatic restart skipped to avoid a crash loop.')
@@ -1750,6 +1871,16 @@ async function sampleProcessStats(): Promise<void> {
 
       // memory guard: warned restart when the process crosses the configured limit
       const record = loadServers().find((s) => s.id === id)
+      // the timeline rides the sampler that already runs, so it costs one array
+      // push rather than a second polling loop
+      if (record?.automation?.timeline) {
+        addSample(serverDir(id), {
+          t: now,
+          players: players.get(id)?.size ?? 0,
+          memMb: memoryMB,
+          cpu: cpuPercent
+        })
+      }
       const limit = record?.automation?.restartAboveMemoryMB ?? 0
       if (limit > 0 && memoryMB >= limit && (states.get(id) ?? 'stopped') === 'running' && !restartInFlight.has(id)) {
         pushLog(
@@ -1767,6 +1898,10 @@ async function sampleProcessStats(): Promise<void> {
 }
 
 setInterval(() => void sampleProcessStats(), 10_000)
+// Samples buffer in memory and land on disk here. A minute's worth is a fine
+// thing to lose to a hard kill; a write per sample per server is not.
+setInterval(() => flushTimelines(), 60_000)
+process.on('exit', () => flushTimelines())
 
 /** Start servers flagged autoStart shortly after the launcher boots. */
 export function autoStartConfiguredServers(): void {
@@ -2018,9 +2153,13 @@ export function planCoreList(server: LocalServer): string | null {
 }
 
 export async function startServer(id: string): Promise<void> {
+  // pressing Start on a sleeping server is a wake, not an error — drop the
+  // listener first so the game can take its port back
+  if (sleepers.has(id)) await clearSleeper(id)
   const current = states.get(id) ?? 'stopped'
   if (current !== 'stopped') throw new Error('This server is already running.')
   const server = getServer(id)
+  recordEvent(id, 'start', 'Started')
   enforcePlanLimits(server)
   // mod ports are released at every stop, so re-assert them as it comes back up
   void openExtraPorts(server)
@@ -2255,6 +2394,12 @@ async function startPalworldServer(server: LocalServer): Promise<void> {
 
 /** Graceful stop via the server's own `stop` command, with a kill fallback. */
 export function stopServer(id: string): void {
+  // stopping a sleeping server means "stay down", so the listener goes too —
+  // otherwise the next player to connect would start it right back up
+  if (sleepers.has(id)) {
+    void clearSleeper(id).then(() => setState(id, 'stopped'))
+    return
+  }
   const handle = palworldHandles.get(id) ?? steamGameHandles.get(id)
   if (handle) {
     setState(id, 'stopping')

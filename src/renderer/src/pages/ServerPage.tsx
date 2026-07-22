@@ -44,6 +44,7 @@ import {
 
 import Select from '../components/Select'
 import AutomationCard from '../components/server/AutomationCard'
+import TimelineCard from '../components/server/TimelineCard'
 import PalworldSettingsTab from '../components/server/PalworldSettingsTab'
 import SteamSettingsTab from '../components/server/SteamSettingsTab'
 import { STEAM_GAME_IDS, STEAM_GAME_INFO, isSteamGameId } from '@shared/games'
@@ -88,7 +89,8 @@ const STATE_LABEL: Record<LocalServerState, string> = {
   stopped: 'Stopped',
   starting: 'Starting…',
   running: 'Online',
-  stopping: 'Stopping…'
+  stopping: 'Stopping…',
+  sleeping: 'Asleep'
 }
 
 function StateChip({ state }: { state: LocalServerState }): React.JSX.Element {
@@ -96,6 +98,14 @@ function StateChip({ state }: { state: LocalServerState }): React.JSX.Element {
     return (
       <span className="chip running">
         <span className="dot pulse" /> Online
+      </span>
+    )
+  // asleep is not stopped: the address still answers and a join starts it, so it
+  // gets its own look rather than reading as "down"
+  if (state === 'sleeping')
+    return (
+      <span className="chip on-banner" title="Stopped to free memory — it starts again when someone connects">
+        <span className="dot" /> Asleep
       </span>
     )
   return <span className="chip on-banner">{STATE_LABEL[state]}</span>
@@ -1534,6 +1544,27 @@ export default function ServerPage(): React.JSX.Element {
                       <button className="play" style={{ padding: '10px 26px' }} onClick={() => void start(selected.id)}>
                         <IconPlay size={14} /> Start
                       </button>
+                    ) : selStatus.state === 'sleeping' ? (
+                      // asleep offers both: start it now, or stop for good — a plain
+                      // Stop alone would leave no way to bring it up without a player
+                      <div className="row" style={{ gap: 8 }}>
+                        <button
+                          className="play"
+                          style={{ padding: '10px 22px' }}
+                          title="Start it now instead of waiting for a player"
+                          onClick={() => void start(selected.id)}
+                        >
+                          <IconPlay size={14} /> Wake
+                        </button>
+                        <button
+                          className="danger"
+                          style={{ padding: '10px 18px' }}
+                          title="Stop for good — it will no longer wake when someone connects"
+                          onClick={() => void window.elauncher.server.stop(selected.id)}
+                        >
+                          <IconStop size={14} /> Stop
+                        </button>
+                      </div>
                     ) : (
                       <div className="row" style={{ gap: 8 }}>
                         <button
@@ -1667,6 +1698,7 @@ export default function ServerPage(): React.JSX.Element {
                     <PropertiesCard server={selected} />
                   )}
                   <AutomationCard server={selected} />
+                  <TimelineCard server={selected} />
                 </>
               )}
               {tab === 'access' && <AccessTab server={selected} />}

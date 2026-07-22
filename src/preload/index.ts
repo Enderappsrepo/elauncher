@@ -65,7 +65,9 @@ import type {
   SkinInfo,
   SkinSearchResult,
   UpdaterStatus,
-  WorldInfo
+  WorldInfo,
+  ServerTimeline,
+  TimelineEventKind
 } from '@shared/types'
 
 function on<T>(channel: string, cb: (payload: T) => void): () => void {
@@ -307,6 +309,8 @@ const api = {
       ipcRenderer.invoke('server:getStates'),
     getLogs: (id: string): Promise<string[]> => ipcRenderer.invoke('server:getLogs', id),
     getProperties: (id: string): Promise<Record<string, string>> => ipcRenderer.invoke('server:getProperties', id),
+    getTimeline: (id: string): Promise<ServerTimeline> => ipcRenderer.invoke('server:getTimeline', id),
+    wake: (id: string): Promise<void> => ipcRenderer.invoke('server:wake', id),
     setProperties: (id: string, updates: Record<string, string>): Promise<Record<string, string>> =>
       ipcRenderer.invoke('server:setProperties', id, updates),
     updateSettings: (id: string, name: string, memoryMax: number, syncGameName?: boolean): Promise<LocalServer[]> =>

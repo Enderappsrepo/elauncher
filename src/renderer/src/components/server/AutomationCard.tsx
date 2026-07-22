@@ -137,6 +137,21 @@ export default function AutomationCard({ server }: { server: LocalServer }): Rea
           />
           <div className="hint">Warned restart when the server process crosses this — tames Palworld's slow memory creep.</div>
         </div>
+        <div className="field">
+          <label>Sleep when empty</label>
+          <Select
+            value={String(auto.sleepWhenEmptyMin ?? 0)}
+            onChange={(v) => patch({ sleepWhenEmptyMin: Number(v) })}
+            options={[0, 5, 10, 15, 30, 60, 120].map((min) => ({
+              value: String(min),
+              label: min === 0 ? 'Off' : `After ${min} min`
+            }))}
+          />
+          <div className="hint">
+            Stops the server once nobody has been on for this long and gives its memory back. It keeps its address and
+            starts again by itself the moment someone connects.
+          </div>
+        </div>
       </div>
       <label className="checkbox-row">
         <input
@@ -152,6 +167,16 @@ export default function AutomationCard({ server }: { server: LocalServer }): Rea
       <label className="checkbox-row">
         <input type="checkbox" checked={Boolean(auto.autoStart)} onChange={(e) => patch({ autoStart: e.target.checked })} />
         <span>Start this server when the launcher opens</span>
+      </label>
+      <label className="checkbox-row">
+        <input type="checkbox" checked={Boolean(auto.timeline)} onChange={(e) => patch({ timeline: e.target.checked })} />
+        <span>
+          Keep a history{' '}
+          <span className="faint small">
+            — players and memory over the last day, marked with crashes, restarts and sleeps, so a failure can be traced
+            back
+          </span>
+        </span>
       </label>
       <div className="row">
         <button className="primary" disabled={saving || !dirty} onClick={() => void save()}>

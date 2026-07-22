@@ -251,6 +251,8 @@ export function registerIpc(): void {
   ipcMain.handle('server:getStates', () => server.getServerStates())
   ipcMain.handle('server:getLogs', (_e, id: string) => server.getServerLogs(id))
   ipcMain.handle('server:getProperties', (_e, id: string) => server.getServerProperties(id))
+  ipcMain.handle('server:getTimeline', (_e, id: string) => server.getTimeline(id))
+  ipcMain.handle('server:wake', (_e, id: string) => server.wakeServer(id, 'woken from the panel'))
   ipcMain.handle('server:setProperties', (_e, id: string, updates: Record<string, string>) =>
     server.setServerProperties(id, updates)
   )

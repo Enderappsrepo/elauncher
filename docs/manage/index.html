@@ -773,6 +773,41 @@
     .platgrid input { width: auto; }
     .nores { text-align: center; color: var(--faint); padding: 22px; font-size: 13px; }
 
+    /* ---------- invites & applications ---------- */
+    .setrow textarea { width: 100%; padding: 10px 12px; border-radius: 10px; background: var(--card-2); border: 1px solid var(--line); color: var(--text); outline: none; font: inherit; font-size: 13.5px; resize: vertical; transition: border-color 0.15s, box-shadow 0.15s; }
+    .setrow textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+    .chip.warn { color: var(--amber); border-color: rgba(251, 191, 36, 0.5); background: var(--amber-soft); }
+    .ivlist { display: flex; flex-direction: column; gap: 10px; }
+    .ivcard { border: 1px solid var(--line); border-radius: 12px; padding: 13px 14px; background: var(--card-2); }
+    .ivcard.off { opacity: 0.62; }
+    .ivtop { display: flex; align-items: flex-start; gap: 10px; }
+    .ivtop > div:first-child { flex: 1; min-width: 0; }
+    .ivname { font-size: 14px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .ivmeta { font-size: 12px; color: var(--faint); margin-top: 2px; }
+    .ivurl { display: flex; align-items: center; gap: 8px; margin: 10px 0; }
+    .ivurl code { flex: 1; min-width: 0; font-family: var(--mono); font-size: 11.5px; color: var(--accent); background: var(--accent-soft); padding: 7px 10px; border-radius: 8px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .ivacts { display: flex; flex-wrap: wrap; gap: 7px; }
+    .ivacts .minibtn { text-decoration: none; }
+    .ivqs { display: flex; flex-direction: column; gap: 10px; }
+    .ivq { border: 1px solid var(--line); border-radius: 11px; padding: 11px 12px; background: var(--card-2); display: flex; flex-direction: column; gap: 8px; }
+    .ivqhead { display: flex; align-items: center; justify-content: space-between; }
+    .ivqnum { font-size: 11px; font-weight: 800; letter-spacing: 0.06em; color: var(--faint); }
+    .ivq input, .ivq select { width: 100%; padding: 9px 11px; border-radius: 9px; background: var(--card); border: 1px solid var(--line); color: var(--text); outline: none; font: inherit; font-size: 13px; }
+    .ivq input:focus, .ivq select:focus { border-color: var(--accent); }
+    .ivqrow { display: flex; gap: 10px; align-items: center; }
+    .ivqrow select { flex: 1; }
+    .ivqreq { display: flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 500; white-space: nowrap; }
+    .ivqreq input { width: auto; }
+    .ivlimits { display: flex; gap: 14px; flex-wrap: wrap; }
+    .ivlimits .setrow { flex: 1; min-width: 140px; border-top: 0; padding-top: 0; }
+    .applist { display: flex; flex-direction: column; gap: 10px; }
+    .apcard { border: 1px solid var(--line); border-radius: 12px; padding: 13px 14px; background: var(--card-2); }
+    .aptop { display: flex; align-items: flex-start; gap: 10px; }
+    .aptop > div:first-child { flex: 1; min-width: 0; }
+    .apanswers { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); }
+    .apanswers > div { display: flex; gap: 10px; font-size: 13px; }
+    .apk { color: var(--faint); min-width: 120px; flex-shrink: 0; }
+
     /* ---------- file manager ---------- */
     .crumbs { display: flex; flex-wrap: wrap; gap: 1px; align-items: center; margin-bottom: 10px; font-size: 12.5px; color: var(--text-faint); }
     .crumbs button { color: var(--accent); font-weight: 650; padding: 5px 8px; border-radius: 8px; max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; transition: background 0.13s; }
@@ -1778,9 +1813,9 @@
     // hand this panel to someone else — the host, an admin, or the customer whose
     // server it is. The host decides that (info.canShare); a friend they invited
     // simply never sees the tab.
-    const tabList = () => ['overview', 'console', 'settings', 'players', ...(isModdable() ? ['mods'] : []), 'files', 'network', 'automation', ...(sheetInfo?.canShare ? ['access'] : [])]
-    const tabLabels = () => ({ overview: 'Overview', console: 'Console', settings: 'Settings', players: 'Players', mods: sheetInfo?.kind === 'paper' ? 'Plugins' : 'Mods', files: 'Files', network: 'Network', automation: 'Automation', access: 'Access' })
-    const tabIcons = () => ({ overview: icons.sliders, console: icons.term, settings: icons.sliders, players: icons.users, mods: icons.puzzle, files: icons.folder, network: icons.globe, automation: icons.zap, access: icons.shield })
+    const tabList = () => ['overview', 'console', 'settings', 'players', ...(isModdable() ? ['mods'] : []), 'files', 'network', 'automation', ...(sheetInfo?.canShare ? ['invites', 'access'] : [])]
+    const tabLabels = () => ({ overview: 'Overview', console: 'Console', settings: 'Settings', players: 'Players', mods: sheetInfo?.kind === 'paper' ? 'Plugins' : 'Mods', files: 'Files', network: 'Network', automation: 'Automation', invites: 'Invites', access: 'Access' })
+    const tabIcons = () => ({ overview: icons.sliders, console: icons.term, settings: icons.sliders, players: icons.users, mods: icons.puzzle, files: icons.folder, network: icons.globe, automation: icons.zap, invites: icons.send, access: icons.shield })
     // shared by the mobile modal and the desktop detail pane
     async function runTab(body) {
       body.innerHTML = '<div class="loadrow">Loading…</div>'
@@ -1797,6 +1832,7 @@
         if (sheetTab === 'files') return renderFiles(body)
         if (sheetTab === 'network') return renderNetwork(body, await request(sheetId, 'ports'))
         if (sheetTab === 'automation') return renderAutomation(body, sheetInfo.automation || {})
+        if (sheetTab === 'invites') return renderInvites(body)
         if (sheetTab === 'access') return renderAccess(body, await request(sheetId, 'shares'))
       } catch (e) {
         body.innerHTML = `<div class="loadrow" style="color:var(--red)">${esc(e.message)}</div>`
@@ -3590,6 +3626,296 @@
         <div class="pn" style="flex:1;min-width:0">${esc(name)}<i>${esc(meta)}</i></div>
         ${button}
       </div>`
+    }
+
+    // ---------- invites: shareable links + the application queue ----------
+    // Invite rows are plain Supabase CRUD gated by RLS ("owners manage their
+    // invites"), so this tab talks to the database directly like the store does,
+    // not through the game-server relay. The editor holds its draft in one object
+    // and syncs from the DOM before any re-render, so adding a question never
+    // wipes what you already typed.
+    let inviteEditor = null
+
+    const inviteUrl = (code) => new URL(`../i/?c=${encodeURIComponent(code)}`, location.href).href
+
+    /** Short, URL-safe, no lookalike characters — this gets read aloud and typed. */
+    function newInviteCode() {
+      const alphabet = 'abcdefghjkmnpqrstuvwxyz23456789'
+      let out = ''
+      for (let i = 0; i < 8; i++) out += alphabet[Math.floor(Math.random() * alphabet.length)]
+      return out
+    }
+
+    const QUESTION_TYPES = [['text', 'Short text'], ['textarea', 'Paragraph'], ['select', 'Choose one']]
+
+    async function renderInvites(body) {
+      const [{ data: invites, error: invErr }, { data: apps }] = await Promise.all([
+        supabase.from('server_invites').select('*').eq('server_id', sheetId).order('created_at', { ascending: false }),
+        supabase.from('server_applications').select('*').eq('server_id', sheetId).order('created_at', { ascending: false })
+      ])
+      if (invErr) {
+        body.innerHTML = `<div class="au-note warn">Couldn't load invites: ${esc(invErr.message)}<br>
+          If this says the table is missing, run the invites migration in Supabase first.</div>`
+        return
+      }
+      window.__apps = apps || []
+      if (inviteEditor) return renderInviteEditor(body)
+
+      const list = invites || []
+      const pend = (apps || []).filter((a) => a.status === 'pending' || a.status === 'appealed')
+
+      body.innerHTML = `
+        <div class="grouphead" style="margin-top:0">Invite links</div>
+        <div class="au-note">Share a link and people can see your server and ask to join. If you set questions, you review each
+          application here before they're let in. The join address stays hidden until you approve someone.</div>
+        <div class="ivlist">
+          ${list.length ? list.map(inviteCard).join('') : '<div class="loadrow">No invite links yet.</div>'}
+        </div>
+        <div class="np-new" style="margin-top:12px">
+          <button class="minibtn acc" onclick="inviteNew()">${icons.send} New invite link</button>
+        </div>
+
+        <div class="grouphead">Applications ${pend.length ? `<span class="chip warm">${pend.length} waiting</span>` : ''}</div>
+        ${renderApplications(apps || [])}`
+    }
+
+    function inviteCard(inv) {
+      const url = inviteUrl(inv.code)
+      const bits = []
+      bits.push(jsonLen(inv.questions) > 0 ? `${jsonLen(inv.questions)} question${jsonLen(inv.questions) === 1 ? '' : 's'}` : 'No application — instant')
+      if (inv.expires_at) bits.push(`expires ${new Date(inv.expires_at).toLocaleDateString()}`)
+      if (inv.max_uses != null) bits.push(`${inv.uses}/${inv.max_uses} used`)
+      else if (inv.uses) bits.push(`${inv.uses} used`)
+      return `<div class="ivcard ${inv.enabled ? '' : 'off'}">
+        <div class="ivtop">
+          <div style="min-width:0">
+            <div class="ivname">${esc(inv.headline || rowsById.get(sheetId)?.name || 'Invite')}</div>
+            <div class="ivmeta">${bits.map(esc).join(' · ')}</div>
+          </div>
+          <span class="chip ${inv.enabled ? 'on' : ''}">${inv.enabled ? 'Live' : 'Off'}</span>
+        </div>
+        <div class="ivurl"><code>${esc(url)}</code><button class="minibtn" onclick="inviteCopy('${inv.code}')">Copy</button></div>
+        <div class="ivacts">
+          <button class="minibtn" onclick="inviteEdit('${inv.code}')">${icons.pencil} Edit</button>
+          <button class="minibtn" onclick="inviteToggle('${inv.code}', ${inv.enabled ? 'false' : 'true'})">${inv.enabled ? 'Turn off' : 'Turn on'}</button>
+          <a class="minibtn" href="${esc(url)}" target="_blank" rel="noopener">Preview ${icons.chev}</a>
+          <button class="minibtn red" onclick="inviteDelete('${inv.code}')">${icons.trash}</button>
+        </div>
+      </div>`
+    }
+
+    const jsonLen = (q) => (Array.isArray(q) ? q.length : 0)
+
+    // ---- the designer ----
+    window.inviteNew = () => {
+      inviteEditor = {
+        isNew: true,
+        code: newInviteCode(),
+        headline: rowsById.get(sheetId)?.name || '',
+        description: '',
+        approval_message: '',
+        questions: [],
+        enabled: true,
+        expires_at: '',
+        max_uses: ''
+      }
+      renderInvites($('tabBody'))
+    }
+
+    window.inviteEdit = (code) => {
+      // re-read the row rather than trust the rendered list, so two open tabs
+      // can't save each other's stale copy back
+      supabase.from('server_invites').select('*').eq('code', code).maybeSingle().then(({ data: row }) => {
+        if (!row) return toast('That invite is gone.', true)
+        inviteEditor = {
+          isNew: false,
+          code: row.code,
+          headline: row.headline || '',
+          description: row.description || '',
+          approval_message: row.approval_message || '',
+          questions: Array.isArray(row.questions) ? row.questions : [],
+          enabled: row.enabled,
+          expires_at: row.expires_at ? row.expires_at.slice(0, 10) : '',
+          max_uses: row.max_uses == null ? '' : String(row.max_uses)
+        }
+        renderInvites($('tabBody'))
+      })
+    }
+
+    window.inviteCancel = () => { inviteEditor = null; renderInvites($('tabBody')) }
+
+    /** Pull every field out of the DOM so a re-render (add/remove question) keeps typed values. */
+    function syncEditorFromDom() {
+      if (!inviteEditor) return
+      const v = (id) => ($(id)?.value ?? '')
+      inviteEditor.headline = v('ivHeadline')
+      inviteEditor.description = v('ivDesc')
+      inviteEditor.approval_message = v('ivApproval')
+      inviteEditor.expires_at = v('ivExpires')
+      inviteEditor.max_uses = v('ivMaxUses')
+      inviteEditor.questions = inviteEditor.questions.map((q, i) => ({
+        id: q.id || `q${i + 1}`,
+        label: v(`ivqL${i}`),
+        type: v(`ivqT${i}`) || 'text',
+        required: $(`ivqR${i}`)?.checked || false,
+        options: v(`ivqO${i}`).split(',').map((s) => s.trim()).filter(Boolean)
+      }))
+    }
+
+    window.inviteAddQuestion = () => {
+      syncEditorFromDom()
+      inviteEditor.questions.push({ id: `q${inviteEditor.questions.length + 1}`, label: '', type: 'text', required: true, options: [] })
+      renderInvites($('tabBody'))
+    }
+    window.inviteRemoveQuestion = (i) => {
+      syncEditorFromDom()
+      inviteEditor.questions.splice(i, 1)
+      renderInvites($('tabBody'))
+    }
+    // a re-render is needed when a type flips to/from select (the options row appears)
+    window.inviteQTypeChange = () => { syncEditorFromDom(); renderInvites($('tabBody')) }
+
+    function renderInviteEditor(body) {
+      const e = inviteEditor
+      const qEditor = (q, i) => `
+        <div class="ivq">
+          <div class="ivqhead">
+            <span class="ivqnum">Q${i + 1}</span>
+            <button class="minibtn red" onclick="inviteRemoveQuestion(${i})" title="Remove">${icons.x}</button>
+          </div>
+          <input id="ivqL${i}" placeholder="Question — e.g. Your in-game name" value="${esc(q.label || '')}">
+          <div class="ivqrow">
+            <select id="ivqT${i}" onchange="inviteQTypeChange()">
+              ${QUESTION_TYPES.map(([v, l]) => `<option value="${v}" ${q.type === v ? 'selected' : ''}>${l}</option>`).join('')}
+            </select>
+            <label class="ivqreq"><input type="checkbox" id="ivqR${i}" ${q.required ? 'checked' : ''}> Required</label>
+          </div>
+          ${q.type === 'select'
+            ? `<input id="ivqO${i}" placeholder="Choices, comma-separated — e.g. Survival, Creative" value="${esc((q.options || []).join(', '))}">`
+            : `<input id="ivqO${i}" type="hidden" value="${esc((q.options || []).join(', '))}">`}
+        </div>`
+
+      body.innerHTML = `
+        <div class="grouphead" style="margin-top:0">${e.isNew ? 'New invite link' : 'Edit invite link'}</div>
+        <div class="setrow"><label>Headline</label>
+          <input id="ivHeadline" placeholder="${esc(rowsById.get(sheetId)?.name || 'My server')}" value="${esc(e.headline)}">
+          <div class="h">The bold line on the invite page. Defaults to the server name.</div></div>
+        <div class="setrow"><label>Description</label>
+          <textarea id="ivDesc" rows="3" placeholder="Tell people what your server is about.">${esc(e.description)}</textarea></div>
+
+        <div class="grouphead">Application form</div>
+        <div class="au-note">Add questions and people answer them before you decide. Leave it empty and the link lets anyone
+          signed in request to join with one click.</div>
+        <div class="ivqs">${e.questions.map(qEditor).join('')}</div>
+        <button class="minibtn" onclick="inviteAddQuestion()" style="margin-top:8px">＋ Add question</button>
+
+        <div class="grouphead">When you approve someone</div>
+        <div class="setrow"><label>Approval message</label>
+          <textarea id="ivApproval" rows="3" placeholder="How to actually join — a Discord invite, the server address, install steps…">${esc(e.approval_message)}</textarea>
+          <div class="h">Emailed to them on approval, and shown when they reopen the link. This is the only place the join
+            details are revealed.</div></div>
+
+        <div class="grouphead">Limits (optional)</div>
+        <div class="ivlimits">
+          <div class="setrow"><label>Expires</label><input id="ivExpires" type="date" value="${esc(e.expires_at)}"></div>
+          <div class="setrow"><label>Max uses</label><input id="ivMaxUses" type="number" min="1" placeholder="Unlimited" value="${esc(e.max_uses)}"></div>
+        </div>
+
+        <div class="np-new" style="margin-top:16px;gap:8px">
+          <button class="minibtn acc" onclick="inviteSave()">${e.isNew ? 'Create link' : 'Save changes'}</button>
+          <button class="minibtn" onclick="inviteCancel()">Cancel</button>
+        </div>`
+    }
+
+    window.inviteSave = async () => {
+      syncEditorFromDom()
+      const e = inviteEditor
+      for (const q of e.questions) {
+        if (!q.label.trim()) return toast('Every question needs a label, or remove it.', true)
+        if (q.type === 'select' && q.options.length === 0) return toast(`"${q.label}" is a choice question but has no choices.`, true)
+      }
+      const row = {
+        code: e.code,
+        server_id: sheetId,
+        owner_id: me,
+        server_name: rowsById.get(sheetId)?.name || '',
+        game: sheetInfo?.game || 'minecraft',
+        headline: e.headline.trim(),
+        description: e.description.trim(),
+        approval_message: e.approval_message.trim(),
+        questions: e.questions,
+        enabled: e.enabled,
+        expires_at: e.expires_at ? new Date(e.expires_at + 'T23:59:59').toISOString() : null,
+        max_uses: e.max_uses ? Math.max(1, parseInt(e.max_uses, 10)) : null
+      }
+      const { error } = await supabase.from('server_invites').upsert(row, { onConflict: 'code' })
+      if (error) return toast(error.message, true)
+      toast(e.isNew ? 'Invite link created' : 'Invite saved')
+      inviteEditor = null
+      renderInvites($('tabBody'))
+    }
+
+    window.inviteToggle = async (code, enabled) => {
+      const { error } = await supabase.from('server_invites').update({ enabled }).eq('code', code)
+      if (error) return toast(error.message, true)
+      renderInvites($('tabBody'))
+    }
+    window.inviteDelete = async (code) => {
+      if (!confirm('Delete this invite link? Anyone holding it will get a “no longer available” page, and its applications are removed.')) return
+      const { error } = await supabase.from('server_invites').delete().eq('code', code)
+      if (error) return toast(error.message, true)
+      toast('Invite deleted')
+      renderInvites($('tabBody'))
+    }
+    window.inviteCopy = async (code) => {
+      try { await navigator.clipboard.writeText(inviteUrl(code)); toast('Link copied') }
+      catch { toast('Copy failed — select the link and copy it manually.', true) }
+    }
+
+    // ---- applications review ----
+    function renderApplications(apps) {
+      const order = { appealed: 0, pending: 1, approved: 2, denied: 3 }
+      const sorted = [...apps].sort((a, b) => (order[a.status] ?? 9) - (order[b.status] ?? 9) || new Date(b.created_at) - new Date(a.created_at))
+      if (!sorted.length) return '<div class="loadrow">No applications yet.</div>'
+      return `<div class="applist">${sorted.map(appCard).join('')}</div>`
+    }
+
+    function appCard(a) {
+      const who = esc(a.discord_username || a.applicant_name || 'Someone')
+      const via = a.discord_user_id ? 'Discord' : 'ELauncher'
+      const answers = a.answers && typeof a.answers === 'object' ? Object.entries(a.answers) : []
+      const chip = { pending: 'warm', appealed: 'warn', approved: 'on', denied: '' }[a.status] || ''
+      const decided = a.status === 'approved' || a.status === 'denied'
+      return `<div class="apcard">
+        <div class="aptop">
+          <div style="min-width:0"><div class="ivname">${who} <span class="faint" style="font-weight:500">· ${via}</span></div>
+            <div class="ivmeta">${new Date(a.created_at).toLocaleString()}</div></div>
+          <span class="chip ${chip}">${a.status}</span>
+        </div>
+        ${answers.length ? `<div class="apanswers">${answers.map(([k, v]) =>
+          `<div><span class="apk">${esc(k)}</span><span>${esc(String(v)) || '<span class="faint">—</span>'}</span></div>`).join('')}</div>` : ''}
+        ${a.appeal_text ? `<div class="au-note warn" style="margin-top:8px"><b>Appeal:</b> ${esc(a.appeal_text)}</div>` : ''}
+        ${a.owner_note && decided ? `<div class="ivmeta" style="margin-top:6px">Your note: ${esc(a.owner_note)}</div>` : ''}
+        ${a.status === 'pending' || a.status === 'appealed'
+          ? `<div class="ivacts" style="margin-top:10px">
+               <button class="minibtn acc" onclick="appDecide('${a.id}', true)">${icons.check} Approve</button>
+               <button class="minibtn red" onclick="appDecide('${a.id}', false)">${icons.x} Deny</button>
+             </div>`
+          : ''}
+      </div>`
+    }
+
+    window.appDecide = async (id, approve) => {
+      let note = ''
+      if (!approve) note = prompt('Reason to send them (optional):', '') ?? ''
+      const { data, error } = await supabase.rpc('decide_application', { application_id: id, approve, note })
+      if (error) return toast(error.message, true)
+      if (!data?.ok) return toast(data?.reason || 'Could not record the decision.', true)
+      // fire the decision email/DM; never block the decision on it, since mail
+      // may not be configured and the applicant sees the outcome on the link anyway
+      supabase.functions.invoke('invite-mail', { body: { kind: 'decided', applicationId: id } }).catch(() => {})
+      toast(approve ? 'Approved — they’ll be told how to join' : 'Denied')
+      renderInvites($('tabBody'))
     }
 
     function renderAccess(body, view) {

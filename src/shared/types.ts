@@ -429,7 +429,8 @@ export type SteamServerGame = 'valheim' | 'sdtd' | 'zomboid' | 'tmodloader' | 'a
 
 export type ServerGame = 'minecraft' | 'palworld' | SteamServerGame
 
-export type LocalServerState = 'stopped' | 'starting' | 'running' | 'stopping'
+/** `sleeping` = stopped to free its memory, with a listener holding the port. */
+export type LocalServerState = 'stopped' | 'starting' | 'running' | 'stopping' | 'sleeping'
 
 /** A dedicated game server managed by the launcher, running on this PC. */
 /** Hosted-plan resource caps, stamped by the provisioner and enforced at every start. */
@@ -540,6 +541,44 @@ export interface ServerAutomation {
   backupKeep?: number
   /** warned restart when the server process exceeds this much memory, MiB (0 = off) */
   restartAboveMemoryMB?: number
+  /**
+   * Stop the server after this many minutes with nobody on it, leaving a
+   * listener on its port that starts it again when someone connects (0 = off).
+   */
+  sleepWhenEmptyMin?: number
+  /**
+   * Publish a read-only status page anyone with the link can open.
+   * Reserved — the toggle is not surfaced yet, because serving it needs an
+   * anonymously-readable status row and that is not built.
+   */
+  publicPage?: boolean
+  /** keep a rolling players/memory history and lifecycle events for this server */
+  timeline?: boolean
+}
+
+/** One point on a server's history graph. */
+export interface TimelineSample {
+  /** epoch ms */
+  t: number
+  players: number
+  /** resident memory in MiB, or null when the host couldn't read it */
+  memMb: number | null
+  cpu: number | null
+}
+
+export type TimelineEventKind =
+  | 'start' | 'ready' | 'stop' | 'crash' | 'restart' | 'oom' | 'sleep' | 'wake' | 'backup'
+
+export interface TimelineEvent {
+  t: number
+  kind: TimelineEventKind
+  detail: string
+}
+
+/** A server's rolling history: cheap numeric samples plus rare labelled events. */
+export interface ServerTimeline {
+  samples: TimelineSample[]
+  events: TimelineEvent[]
 }
 
 /** Where a new server's content comes from. */
