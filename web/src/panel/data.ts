@@ -3,6 +3,8 @@ import type { RunState } from '@web/ui'
 /** One row of public.server_status, as the panel consumes it. */
 export interface ServerRow {
   server_id: string
+  /** whose machine runs it — a server shared with you is queued against its owner */
+  owner_id: string
   name: string
   state: RunState
   players: string[]
@@ -32,6 +34,7 @@ export function mockServers(): ServerRow[] {
   return [
     {
       server_id: '1',
+      owner_id: 'preview-owner',
       name: 'Survival',
       state: 'running',
       players: ['Enderkiller124', 'Nova', 'pip'],
@@ -51,6 +54,7 @@ export function mockServers(): ServerRow[] {
     },
     {
       server_id: '2',
+      owner_id: 'preview-owner',
       name: 'Palworld — Dedicated',
       state: 'starting',
       players: [],
@@ -63,6 +67,7 @@ export function mockServers(): ServerRow[] {
     },
     {
       server_id: '3',
+      owner_id: 'preview-owner',
       name: 'ATM10',
       state: 'error',
       players: [],
@@ -79,6 +84,7 @@ export function mockServers(): ServerRow[] {
     },
     {
       server_id: '4',
+      owner_id: 'preview-owner',
       name: 'Creative',
       state: 'stopped',
       players: [],
