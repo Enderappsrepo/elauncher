@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import type { Session } from '@supabase/supabase-js'
 import { supabase } from '@web/lib/supabase'
 import { Button, Console, Skeleton, StatusPill, Tabs } from '@web/ui'
+import { Auth } from './Auth'
 import { mockServers, uptime } from './data'
 import type { ServerRow } from './data'
 import '@web/styles/ui.css'
@@ -64,13 +65,20 @@ export function App(): React.JSX.Element {
           </button>
           <span className="chip">Remote</span>
           <span className="spacer" />
-          {phase.kind === 'signedIn' && <span className="who">{phase.session?.user.email ?? 'preview'}</span>}
+          {phase.kind === 'signedIn' && (
+            <>
+              <span className="who">{phase.session?.user.email ?? 'preview'}</span>
+              <Button size="sm" variant="ghost" onClick={() => void supabase.auth.signOut()}>
+                Sign out
+              </Button>
+            </>
+          )}
         </div>
       </header>
 
       <main className="wrap page">
         {phase.kind === 'loading' && <ListSkeleton />}
-        {phase.kind === 'signedOut' && <SignedOut />}
+        {phase.kind === 'signedOut' && <Auth />}
         {phase.kind === 'signedIn' &&
           (open ? (
             <Detail row={open} onBack={() => setOpenId(null)} onPatch={setServers} />
@@ -89,15 +97,6 @@ function ListSkeleton(): React.JSX.Element {
         <Skeleton key={i} height={132} />
       ))}
     </div>
-  )
-}
-
-function SignedOut(): React.JSX.Element {
-  return (
-    <section className="surface surface-lift rise auth">
-      <h1>Sign in</h1>
-      <p className="dim">Every server you run, from anywhere.</p>
-    </section>
   )
 }
 

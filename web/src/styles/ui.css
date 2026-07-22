@@ -253,6 +253,67 @@
   pointer-events: none;
 }
 
+/* ---------- fields ---------- */
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.field > label {
+  color: var(--text-dim);
+  font-size: var(--fs-small);
+  font-weight: 600;
+}
+
+.input {
+  width: 100%;
+  min-height: 46px;
+  padding: 0 13px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--input-bg);
+  color: var(--text);
+  font-size: var(--fs-body);
+  transition:
+    border-color 0.16s var(--ease-out),
+    background-color 0.16s var(--ease-out),
+    box-shadow 0.16s var(--ease-out);
+}
+
+.input::placeholder {
+  color: var(--text-faint);
+}
+
+.input:focus {
+  outline: none;
+  border-color: var(--accent);
+  background: var(--input-bg-focus);
+  box-shadow: 0 0 0 3px var(--focus-ring);
+}
+
+/* Errors get a live region and a colour, never colour alone. */
+.formerr {
+  display: flex;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid color-mix(in srgb, var(--red) 32%, transparent);
+  border-radius: var(--radius-sm);
+  background: var(--red-soft);
+  color: var(--red);
+  font-size: var(--fs-small);
+}
+
+.formnote {
+  padding: 10px 12px;
+  border: 1px solid var(--accent-line);
+  border-radius: var(--radius-sm);
+  background: var(--accent-soft);
+  color: var(--text);
+  font-size: var(--fs-small);
+}
+
 /* ---------- console ---------- */
 
 .console {
