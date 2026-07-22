@@ -1,0 +1,176 @@
+/* The shop.
+ *
+ * Prefixed classes: several views are written against the same global
+ * stylesheet, and a bare .plan or .price here would reach into all of them.
+ *
+ * Phone first throughout — this is a buying flow people start on the sofa. One
+ * column until there is room for more, 44px targets, and the two lists that can
+ * grow without limit (modpack search results) scroll inside themselves rather
+ * than pushing the order button off the bottom of a long page.
+ */
+
+.shop-group {
+  --gap: 10px;
+}
+
+.shop-group-who {
+  min-width: 0;
+}
+
+/* Plan names and pack titles are arbitrary strings; break them anywhere rather
+ * than let one long word widen the card past the viewport. */
+.shop-hint {
+  font-size: var(--fs-small);
+  overflow-wrap: anywhere;
+}
+
+.shop-plans {
+  display: grid;
+  gap: 10px;
+  /* min() so a narrow phone gets one full-width column instead of overflowing */
+  grid-template-columns: repeat(auto-fill, minmax(min(212px, 100%), 1fr));
+}
+
+/* The whole card is the control. On a phone a "Choose plan" button inside a
+ * card is a small target inside a big one you have already aimed at. */
+.shop-plan {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  padding: 16px;
+  text-align: left;
+  transition:
+    transform 0.2s var(--ease-spring),
+    border-color 0.2s var(--ease-out),
+    box-shadow 0.2s var(--ease-out);
+}
+
+.shop-plan:hover {
+  transform: translateY(-2px);
+  border-color: var(--border-strong);
+  box-shadow: var(--shadow-lift);
+}
+
+.shop-plan:active {
+  transform: scale(0.99);
+}
+
+.shop-plan-name {
+  font-size: var(--fs-h3);
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.shop-price {
+  display: flex;
+  align-items: baseline;
+  gap: 2px;
+  white-space: nowrap;
+}
+
+.shop-price b {
+  font-size: var(--fs-h1);
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+
+.shop-price span {
+  font-size: var(--fs-small);
+}
+
+/* Reads as the card's action without being a nested button. */
+.shop-cta {
+  margin-top: 8px;
+  padding: 7px 12px;
+  border: 1px solid var(--accent-line);
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: var(--fs-small);
+  font-weight: 600;
+}
+
+.shop-two {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(min(160px, 100%), 1fr));
+}
+
+/* The native select is deliberately kept — on a phone it opens the system
+ * picker, which beats anything drawn here. It only needs the panel's font. */
+.shop-select {
+  font: inherit;
+  font-size: var(--fs-body);
+}
+
+.shop-list {
+  --gap: 6px;
+}
+
+/* Search can return any number of packs; cap the list and scroll it here so the
+ * order button stays within reach instead of sliding down the page. */
+.shop-results {
+  max-height: 300px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.shop-pack {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  padding: 8px 10px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  text-align: left;
+  transition:
+    background-color 0.16s var(--ease-out),
+    border-color 0.16s var(--ease-out);
+}
+
+.shop-pack:hover {
+  background: var(--bg-hover);
+}
+
+.shop-pack.on {
+  border-color: var(--accent-line);
+  background: var(--accent-soft);
+}
+
+.shop-pack-who {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+}
+
+.shop-pack-name {
+  overflow-wrap: anywhere;
+}
+
+.shop-icon {
+  width: 34px;
+  height: 34px;
+  flex: none;
+  border-radius: var(--radius-xs);
+  object-fit: cover;
+}
+
+.shop-tag {
+  flex: none;
+  padding: 3px 9px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--track-bg);
+  color: var(--text-dim);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.shop-pack.on .shop-tag {
+  border-color: var(--accent-line);
+  color: var(--accent);
+}

@@ -17,6 +17,7 @@ import { Settings } from './tabs/Settings'
 import { Admin } from './views/Admin'
 import { Billing } from './views/Billing'
 import { Health } from './views/Health'
+import { Shop } from './views/Shop'
 import { useServers } from './useServers'
 import '@web/styles/ui.css'
 import './App.css'
@@ -50,13 +51,18 @@ const TAB_LABELS: Record<Tab, string> = {
   access: 'Access'
 }
 
-/** Account-wide screens, as opposed to the per-server tabs above. */
-const SECTIONS = ['servers', 'health', 'billing', 'admin'] as const
+/**
+ * Account-wide screens, as opposed to the per-server tabs above. Ordered the way
+ * a customer moves through them — what they have, what they could buy, what they
+ * owe — with the operator's fleet view after.
+ */
+const SECTIONS = ['servers', 'shop', 'billing', 'health', 'admin'] as const
 type Section = (typeof SECTIONS)[number]
 const SECTION_LABELS: Record<Section, string> = {
   servers: 'Servers',
-  health: 'Health',
+  shop: 'Shop',
   billing: 'Billing',
+  health: 'Health',
   admin: 'Admin'
 }
 
@@ -179,6 +185,7 @@ export function App(): React.JSX.Element {
               ) : (
                 <ServerList rows={servers} error={live.error} control={control} onOpen={setOpenId} />
               ))}
+            {section === 'shop' && <Shop userId={userId ?? ''} />}
             {section === 'health' && <Health userId={userId ?? ''} />}
             {section === 'billing' && <Billing userId={userId ?? ''} />}
             {section === 'admin' && isAdmin && <Admin userId={userId ?? ''} />}
