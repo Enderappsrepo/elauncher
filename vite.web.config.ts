@@ -47,10 +47,14 @@ export default defineConfig({
   },
   build: {
     outDir: resolve(__dirname, `docs/${stage}`),
-    // docs/ is not a build artefact directory — it also holds .nojekyll, the
-    // hosting guides, the PWA icons, the manifest and sw.js, all hand-maintained.
-    // Emptying it would delete every one of them.
-    emptyOutDir: false,
+    // docs/next/ holds nothing but build output, so it is emptied each run —
+    // otherwise every rebuild leaves the previous content-hashed bundles behind
+    // and they accumulate in git forever.
+    //
+    // At cutover the target becomes docs/ itself, which is NOT a build artefact
+    // directory: it also holds .nojekyll, the hosting guides, the PWA icons, the
+    // manifest and sw.js, all hand-maintained. Emptying that would delete them.
+    emptyOutDir: stage !== '',
     rollupOptions: {
       input: {
         index: resolve(__dirname, 'web/index.html'),
