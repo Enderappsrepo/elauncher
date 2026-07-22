@@ -19,9 +19,21 @@ import { defineConfig } from 'vite'
  *   npm run web:build   emit into docs/
  */
 
+/*
+ * Until the rewrite is finished the build lands in docs/next/, published beside
+ * the live site at /elauncher/next/ rather than on top of it. Two reasons: the
+ * working panel that customers use every day is never one stray `npm run
+ * web:build` away from being replaced by a half-ported one, and the new site is
+ * reachable on a phone at a real URL instead of only on a dev machine.
+ *
+ * Cutover is this constant: set ELAUNCHER_WEB_STAGE= (empty) and the same build
+ * writes docs/index.html and docs/manage/index.html instead.
+ */
+const stage = process.env.ELAUNCHER_WEB_STAGE ?? 'next/'
+
 // project Pages site: https://enderappsrepo.github.io/elauncher/. Override when
 // moving to a custom domain, where the site sits at the root instead.
-const base = process.env.ELAUNCHER_WEB_BASE ?? '/elauncher/'
+const base = process.env.ELAUNCHER_WEB_BASE ?? `/elauncher/${stage}`
 
 export default defineConfig({
   root: 'web',
@@ -34,7 +46,7 @@ export default defineConfig({
     }
   },
   build: {
-    outDir: resolve(__dirname, 'docs'),
+    outDir: resolve(__dirname, `docs/${stage}`),
     // docs/ is not a build artefact directory — it also holds .nojekyll, the
     // hosting guides, the PWA icons, the manifest and sw.js, all hand-maintained.
     // Emptying it would delete every one of them.

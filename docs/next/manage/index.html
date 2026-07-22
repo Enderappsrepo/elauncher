@@ -14,9 +14,11 @@
     <!-- No manifest link while staging: its start_url and scope resolve against
          the manifest's own location, so an installed staging PWA would open the
          old panel. Restored at cutover, when this build IS /elauncher/manage/. -->
+    <script type="module" crossorigin src="/elauncher/next/assets/manage-CqM_o-7N.js"></script>
+    <link rel="modulepreload" crossorigin href="/elauncher/next/assets/App-Sx2X_wOo.js">
+    <link rel="stylesheet" crossorigin href="/elauncher/next/assets/App-Cq9F33hf.css">
   </head>
   <body>
     <div id="root"></div>
-    <script type="module" src="../src/panel/main.tsx"></script>
   </body>
 </html>
