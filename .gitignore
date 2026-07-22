@@ -9,3 +9,6 @@ supabase/.temp/
 .env.*
 .DS_Store
 Thumbs.db
+
+# local Claude Code tooling (launch configs hold absolute machine paths)
+.claude/

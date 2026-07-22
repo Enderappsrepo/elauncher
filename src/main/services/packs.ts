@@ -493,6 +493,10 @@ export interface CfFile {
   modId: number
   fileName: string
   downloadUrl: string | null
+  /** true for the author's server pack — the client-only mods are already gone */
+  isServerPack?: boolean
+  /** on a client pack file: the server pack published alongside it, if any */
+  serverPackFileId?: number
 }
 
 /** CurseForge manifest loader id ("forge-47.2.0") → launcher loader + version. */
@@ -548,15 +552,58 @@ export async function curseforgeFilesBulk(
   return out
 }
 
-/** Latest pack-file download URL for a CurseForge modpack project. */
-export async function resolveCurseforgeModpackUrl(projectId: string, access?: CfAccess): Promise<string> {
+/** A CF file's download URL, falling back to the CDN when the API withholds one. */
+export function cfDownloadUrl(file: CfFile): string {
+  return file.downloadUrl ?? forgeCdnUrl(file.id, file.fileName)
+}
+
+/** The pack file a CurseForge modpack project is currently serving. */
+async function resolveCurseforgePackFile(projectId: string, access?: CfAccess): Promise<CfFile> {
   const { data } = (await curseforgeFetch(`/mods/${projectId}`, access ?? cfAccessFromSettings())) as {
     data: { mainFileId: number; latestFiles: CfFile[] }
   }
-  const files = data.latestFiles ?? []
+  // latestFiles lists the release's server pack alongside the pack itself; only
+  // the client pack carries the manifest every caller here reads
+  const files = (data.latestFiles ?? []).filter((f) => !f.isServerPack)
   const file = files.find((f) => f.id === data.mainFileId) ?? [...files].sort((a, b) => b.id - a.id)[0]
   if (!file) throw new Error('This CurseForge modpack has no downloadable file.')
-  return file.downloadUrl ?? forgeCdnUrl(file.id, file.fileName)
+  return file
+}
+
+/** Latest pack-file download URL for a CurseForge modpack project. */
+export async function resolveCurseforgeModpackUrl(projectId: string, access?: CfAccess): Promise<string> {
+  return cfDownloadUrl(await resolveCurseforgePackFile(projectId, access))
+}
+
+export interface CfPackDownloads {
+  /** the client pack (manifest.json format) — the only place the loader version is written down */
+  clientUrl: string
+  /** the author's server pack, or null when the release doesn't publish one */
+  serverUrl: string | null
+}
+
+/**
+ * Both halves of a modpack release. The server pack is what the CurseForge app's
+ * "Server Pack" button hands out: the same pack with every client-only mod
+ * removed and the server's configs baked in, so hosting it beats resolving the
+ * client manifest file by file and hoping nothing client-side crashes on boot.
+ * Authors opt into publishing one, hence the null.
+ */
+export async function resolveCurseforgePackDownloads(projectId: string, access?: CfAccess): Promise<CfPackDownloads> {
+  const file = await resolveCurseforgePackFile(projectId, access)
+  const clientUrl = cfDownloadUrl(file)
+  if (!file.serverPackFileId) return { clientUrl, serverUrl: null }
+  try {
+    const { data } = (await curseforgeFetch(
+      `/mods/${projectId}/files/${file.serverPackFileId}`,
+      access ?? cfAccessFromSettings()
+    )) as { data: CfFile }
+    return { clientUrl, serverUrl: cfDownloadUrl(data) }
+  } catch (e) {
+    // a delisted/withheld server pack shouldn't sink the whole install
+    console.warn('[packs] CurseForge server pack could not be resolved, using the client pack:', e)
+    return { clientUrl, serverUrl: null }
+  }
 }
 
 /**
@@ -607,7 +654,7 @@ async function importCurseforgePack(zipPath: string, onProgress?: PackProgressFn
         if (!f) return
         const dest = join(modsDir, f.fileName)
         try {
-          await downloadWithRetries(f.downloadUrl ?? forgeCdnUrl(f.id, f.fileName), dest)
+          await downloadWithRetries(cfDownloadUrl(f), dest)
           managed.push(`mods/${f.fileName}`)
         } catch {
           skipped.push(f.fileName)

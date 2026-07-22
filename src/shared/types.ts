@@ -425,7 +425,7 @@ export type ServerKind = 'vanilla' | 'paper' | 'fabric' | 'neoforge' | 'forge'
  * to be spelled out in six places and missing one shipped a game that
  * typechecked but had no spec behind it.
  */
-export type SteamServerGame = 'valheim' | 'sdtd' | 'zomboid' | 'tmodloader'
+export type SteamServerGame = 'valheim' | 'sdtd' | 'zomboid' | 'tmodloader' | 'ark' | 'arksa'
 
 export type ServerGame = 'minecraft' | 'palworld' | SteamServerGame
 

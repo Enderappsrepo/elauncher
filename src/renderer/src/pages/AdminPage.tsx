@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { CloudPackDetails, CloudProfile, HostReport, LauncherNewsItem, LocalServer } from '@shared/types'
+import { STEAM_GAME_INFO, isSteamGameId } from '@shared/games'
 import { useAppState } from '../state'
 import { useToast } from '../toast'
 import { formatBytes, timeAgo, tileGradient } from '../fmt'
@@ -191,7 +192,9 @@ function CapacityTab(): React.JSX.Element {
             return (
               <div key={s.id} className="row" style={{ gap: 10, padding: '8px 0', borderTop: '1px solid rgba(255,255,255,.06)' }}>
                 <span style={{ fontWeight: 650, flex: 1, minWidth: 0 }}>{s.name}</span>
-                <span className="small faint">{s.game === 'palworld' ? 'Palworld' : s.kind}</span>
+                <span className="small faint">
+                  {s.game === 'palworld' ? 'Palworld' : isSteamGameId(s.game) ? STEAM_GAME_INFO[s.game].label : s.kind}
+                </span>
                 {st?.memoryMB != null && <span className="small faint">{(st.memoryMB / 1024).toFixed(1)} GB</span>}
                 {st?.cpuPercent != null && <span className="small faint">{st.cpuPercent}% CPU</span>}
                 <span className="chip" style={{ color, borderColor: 'transparent', background: 'rgba(255,255,255,.05)' }}>

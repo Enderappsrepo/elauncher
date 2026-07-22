@@ -1714,7 +1714,7 @@
       ['Players & access', '👥', /max-players|white|online-mode|idle|op-permission|enforce|prevent-proxy|hidden/i],
       ['Network & performance', '🌐', /port|server-ip|network|rate-limit|tick|entity-broadcast|sync-chunk|native|compression|status/i]
     ]
-    const GAME_LABEL = { minecraft: 'Minecraft', palworld: 'Palworld', valheim: 'Valheim', sdtd: '7 Days to Die', zomboid: 'Project Zomboid', tmodloader: 'tModLoader' }
+    const GAME_LABEL = { minecraft: 'Minecraft', palworld: 'Palworld', valheim: 'Valheim', sdtd: '7 Days to Die', zomboid: 'Project Zomboid', tmodloader: 'tModLoader', ark: 'ARK: Survival Evolved', arksa: 'ARK: Survival Ascended' }
     /** One line per game for the store, so a plan group says what you'd be renting. */
     const GAME_BLURB = {
       minecraft: 'Vanilla, Paper plugins, or a full modpack.',
@@ -1722,7 +1722,9 @@
       valheim: 'Co-op Viking survival and building.',
       sdtd: 'Open-world zombie survival.',
       zomboid: 'Isometric zombie survival — brutal, slow-burn, co-op.',
-      tmodloader: 'Modded Terraria. Light on resources, heavy on content.'
+      tmodloader: 'Modded Terraria. Light on resources, heavy on content.',
+      ark: 'Dinosaur survival, taming and tribes. Big world, big download.',
+      arksa: 'The Unreal 5 remake of ARK. The heaviest server we host — allow extra time on the first start.'
     }
     const gameLabel = (g) => GAME_LABEL[g] || 'Minecraft'
     // per-game settings essentials for the non-minecraft, non-palworld games
@@ -1743,11 +1745,31 @@
     // list below — these are the ones worth surfacing first.
     const PZ_ESS = [['PublicName', 'Server name'], ['Password', 'Join password'], ['MaxPlayers', 'Max players'], ['PublicDescription', 'Description'], ['Public', 'List in the public browser'], ['PauseEmpty', 'Pause when empty']]
     const TML_ESS = [['worldname', 'World name'], ['password', 'Join password'], ['maxplayers', 'Max players'], ['motd', 'Message of the day'], ['difficulty', 'Difficulty (0-3)']]
+    const ARK_ESS = [['Map', 'Map'], ['SessionName', 'Server name'], ['ServerPassword', 'Join password'], ['MaxPlayers', 'Max players'], ['ServerPVE', 'PvE only (no player combat)']]
+    // Mirrors src/shared/ark.ts — this page is standalone HTML and cannot import
+    // it. Survival Ascended rebuilt its maps on World Partition and renamed them,
+    // so the two lists never overlap; an ASE name on ASA boots an empty server.
+    const ARK_MAPS = {
+      ark: [
+        ['TheIsland', 'The Island'], ['TheCenter', 'The Center'], ['ScorchedEarth_P', 'Scorched Earth'],
+        ['Ragnarok', 'Ragnarok'], ['Aberration_P', 'Aberration'], ['Extinction', 'Extinction'],
+        ['Valguero_P', 'Valguero'], ['CrystalIsles', 'Crystal Isles'], ['LostIsland', 'Lost Island'],
+        ['Fjordur', 'Fjordur'], ['Genesis', 'Genesis: Part 1'], ['Gen2', 'Genesis: Part 2']
+      ],
+      arksa: [
+        ['TheIsland_WP', 'The Island'], ['TheCenter_WP', 'The Center'], ['ScorchedEarth_WP', 'Scorched Earth'],
+        ['Aberration_WP', 'Aberration'], ['Extinction_WP', 'Extinction'], ['Ragnarok_WP', 'Ragnarok'],
+        ['Astraeos_WP', 'Astraeos']
+      ]
+    }
     const isPal = () => sheetInfo?.game === 'palworld'
+    const isArk = () => sheetInfo?.game === 'ark' || sheetInfo?.game === 'arksa'
     /** Destructive lifecycle controls (archive/delete/restore) are owner-or-admin only; the host enforces this too. */
     const canManage = (serverId) => isAdmin || ownerOf.get(serverId) === me
     const boolTrue = (v) => /^true$/i.test(v)
-    const boolStr = (on) => (isPal() ? (on ? 'True' : 'False') : (on ? 'true' : 'false'))
+    // Palworld and both ARKs read True/False; everything else reads lowercase,
+    // and a config written with the wrong casing is silently ignored
+    const boolStr = (on) => (isPal() || isArk() ? (on ? 'True' : 'False') : (on ? 'true' : 'false'))
 
     window.setDirty = (k, v) => { dirty[k] = v }
 
@@ -1768,7 +1790,7 @@
         if (sheetTab === 'settings') return renderSettings(body, await request(sheetId, 'getProps'))
         if (sheetTab === 'players') {
           if (isPal()) return renderPalPlayers(body, await request(sheetId, 'players'))
-          if (sheetInfo.game === 'valheim' || sheetInfo.game === 'sdtd') return renderSteamPlayers(body)
+          if (['valheim', 'sdtd', 'zomboid', 'tmodloader', 'ark', 'arksa'].includes(sheetInfo.game)) return renderSteamPlayers(body)
           return renderMcPlayers(body)
         }
         if (sheetTab === 'mods') return renderMods(body, await request(sheetId, 'mods'))
@@ -2071,8 +2093,15 @@
       ],
       palworld: [['save', ''], ['players', ''], ['broadcast', '<message>'], ['kick', '<steamid>'], ['ban', '<steamid>'], ['unban', '<steamid>'], ['shutdown', '<seconds> <message>'], ['info', '']],
       sdtd: [['saveworld', ''], ['lp', ''], ['say', '<message>'], ['settime', 'day|night'], ['kick', '<player>'], ['ban add', '<player>'], ['shutdown', '']],
-      valheim: []
+      valheim: [],
+      // ARK's admin channel is Source RCON; these are the commands it answers to
+      ark: [
+        ['ListPlayers', ''], ['SaveWorld', ''], ['Broadcast', '<message>'], ['ServerChat', '<message>'],
+        ['KickPlayer', '<steamid>'], ['BanPlayer', '<steamid>'], ['UnbanPlayer', '<steamid>'],
+        ['SetTimeOfDay', '<hh:mm:ss>'], ['DestroyWildDinos', ''], ['DoExit', '']
+      ]
     }
+    COMMANDS.arksa = COMMANDS.ark
     function commandsFor(game) { return COMMANDS[game] ?? COMMANDS.minecraft }
 
     window.conInputKey = (input, event) => {
@@ -2193,6 +2222,11 @@
 
     function settingControl(key, value) {
       if (key === 'CrossplayPlatforms') return crossplayEditor(key, value)
+      // ARK's map is per-game, so it can't live in the key-keyed ENUM_OPTIONS
+      if (key === 'Map' && isArk()) {
+        return `<select onchange="setDirty('Map',this.value)">${(ARK_MAPS[sheetInfo.game] || [])
+          .map(([v, l]) => `<option value="${v}" ${v === value ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select>`
+      }
       if (ENUM_OPTIONS[key]) return `<select onchange="setDirty('${key}',this.value)">${ENUM_OPTIONS[key].map(([v, l]) => `<option value="${v}" ${v === value ? 'selected' : ''}>${l}</option>`).join('')}</select>`
       if (isPal() && isRate(key) && /^-?\d/.test(value)) return rateEditor(key, value)
       if (/^-?\d+(\.\d+)?$/.test(value)) return `<input type="number" step="any" value="${esc(trimNum(value))}" oninput="setDirty('${key}',this.value)">`
@@ -2217,7 +2251,7 @@
     }
 
     function renderSettings(body, props) {
-      const ESS_BY_GAME = { palworld: PAL_ESS, valheim: VAL_ESS, sdtd: SDTD_ESS, zomboid: PZ_ESS, tmodloader: TML_ESS }
+      const ESS_BY_GAME = { palworld: PAL_ESS, valheim: VAL_ESS, sdtd: SDTD_ESS, zomboid: PZ_ESS, tmodloader: TML_ESS, ark: ARK_ESS, arksa: ARK_ESS }
       const ess = ESS_BY_GAME[sheetInfo.game] ?? MC_ESS
       const groups = isPal() ? PAL_GROUPS : sheetInfo.game === 'minecraft' ? MC_GROUPS : sheetInfo.game === 'valheim' ? VAL_GROUPS : []
       const essKeys = new Set(ess.map((e) => e[0]))
@@ -2644,7 +2678,7 @@
       if (!cmd.trim()) return
       try { await queue(sheetId, 'command', cmd); toast('Command sent') } catch (e) { toast(e.message, true) }
     }
-    // valheim / 7dtd: names stream from the host's log or telnet polling
+    // every SteamCMD game: names stream from the host's log, telnet or RCON polling
     function renderSteamPlayers(body) {
       const row = rowsById.get(sheetId) || {}
       const online = row.players || []
@@ -4610,6 +4644,88 @@
       }).join('')
     }
 
+    /**
+     * The hosting fleet, keyed by device id. Populated on every admin load and
+     * read by the deploy-target picker.
+     */
+    let hostsCache = []
+
+    /** Is this box still checking in? The heartbeat is a minute or two apart. */
+    const hostOnline = (h) => h.updated_at && Date.now() - new Date(h.updated_at).getTime() < 10 * 60_000
+
+    /** A box's display name: what you called it, else what it calls itself. */
+    const hostName = (h) => h.label || h.host_name || h.device_id.slice(0, 12)
+
+    function mergeHosts(health, hosts) {
+      const by = new Map()
+      for (const h of health) by.set(h.device_id, { ...h })
+      for (const h of hosts) by.set(h.device_id, { ...(by.get(h.device_id) ?? { device_id: h.device_id }), ...h })
+      return [...by.values()].sort((a, b) => hostName(a).localeCompare(hostName(b)))
+    }
+
+    /** Point an order at one box, or back to "whichever is free first". */
+    window.adminAssign = async (orderId, device) => {
+      const { data, error } = await supabase.rpc('hosting_assign', { order_id: orderId, device: device || null })
+      if (error) return toast(error.message, true)
+      if (data !== true) return toast('That order already has a server, so it cannot be moved.', true)
+      toast(device ? `Assigned to ${hostName(hostsCache.find((h) => h.device_id === device) ?? { device_id: device })}` : 'Unassigned — any host can take it')
+      void loadHosting()
+    }
+
+    window.adminHostField = async (device, field, value) => {
+      const patch = { device_id: device, [field]: value }
+      const { error } = await supabase.from('hosting_hosts').upsert(patch, { onConflict: 'device_id' })
+      if (error) return toast(error.message, true)
+      void loadHosting()
+    }
+
+    window.adminHostToggle = async (device, enabled) => {
+      await adminHostField(device, 'enabled', enabled)
+      toast(enabled ? 'Host accepting new orders' : 'Host parked — it keeps what it runs and takes nothing new')
+    }
+
+    /**
+     * Deploy-target picker for one order. Only offered before a server exists:
+     * once built, the files live on that box and moving the pointer here would
+     * strand them rather than migrate anything.
+     */
+    function assignPicker(o) {
+      if (o.server_id) {
+        const on = hostsCache.find((h) => h.device_id === o.provisioner_id)
+        return `<div class="hintline">Built on ${on ? esc(hostName(on)) : esc(o.provisioner_id || 'an unknown host')} — a running server can't be moved from here.</div>`
+      }
+      const opts = [`<option value="">Any free host</option>`]
+        .concat(hostsCache.map((h) => {
+          const bits = [hostName(h), h.region, hostOnline(h) ? '' : 'offline', h.enabled === false ? 'parked' : ''].filter(Boolean)
+          return `<option value="${esc(h.device_id)}" ${o.target_device_id === h.device_id ? 'selected' : ''}>${esc(bits.join(' · '))}</option>`
+        }))
+      return `<div class="setrow"><label>Deploy to</label>
+        <select onchange="adminAssign('${o.id}', this.value)">${opts.join('')}</select>
+        <div class="h">Which box builds this order. Leave on “Any free host” to let the first available one take it.</div></div>`
+    }
+
+    /** The fleet: name your boxes, and park any that shouldn't take new work. */
+    function hostsHtml() {
+      if (!hostsCache.length) {
+        return `<div class="home-head">Hosts</div><div class="card"><div class="store-closed">
+          No hosts have checked in yet. Sign a launcher into this hosting account and it appears here within a minute.</div></div>`
+      }
+      return `<div class="home-head">Hosts</div>` + hostsCache.map((h) => `<div class="card">
+        <div class="head">
+          <div class="who"><div class="nm">${esc(hostName(h))}</div>
+            <div class="ln">${esc(h.platform || 'unknown platform')}${h.headless ? ' · headless' : ''} · ${h.servers_running ?? 0} running · ${esc(h.device_id.slice(0, 12))}</div></div>
+          <span class="chip ${hostOnline(h) ? 'on' : ''}">${hostOnline(h) ? 'Online' : 'Offline'}</span>
+          <button class="minibtn ${h.enabled === false ? 'acc' : 'red'}" onclick="adminHostToggle('${esc(h.device_id)}', ${h.enabled === false ? 'true' : 'false'})">${h.enabled === false ? 'Unpark' : 'Park'}</button>
+        </div>
+        <div class="setrow"><label>Label</label>
+          <input value="${esc(h.label || '')}" placeholder="${esc(h.host_name || 'This box')}"
+            onchange="adminHostField('${esc(h.device_id)}', 'label', this.value)"></div>
+        <div class="setrow"><label>Region</label>
+          <input value="${esc(h.region || '')}" placeholder="e.g. EU — Germany"
+            onchange="adminHostField('${esc(h.device_id)}', 'region', this.value)"></div>
+      </div>`).join('')
+    }
+
     /** Shop switch, per-plan listing, and the order queue — owner/admin only. */
     function adminHtml(allPlans, shopOpen, cfg, allOrders, planMap) {
       let html = `<div class="home-head" style="margin-top:0">Shop</div>
@@ -4636,8 +4752,9 @@
           : o.status === 'past_due'
             ? `<div class="acts single"><button class="btn start" onclick="adminApprove('${o.id}')">Renew</button></div>`
             : ''
-        return `<div class="card"><div class="head"><div class="who"><div class="nm">${esc(o.server_name)}</div><div class="ln">${plan ? esc(plan.name) : o.plan_id} · ref ${esc(o.reference)}</div></div><span class="chip ${cls}">${label}</span></div>${actions}</div>`
+        return `<div class="card"><div class="head"><div class="who"><div class="nm">${esc(o.server_name)}</div><div class="ln">${plan ? esc(plan.name) : o.plan_id} · ref ${esc(o.reference)}</div></div><span class="chip ${cls}">${label}</span></div>${assignPicker(o)}${actions}</div>`
       }).join('') : `<div class="card"><div class="store-closed">No orders waiting.</div></div>`
+      html += hostsHtml()
       return html
     }
 
@@ -4659,6 +4776,19 @@
           supabase.from('hosting_orders').select('*').order('created_at', { ascending: false })
         ])
         isAdmin = Boolean(prof?.is_admin)
+        // The fleet, for the deploy-target picker — admins only, so a customer
+        // never pays for these two round trips on an 8s poll. host_health is what
+        // each box publishes about itself; hosting_hosts is the naming and on/off
+        // set here. A box can appear in either alone — one labelled before it ever
+        // checked in, or a new box that has checked in and has no label yet — so
+        // they are merged by device_id rather than joined.
+        if (isAdmin) {
+          const [{ data: healthRows }, { data: hostRows }] = await Promise.all([
+            supabase.from('host_health').select('device_id, host_name, platform, headless, servers_running, updated_at'),
+            supabase.from('hosting_hosts').select('*')
+          ])
+          hostsCache = mergeHosts(healthRows ?? [], hostRows ?? [])
+        }
         applyAdminUi()
         const allPlans = plans ?? []
         const planList = allPlans.filter((p) => p.active !== false)

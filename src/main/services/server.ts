@@ -33,6 +33,7 @@ import { killProcessTree } from './proctree'
 import { downloadAgent, withRetries } from '../net'
 import { CF_LOADER_TYPES, curseforgeFetch, downloadToFile, listInstalledMods, modrinthFetch, readModsMeta, type CfAccess } from './mods'
 import {
+  cfDownloadUrl,
   curseforgeFilesBulk,
   downloadPackToTemp,
   downloadWithRetries,
@@ -42,7 +43,7 @@ import {
   parseDependencies,
   parseIndex,
   requireCurseforgeKey,
-  resolveCurseforgeModpackUrl,
+  resolveCurseforgePackDownloads,
   resolveModrinthModpackUrl,
   type CfManifest,
   type MrpackFile
@@ -74,8 +75,10 @@ import {
   startSteamGame,
   STEAM_GAMES,
   valheimWorldExists,
-  type SteamGameHandle
+  type SteamGameHandle,
+  type SteamGameId
 } from './steamgames'
+import { STEAM_GAME_INFO } from '@shared/games'
 import { closePort, getMapping, isDirectHost } from './upnp'
 import {
   MAX_EXTRA_PORTS,
@@ -421,10 +424,12 @@ interface CreationPlan {
   zip?: AdmZip
   /** CurseForge pack zip (manifest.json format) applied after the server binary */
   cfZip?: AdmZip
+  /** CurseForge server pack zip; takes the place of cfZip when the author published one */
+  cfServerZip?: AdmZip
   /** instance whose mods/configs get mirrored onto the server */
   instanceId?: string
-  /** temp .mrpack to delete afterwards (cloud downloads) */
-  tempZipPath?: string
+  /** temp downloads to delete afterwards (cloud/Modrinth/CurseForge fetches) */
+  tempZipPaths?: string[]
 }
 
 /** CF packs use manifest.json instead of the mrpack index; map it onto a plan. */
@@ -454,18 +459,88 @@ function planFromZip(zip: AdmZip): CreationPlan {
   return { kind: loader, minecraftVersion: mcVersion, loaderVersion, packName: index.name, zip }
 }
 
+/** Non-directory entry names, normalised to forward slashes. */
+function zipFileNames(zip: AdmZip): string[] {
+  return zip
+    .getEntries()
+    .filter((e) => !e.isDirectory)
+    .map((e) => e.entryName.replace(/\\/g, '/'))
+}
+
 /**
- * A pack file the user picked themselves, which is either format: Modrinth
+ * Plenty of authors wrap a server pack in one folder ("BigPack-1.2.3/"). Returns
+ * the prefix to strip, recognised by that folder being the one that holds mods/
+ * or config/ — so a zip whose own root is mods/ is left alone.
+ */
+function serverPackRoot(zip: AdmZip): string {
+  const names = zipFileNames(zip)
+  const tops = new Set(names.map((n) => n.split('/')[0]))
+  if (tops.size !== 1) return ''
+  const only = [...tops][0]
+  const children = new Set(names.map((n) => n.slice(only.length + 1).split('/')[0]))
+  return children.has('mods') || children.has('config') ? `${only}/` : ''
+}
+
+/** NeoForge versions are <mc-minor>.<mc-patch>.<build> — 21.1.65 is Minecraft 1.21.1. */
+function neoforgeMcVersion(version: string): string {
+  const [minor, patch] = version.split('.')
+  if (!minor || patch === undefined) throw new Error(`Unrecognised NeoForge version "${version}".`)
+  return patch === '0' ? `1.${minor}` : `1.${minor}.${patch}`
+}
+
+/**
+ * A server pack the user downloaded themselves ("Server Pack" on a CurseForge
+ * pack's Files page) carries no manifest, so the loader and versions have to be
+ * read off the installer the author bundled — or off the libraries tree, for
+ * packs that ship an already-installed server.
+ */
+function planFromCfServerPackZip(zip: AdmZip): CreationPlan {
+  const root = serverPackRoot(zip)
+  const names = zipFileNames(zip).map((n) => n.slice(root.length))
+  const match = (re: RegExp): RegExpMatchArray | null => {
+    for (const name of names) {
+      const m = name.match(re)
+      if (m) return m
+    }
+    return null
+  }
+  const packName = root ? root.slice(0, -1) : undefined
+
+  const forge =
+    match(/(?:^|\/)forge-(\d[\d.]*)-([\d.]+(?:-[\w.]+)?)-installer\.jar$/i) ??
+    match(/^libraries\/net\/minecraftforge\/forge\/(\d[\d.]*)-([^/]+)\//)
+  if (forge) return { kind: 'forge', minecraftVersion: forge[1], loaderVersion: forge[2], packName, cfServerZip: zip }
+
+  const neo =
+    match(/(?:^|\/)neoforge-([\d.]+(?:-[\w.]+)?)-installer\.jar$/i) ?? match(/^libraries\/net\/neoforged\/neoforge\/([^/]+)\//)
+  if (neo) {
+    return { kind: 'neoforge', minecraftVersion: neoforgeMcVersion(neo[1]), loaderVersion: neo[1], packName, cfServerZip: zip }
+  }
+
+  const fabric = match(/fabric-server-mc\.([\d.]+[\w.]*)-loader\.([\w.]+)-launcher/)
+  if (fabric) return { kind: 'fabric', minecraftVersion: fabric[1], loaderVersion: fabric[2], packName, cfServerZip: zip }
+
+  throw new Error(
+    "That looks like a CurseForge server pack, but it doesn't say which loader it needs — no installer and no libraries folder. Host the pack from Browse instead: the launcher resolves the same server pack and reads the version from the pack itself."
+  )
+}
+
+/**
+ * A pack file the user picked themselves, in any of the three shapes: Modrinth
  * exports .mrpack (modrinth.index.json), CurseForge exports .zip
- * (manifest.json). Sniff rather than trust the extension — CF packs are plain
+ * (manifest.json), and a CurseForge server pack is a bare .zip of the server
+ * itself. Sniff rather than trust the extension — two of the three are plain
  * .zip and plenty of people rename an .mrpack to .zip to get it past a
  * chat/upload filter.
  */
 function planFromPackZip(zip: AdmZip): CreationPlan {
   if (zip.getEntry('modrinth.index.json')) return planFromZip(zip)
   if (zip.getEntry('manifest.json')) return planFromCfZip(zip)
+  // a CurseForge server pack has no index of any kind — it's the installed server itself
+  const root = serverPackRoot(zip)
+  if (zipFileNames(zip).some((n) => n.slice(root.length).startsWith('mods/'))) return planFromCfServerPackZip(zip)
   throw new Error(
-    'That file is not a modpack export — it has neither modrinth.index.json (Modrinth) nor manifest.json (CurseForge). In the CurseForge app, open the pack and use Export to get an installable zip.'
+    'That file is not a modpack export — it has neither modrinth.index.json (Modrinth) nor manifest.json (CurseForge). In the CurseForge app, open the pack and use Export to get an installable zip, or download its Server Pack from the Files page.'
   )
 }
 
@@ -487,7 +562,7 @@ async function planFromSource(source: ServerSource, cfAccess?: CfAccess): Promis
       emitTask('Downloading modpack from the cloud', -1)
       const tmp = await downloadCloudPackToTemp(source.packId, (phase, progress) => emitTask(phase, progress))
       const plan = planFromZip(new AdmZip(tmp))
-      plan.tempZipPath = tmp
+      plan.tempZipPaths = [tmp]
       return plan
     }
     case 'modrinthPack': {
@@ -495,19 +570,31 @@ async function planFromSource(source: ServerSource, cfAccess?: CfAccess): Promis
       const url = await resolveModrinthModpackUrl(source.projectId)
       const tmp = await downloadPackToTemp(url, (phase, progress) => emitTask(phase, progress))
       const plan = planFromZip(new AdmZip(tmp))
-      plan.tempZipPath = tmp
+      plan.tempZipPaths = [tmp]
       return plan
     }
     case 'curseforgePack': {
       emitTask('Resolving modpack on CurseForge', -1)
-      const url = await resolveCurseforgeModpackUrl(source.projectId, cfAccess)
-      const tmp = join(tmpdir(), `elauncher-cfsrv-${randomUUID()}.zip`)
-      emitTask('Downloading modpack file', -1)
-      await downloadToFile(url, tmp, (received, total) => {
-        if (total > 0) emitTask('Downloading modpack file', received / total)
-      })
+      const { clientUrl, serverUrl } = await resolveCurseforgePackDownloads(source.projectId, cfAccess)
+      const fetchZip = async (url: string, phase: string, prefix: string): Promise<string> => {
+        const tmp = join(tmpdir(), `elauncher-${prefix}-${randomUUID()}.zip`)
+        emitTask(phase, -1)
+        await downloadToFile(url, tmp, (received, total) => {
+          if (total > 0) emitTask(phase, received / total)
+        })
+        return tmp
+      }
+      // the client pack is fetched either way: its manifest is the only place the
+      // pack's loader version is written down, and a server pack doesn't carry one
+      const tmp = await fetchZip(clientUrl, 'Downloading modpack file', 'cfsrv')
       const plan = planFromCfZip(new AdmZip(tmp), cfAccess)
-      plan.tempZipPath = tmp
+      plan.tempZipPaths = [tmp]
+      if (serverUrl) {
+        const srv = await fetchZip(serverUrl, 'Downloading server pack', 'cfsrvpack')
+        plan.tempZipPaths.push(srv)
+        plan.cfServerZip = new AdmZip(srv)
+        plan.cfZip = undefined
+      }
       return plan
     }
     case 'instance': {
@@ -608,11 +695,40 @@ async function applyPackToServer(dir: string, zip: AdmZip): Promise<void> {
 }
 
 /**
+ * Lay a CurseForge server pack onto the server: the zip the app's "Server Pack"
+ * button hands out, already stripped of client-only mods and carrying the
+ * server's own configs. It's a plain zip — mods/, config/, usually the author's
+ * installer and start scripts — so it just gets extracted, minus the pieces the
+ * launcher owns: the loader is already installed, `server.jar`'s presence
+ * decides how the server is launched, and the run command is built from the
+ * server's own memory setting rather than the author's script.
+ */
+function applyCfServerPackToServer(dir: string, zip: AdmZip): void {
+  emitTask('Applying server pack', -1)
+  const root = serverPackRoot(zip)
+  const skipDirs = ['resourcepacks/', 'shaderpacks/', 'libraries/']
+  for (const entry of zip.getEntries()) {
+    if (entry.isDirectory) continue
+    const name = entry.entryName.replace(/\\/g, '/')
+    if (!name.startsWith(root)) continue
+    const rel = name.slice(root.length)
+    if (!rel || skipDirs.some((d) => rel.startsWith(d))) continue
+    // root-level jars are the loader installer / server jar; scripts are launch wrappers
+    if (!rel.includes('/') && /\.(jar|bat|sh|ps1|command)$/i.test(rel)) continue
+    const dest = resolve(dir, rel)
+    if (!dest.startsWith(resolve(dir))) continue
+    mkdirSync(dirname(dest), { recursive: true })
+    zip.extractEntryTo(entry, dirname(dest), false, true)
+  }
+}
+
+/**
  * Install a CurseForge pack's files onto the server: every manifest file is
  * resolved through the CF API (with the forgecdn fallback) into mods/, then the
- * overrides folder is applied minus client-only directories. CF manifests carry
- * no client/server flags, so a client-only mod may need removing via Files if
- * the console complains on first start.
+ * overrides folder is applied minus client-only directories. This is the
+ * fallback for packs whose author never published a server pack — CF manifests
+ * carry no client/server flags, so a client-only mod may need removing via
+ * Files if the console complains on first start.
  */
 async function applyCfPackToServer(dir: string, zip: AdmZip, cfAccess?: CfAccess): Promise<void> {
   const entry = zip.getEntry('manifest.json')
@@ -635,7 +751,7 @@ async function applyCfPackToServer(dir: string, zip: AdmZip, cfAccess?: CfAccess
       const file = queue.shift()
       if (!file) return
       try {
-        await downloadWithRetries(file.downloadUrl ?? forgeCdnUrl(file.id, file.fileName), join(modsDir, file.fileName))
+        await downloadWithRetries(cfDownloadUrl(file), join(modsDir, file.fileName))
       } catch {
         skipped.push(file.fileName)
       }
@@ -744,7 +860,7 @@ export async function createServer(opts: CreateServerOptions, cfAccess?: CfAcces
     emitTask(`Resolving ${plan.kind} server for ${plan.minecraftVersion}`, -1)
     const meta = await mojangServerMeta(plan.minecraftVersion)
     const name = opts.name.trim() || plan.packName?.trim() || 'My Server'
-    const fromPack = Boolean(plan.zip || plan.cfZip || plan.instanceId)
+    const fromPack = Boolean(plan.zip || plan.cfZip || plan.cfServerZip || plan.instanceId)
     const server: LocalServer = {
       id: randomUUID(),
       name,
@@ -765,7 +881,8 @@ export async function createServer(opts: CreateServerOptions, cfAccess?: CfAcces
     try {
       await ensureServerBinary(dir, plan, meta.url, server.javaComponent)
       if (plan.zip) await applyPackToServer(dir, plan.zip)
-      if (plan.cfZip) await applyCfPackToServer(dir, plan.cfZip, cfAccess)
+      if (plan.cfServerZip) applyCfServerPackToServer(dir, plan.cfServerZip)
+      else if (plan.cfZip) await applyCfPackToServer(dir, plan.cfZip, cfAccess)
       if (plan.instanceId) await copyInstanceToServer(dir, plan.instanceId)
 
       // the checkbox in the create dialog is the user's EULA acceptance
@@ -784,7 +901,7 @@ export async function createServer(opts: CreateServerOptions, cfAccess?: CfAcces
       rmSync(dir, { recursive: true, force: true })
       throw e
     } finally {
-      if (plan.tempZipPath) rmSync(plan.tempZipPath, { force: true })
+      for (const tmp of plan.tempZipPaths ?? []) rmSync(tmp, { force: true })
     }
   } catch (e) {
     emitTask('Failed', 1, true)
@@ -888,17 +1005,18 @@ async function createPalworldServer(
   }
 }
 
-/** Create any registry Steam game server (valheim, 7dtd): SteamCMD download + seeded config. */
+/** Create any registry Steam game server: SteamCMD download + seeded config. */
 async function createSteamGameServer(
   opts: CreateServerOptions,
   source: Extract<ServerSource, { type: 'steamgame' }>
 ): Promise<LocalServer> {
   const spec = STEAM_GAMES[source.game]
+  const info = STEAM_GAME_INFO[source.game]
   if (!opts.acceptEula) {
-    throw new Error(`You must accept the ${spec.label} dedicated server terms to run a server.`)
+    throw new Error(`You must accept the ${info.label} dedicated server terms to run a server.`)
   }
   const servers = loadServers()
-  const name = opts.name.trim() || `My ${spec.label} Server`
+  const name = opts.name.trim() || `My ${info.label} Server`
   const server: LocalServer = {
     id: randomUUID(),
     name,
@@ -1109,6 +1227,7 @@ function saveCommandFor(server: LocalServer): string {
   if (game === 'valheim') return '' // no console — valheim autosaves on its own schedule
   if (game === 'zomboid') return 'save' // over RCON
   if (game === 'tmodloader') return 'save' // terraria's console, over stdin
+  if (game === 'ark' || game === 'arksa') return 'SaveWorld' // over RCON
   return 'save-all'
 }
 
@@ -1205,6 +1324,8 @@ function backupSources(server: LocalServer): string[] {
   // zomboid's cachedir holds the saves and the .ini both; tModLoader keeps worlds of its own
   else if (gameOf(server) === 'zomboid') rel.push('data')
   else if (gameOf(server) === 'tmodloader') rel.push('Worlds')
+  // both ARKs keep worlds, tribes and player profiles under one folder
+  else if (gameOf(server) === 'ark' || gameOf(server) === 'arksa') rel.push(join('ShooterGame', 'Saved', 'SavedArks'))
   else {
     const level = getServerProperties(server.id)['level-name']?.trim() || 'world'
     for (const suffix of ['', '_nether', '_the_end']) rel.push(level + suffix)
@@ -1349,7 +1470,7 @@ export function setServerAutomation(id: string, automation: ServerAutomation): L
 function mainProtocol(server: LocalServer): 'UDP' | 'TCP' {
   const game = gameOf(server)
   if (game === 'palworld') return 'UDP'
-  if (isSteamGame(game)) return STEAM_GAMES[game as 'valheim' | 'sdtd'].protocol
+  if (isSteamGame(game)) return STEAM_GAMES[game as SteamGameId].protocol
   return 'TCP'
 }
 
@@ -1818,6 +1939,9 @@ export function playerCapKey(game: ServerGame): string | null {
   if (game === 'valheim') return null // valheim is hard-capped at 10 by the game itself
   if (game === 'zomboid') return 'MaxPlayers'
   if (game === 'tmodloader') return 'maxplayers'
+  // ASE reads this from the ini; ASA ignores it there and takes the cap from
+  // -WinLiveMaxPlayers, which startSteamGame builds from this same key
+  if (game === 'ark' || game === 'arksa') return 'MaxPlayers'
   return 'max-players'
 }
 
@@ -1979,23 +2103,24 @@ export async function startServer(id: string): Promise<void> {
 const palworldHandles = new Map<string, PalworldHandle>()
 const steamGameHandles = new Map<string, SteamGameHandle>()
 
-/** Start a registry Steam game (valheim/7dtd) with the shared lifecycle plumbing. */
+/** Start a registry Steam game with the shared lifecycle plumbing. */
 async function runSteamGameServer(server: LocalServer): Promise<void> {
   const id = server.id
-  const game = gameOf(server) as 'valheim' | 'sdtd'
+  const game = gameOf(server) as SteamGameId
   const spec = STEAM_GAMES[game]
+  const info = STEAM_GAME_INFO[game]
   const dir = serverDir(id)
   logs.set(id, [])
   players.set(id, new Set())
   setState(id, 'starting')
-  pushLog(id, `[ELauncher] Starting ${spec.label} server on ${spec.protocol} port ${server.port} — first boot can take a few minutes`)
+  pushLog(id, `[ELauncher] Starting ${info.label} server on ${spec.protocol} port ${server.port} — first boot can take a few minutes`)
   try {
     const handle = startSteamGame(game, dir, server.port, planCoreList(server), {
       onLog: (line) => pushLog(id, line),
       onReady: () => {
         setState(id, 'running')
         startAutomation(id)
-        notifyPhones(server.name, `${spec.label} server is online`, `${id}:state`)
+        notifyPhones(server.name, `${info.label} server is online`, `${id}:state`)
       },
       onPlayers: (names) => {
         const before = players.get(id) ?? new Set<string>()
@@ -2176,7 +2301,7 @@ export function sendServerCommand(id: string, command: string): void {
   if (isSteamGame(gameOf(record))) {
     const handle = steamGameHandles.get(id)
     if (!handle || (states.get(id) ?? 'stopped') !== 'running') throw new Error('The server is not running.')
-    if (!handle.command) throw new Error(`${STEAM_GAMES[gameOf(record) as 'valheim' | 'sdtd'].label} has no admin console — manage it through Settings.`)
+    if (!handle.command) throw new Error(`${STEAM_GAME_INFO[gameOf(record) as SteamGameId].label} has no admin console — manage it through Settings.`)
     pushLog(id, `> ${cmd}`)
     handle.command(cmd)
     return
@@ -2262,7 +2387,7 @@ export async function regenerateValheimWorld(
 
 export function getServerProperties(id: string): Record<string, string> {
   const record = getServer(id)
-  if (isSteamGame(gameOf(record))) return getSteamGameSettings(gameOf(record) as 'valheim' | 'sdtd', serverDir(id))
+  if (isSteamGame(gameOf(record))) return getSteamGameSettings(gameOf(record) as SteamGameId, serverDir(id))
   if (gameOf(record) === 'palworld') return getPalworldSettings(serverDir(id))
   const file = join(serverDir(id), 'server.properties')
   const entries: Record<string, string> = {}
@@ -2280,7 +2405,7 @@ export function getServerProperties(id: string): Record<string, string> {
 export function setServerProperties(id: string, updates: Record<string, string>): Record<string, string> {
   const palworldRecord = getServer(id)
   if (isSteamGame(gameOf(palworldRecord))) {
-    return setSteamGameSettings(gameOf(palworldRecord) as 'valheim' | 'sdtd', serverDir(id), updates)
+    return setSteamGameSettings(gameOf(palworldRecord) as SteamGameId, serverDir(id), updates)
   }
   if (gameOf(palworldRecord) === 'palworld') {
     const entries = setPalworldSettings(serverDir(id), updates)

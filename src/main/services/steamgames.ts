@@ -5,6 +5,9 @@ import { Socket } from 'net'
 import { randomBytes } from 'crypto'
 import AdmZip from 'adm-zip'
 import type { SteamServerGame } from '@shared/types'
+import { arkDefaultMap, isArkMap } from '@shared/ark'
+import { STEAM_GAME_INFO } from '@shared/games'
+import { ensureProton, protonEnv, protonPrefixDir, readProton } from './proton'
 import { installSteamApp } from './steamcmd'
 import { downloadToFile } from './mods'
 import { killProcessTree } from './proctree'
@@ -13,15 +16,15 @@ import { killProcessTree } from './proctree'
  * Generic Steam dedicated-server provider. Palworld came first and has its own
  * module (REST API, ini tuple format); every further Steam game rides this spec
  * table instead — adding one is a new entry plus, at most, a settings seed.
- * Currently Valheim, 7 Days to Die, Project Zomboid and tModLoader; all have
- * native Windows + Linux builds, and all but tModLoader install over SteamCMD
- * anonymously.
+ * Currently Valheim, 7 Days to Die, Project Zomboid, tModLoader and both ARKs;
+ * all but tModLoader install over SteamCMD anonymously, and all but ARK:
+ * Survival Ascended have native Windows + Linux builds — ASA is Windows-only, so
+ * on Linux it runs under GE-Proton (see needsProton and ./proton).
  */
 
 const IS_WIN = process.platform === 'win32'
 
 export interface SteamGameSpec {
-  label: string
   appId: number
   basePort: number
   /** ports each server claims (game port + query/telnet neighbors) */
@@ -35,14 +38,35 @@ export interface SteamGameSpec {
 
 /** Record, not a partial: a new SteamServerGame will not compile without an entry. */
 export const STEAM_GAMES: Record<SteamServerGame, SteamGameSpec> = {
-  valheim: { label: 'Valheim', appId: 896660, basePort: 2456, portStep: 3, protocol: 'UDP', memoryHintMb: 4096, hasConsole: false },
-  sdtd: { label: '7 Days to Die', appId: 294420, basePort: 26900, portStep: 4, protocol: 'UDP', memoryHintMb: 8192, hasConsole: true },
+  valheim: { appId: 896660, basePort: 2456, portStep: 3, protocol: 'UDP', memoryHintMb: 4096, hasConsole: false },
+  sdtd: { appId: 294420, basePort: 26900, portStep: 4, protocol: 'UDP', memoryHintMb: 8192, hasConsole: true },
   // port+1 is zomboid's second UDP channel, port+2 its RCON — bound to localhost,
   // so the step reserves it rather than exposing it
-  zomboid: { label: 'Project Zomboid', appId: 380870, basePort: 16261, portStep: 3, protocol: 'UDP', memoryHintMb: 4096, hasConsole: true },
+  zomboid: { appId: 380870, basePort: 16261, portStep: 3, protocol: 'UDP', memoryHintMb: 4096, hasConsole: true },
   // appId is informational here — tModLoader's depots aren't anonymously
   // licensed, so its server comes from GitHub (see installTModLoader)
-  tmodloader: { label: 'tModLoader', appId: 1281930, basePort: 7777, portStep: 1, protocol: 'TCP', memoryHintMb: 3072, hasConsole: true }
+  tmodloader: { appId: 1281930, basePort: 7777, portStep: 1, protocol: 'TCP', memoryHintMb: 3072, hasConsole: true },
+  // Both ARKs claim four ports: game, game+1 (the raw socket ASE still opens),
+  // query at +2 and RCON at +3. ARK lets all four be set freely, so packing them
+  // contiguously keeps one allocation per server like every other game here.
+  // ASA's base is offset off 7777 only so the two ARKs don't shuffle past each
+  // other on every allocation — nextFreePort would resolve the overlap anyway.
+  ark: { appId: 376030, basePort: 7777, portStep: 4, protocol: 'UDP', memoryHintMb: 8192, hasConsole: true },
+  arksa: { appId: 2430930, basePort: 7877, portStep: 4, protocol: 'UDP', memoryHintMb: 16384, hasConsole: true }
+}
+
+/**
+ * Games with no Linux server build. ASA is the only one — Wildcard never shipped
+ * it — so on Linux its Windows binary runs under GE-Proton instead. Windows hosts
+ * run it natively and never touch Proton at all.
+ */
+export function needsProton(game: SteamGameId): boolean {
+  return game === 'arksa' && !IS_WIN
+}
+
+/** Both ARKs, which share a config layout, a launch grammar and an RCON console. */
+function isArk(game: SteamGameId): game is 'ark' | 'arksa' {
+  return game === 'ark' || game === 'arksa'
 }
 
 export type SteamGameId = SteamServerGame
@@ -86,7 +110,9 @@ function readFlatConfig(file: string): Record<string, string> {
   const out: Record<string, string> = {}
   for (const line of readFileSync(file, 'utf-8').split(/\r?\n/)) {
     const trimmed = line.trim()
-    if (!trimmed || trimmed.startsWith('#')) continue
+    // `;` is ARK's comment marker and `[Section]` its headers; neither carries a
+    // bare `key=value`, so reading stays flat even for the sectioned ini
+    if (!trimmed || trimmed.startsWith('#') || trimmed.startsWith(';')) continue
     const idx = trimmed.indexOf('=')
     if (idx <= 0) continue
     out[trimmed.slice(0, idx).trim()] = trimmed.slice(idx + 1).trim()
@@ -117,6 +143,128 @@ function writeFlatConfig(file: string, updates: Record<string, string>): void {
   for (const [key, value] of pending) merged.push(`${key}=${value}`)
   mkdirSync(dirname(file), { recursive: true })
   writeFileSync(file, merged.join('\n').replace(/\n*$/, '\n'), 'utf-8')
+}
+
+// ---------- ark ----------
+// ARK keeps its settings in a *sectioned* GameUserSettings.ini, so writeFlatConfig
+// can't be reused: an appended key would land under whatever section happens to
+// be last and the game would ignore it. The map is not a setting at all — it's
+// the first launch argument — so it rides a launcher-owned sidecar instead.
+
+const ARK_SIDECAR = 'elauncher-ark.json'
+
+/** Section each modelled key belongs to; anything unlisted is a plain server setting. */
+const ARK_SECTIONS: Record<string, string> = {
+  SessionName: 'SessionSettings',
+  Port: 'SessionSettings',
+  QueryPort: 'SessionSettings',
+  MaxPlayers: '/Script/Engine.GameSession'
+}
+
+const arkSectionOf = (key: string): string => ARK_SECTIONS[key] ?? 'ServerSettings'
+
+/**
+ * ARK writes its config under the platform it was built for, so ASE on Linux
+ * reads LinuxServer/ while both Windows builds read WindowsServer/. Seeding the
+ * wrong one is silent: the server boots with stock defaults.
+ */
+function arkConfigPath(game: 'ark' | 'arksa', dir: string): string {
+  const platform = game === 'ark' && !IS_WIN ? 'LinuxServer' : 'WindowsServer'
+  return join(dir, 'ShooterGame', 'Saved', 'Config', platform, 'GameUserSettings.ini')
+}
+
+/**
+ * Merge-write a sectioned ini. Existing keys are edited in the section they
+ * belong to, and new ones inserted at the end of that section — appending at EOF
+ * like the flat writer does would silently file them under the wrong header.
+ * ARK rewrites this file itself on every shutdown, so the comments and the
+ * hundred-odd keys we don't model have to survive the round trip.
+ */
+function writeIniConfig(file: string, updates: Record<string, string>, sectionOf: (key: string) => string): void {
+  const pending = new Map(Object.entries(updates))
+  const lines = existsSync(file) ? readFileSync(file, 'utf-8').split(/\r?\n/) : []
+  let current = ''
+  const merged = lines.map((line) => {
+    const trimmed = line.trim()
+    const header = trimmed.match(/^\[(.+)\]$/)
+    if (header) {
+      current = header[1]
+      return line
+    }
+    if (!trimmed || trimmed.startsWith(';') || trimmed.startsWith('#')) return line
+    const idx = trimmed.indexOf('=')
+    if (idx <= 0) return line
+    const key = trimmed.slice(0, idx).trim()
+    // same key can exist under two headers; only the one we mean is rewritten
+    if (!pending.has(key) || sectionOf(key) !== current) return line
+    const value = pending.get(key)!
+    pending.delete(key)
+    return `${key}=${value}`
+  })
+
+  // whatever the file didn't already carry, grouped so each section is opened once
+  const bySection = new Map<string, string[]>()
+  for (const [key, value] of pending) {
+    const section = sectionOf(key)
+    if (!bySection.has(section)) bySection.set(section, [])
+    bySection.get(section)!.push(`${key}=${value}`)
+  }
+  for (const [section, entries] of bySection) {
+    const at = merged.findIndex((l) => l.trim() === `[${section}]`)
+    if (at === -1) {
+      merged.push(`[${section}]`, ...entries)
+      continue
+    }
+    // insert before the next header, so the keys stay inside their own section
+    let end = at + 1
+    while (end < merged.length && !/^\[.+\]$/.test(merged[end].trim())) end++
+    merged.splice(end, 0, ...entries)
+  }
+
+  mkdirSync(dirname(file), { recursive: true })
+  writeFileSync(file, merged.join('\n').replace(/\n*$/, '\n'), 'utf-8')
+}
+
+/**
+ * ARK's command line, which is two grammars in one string: everything up to the
+ * first space is a `?`-joined query string hanging off the map name, and
+ * everything after it is `-` flags. An option written on the wrong side of that
+ * boundary is not an error — the server boots and silently ignores it.
+ *
+ * Exported for the same reason valheimExtraArgs is: a wrong option here doesn't
+ * fail loudly, it produces a server nobody can join or a cap that isn't applied.
+ */
+export function arkLaunchArgs(game: 'ark' | 'arksa', settings: Record<string, string>, port: number): string[] {
+  const map = isArkMap(game, settings.Map ?? '') ? settings.Map : arkDefaultMap(game)
+  const query = [
+    map,
+    'listen',
+    `SessionName=${settings.SessionName || 'ARK Server'}`,
+    `Port=${port}`,
+    `QueryPort=${port + 2}`,
+    'RCONEnabled=True',
+    `RCONPort=${port + 3}`,
+    ...(settings.ServerPassword ? [`ServerPassword=${settings.ServerPassword}`] : []),
+    ...(settings.ServerAdminPassword ? [`ServerAdminPassword=${settings.ServerAdminPassword}`] : [])
+  ].join('?')
+  return [
+    query,
+    '-server',
+    '-log',
+    // ASA ignores MaxPlayers in the ini and reads the cap only from this flag;
+    // ASE is the other way round, so passing it there would be the inert trap
+    ...(game === 'arksa' ? [`-WinLiveMaxPlayers=${Number(settings.MaxPlayers) || 20}`] : [])
+  ]
+}
+
+/** Launcher-owned ARK bits that aren't ini keys: the map, which is a launch arg. */
+function readArkSidecar(game: 'ark' | 'arksa', dir: string): Record<string, string> {
+  try {
+    const saved = JSON.parse(readFileSync(join(dir, ARK_SIDECAR), 'utf-8')) as Record<string, string>
+    return { Map: saved.Map || arkDefaultMap(game) }
+  } catch {
+    return { Map: arkDefaultMap(game) }
+  }
 }
 
 function valheimDefaults(name: string): Record<string, string> {
@@ -222,6 +370,9 @@ export function getSteamGameSettings(game: SteamGameId, dir: string): Record<str
   }
   if (game === 'zomboid') return readFlatConfig(pzIniPath(dir))
   if (game === 'tmodloader') return readFlatConfig(join(dir, TML_CONFIG))
+  // the sidecar's Map sits alongside the ini keys so the settings panel edits
+  // both through one flat map, the way it does for every other game
+  if (isArk(game)) return { ...readFlatConfig(arkConfigPath(game, dir)), ...readArkSidecar(game, dir) }
   const file = join(dir, SDTD_CONFIG)
   if (!existsSync(file)) return {}
   const props: Record<string, string> = {}
@@ -252,6 +403,19 @@ export function setSteamGameSettings(game: SteamGameId, dir: string, updates: Re
     writeFlatConfig(join(dir, TML_CONFIG), updates)
     return getSteamGameSettings('tmodloader', dir)
   }
+  if (isArk(game)) {
+    const { Map: map, ...ini } = updates
+    if (map !== undefined) {
+      // a map ARK doesn't ship boots a server that loads forever and answers
+      // nothing, so it's rejected here rather than discovered on the join screen
+      if (!isArkMap(game, map)) {
+        throw new Error(`${STEAM_GAME_INFO[game].label} has no map called "${map}".`)
+      }
+      writeFileSync(join(dir, ARK_SIDECAR), JSON.stringify({ ...readArkSidecar(game, dir), Map: map }, null, 2), 'utf-8')
+    }
+    if (Object.keys(ini).length > 0) writeIniConfig(arkConfigPath(game, dir), ini, arkSectionOf)
+    return getSteamGameSettings(game, dir)
+  }
   const file = join(dir, SDTD_CONFIG)
   let xml = existsSync(file) ? readFileSync(file, 'utf-8') : '<?xml version="1.0"?>\n<ServerSettings>\n</ServerSettings>\n'
   for (const [key, value] of Object.entries(updates)) {
@@ -273,7 +437,17 @@ function serverExe(game: SteamGameId, dir: string): string {
     valheim: ['valheim_server.exe', 'valheim_server.x86_64'],
     sdtd: ['7DaysToDieServer.exe', '7DaysToDieServer.x86_64'],
     zomboid: ['StartServer64.bat', 'start-server.sh'],
-    tmodloader: ['start-tModLoaderServer.bat', 'start-tModLoaderServer.sh']
+    tmodloader: ['start-tModLoaderServer.bat', 'start-tModLoaderServer.sh'],
+    // ASA is the Win64 binary on either platform — there is no Linux build to
+    // point at, and installSteamGame refuses the install before this is reached
+    ark: [
+      join('ShooterGame', 'Binaries', 'Win64', 'ShooterGameServer.exe'),
+      join('ShooterGame', 'Binaries', 'Linux', 'ShooterGameServer')
+    ],
+    arksa: [
+      join('ShooterGame', 'Binaries', 'Win64', 'ArkAscendedServer.exe'),
+      join('ShooterGame', 'Binaries', 'Win64', 'ArkAscendedServer.exe')
+    ]
   }
   return join(dir, names[game][IS_WIN ? 0 : 1])
 }
@@ -402,6 +576,14 @@ export async function installSteamGame(
   settings: SteamGameCreateSettings,
   onProgress: (phase: string, progress: number) => void
 ): Promise<void> {
+  // Fetched before the game, not after: ASA is a ~30 GB download and a host that
+  // turns out to have no python3 should fail in the first few seconds, not once
+  // the whole game is on disk. SteamCMD needs no coaxing for the Windows depot —
+  // it's the only one ASA has, so an anonymous app_update gets it on Linux too.
+  if (needsProton(game)) {
+    const proton = await ensureProton(onProgress)
+    onProgress(`Using ${proton.version} to run this Windows-only server`, -1)
+  }
   if (game === 'tmodloader') await installTModLoader(dir, onProgress)
   else await installSteamApp(STEAM_GAMES[game].appId, dir, onProgress)
   onProgress('Writing server configuration', -1)
@@ -451,6 +633,24 @@ export async function installSteamGame(
       password: settings.serverPassword ?? '',
       motd: `Welcome to ${settings.serverName}`,
       secure: '1'
+    })
+  } else if (isArk(game)) {
+    if (!existsSync(serverExe(game, dir))) {
+      throw new Error(`${STEAM_GAME_INFO[game].label} server files did not install correctly — retry the install.`)
+    }
+    // RCON is ARK's only admin channel, and it refuses to enable without an
+    // admin password — without this the console, player list and clean
+    // shutdown all silently do nothing
+    setSteamGameSettings(game, dir, {
+      Map: arkDefaultMap(game),
+      SessionName: settings.serverName,
+      ServerPassword: settings.serverPassword ?? '',
+      ServerAdminPassword: randomBytes(9).toString('base64url'),
+      MaxPlayers: String(settings.maxPlayers ?? 20),
+      Port: String(settings.port),
+      QueryPort: String(settings.port + 2),
+      RCONEnabled: 'True',
+      RCONPort: String(settings.port + 3)
     })
   } else {
     if (!existsSync(join(dir, IS_WIN ? '7DaysToDieServer.exe' : '7DaysToDieServer.x86_64'))) {
@@ -515,6 +715,16 @@ export function startSteamGame(
     exe = serverExe(game, dir)
     // -config carries every setting; without it the server prompts for a world
     args = ['-config', join(dir, TML_CONFIG), '-tmlsavedirectory', join(dir, 'tmodloader'), '-nosteam']
+  } else if (isArk(game)) {
+    exe = serverExe(game, dir)
+    // keep the record's port authoritative even if the ini was hand-edited
+    setSteamGameSettings(game, dir, {
+      Port: String(port),
+      QueryPort: String(port + 2),
+      RCONEnabled: 'True',
+      RCONPort: String(port + 3)
+    })
+    args = arkLaunchArgs(game, settings, port)
   } else if (game === 'valheim') {
     exe = join(dir, IS_WIN ? 'valheim_server.exe' : 'valheim_server.x86_64')
     args = [
@@ -546,9 +756,28 @@ export function startSteamGame(
   }
 
   let [spawnExe, spawnArgs] = [exe, args]
+
+  // ASA on Linux is a Windows binary, so it runs through Proton. Wrapped before
+  // taskset below, which must stay outermost for the pin to cover every child.
+  if (needsProton(game)) {
+    const proton = readProton()
+    if (!proton) {
+      throw new Error(
+        `${STEAM_GAME_INFO[game].label} needs GE-Proton to run on Linux and it isn't installed. ` +
+          'Reinstall the server to fetch it.'
+      )
+    }
+    const prefix = protonPrefixDir(dir)
+    // first boot builds the Wine prefix from scratch, which is minutes of
+    // apparent silence before ARK's own (already long) startup even begins
+    cb.onLog(`[ELauncher] Running through ${proton.version} — first start also builds the Wine prefix, so allow extra time`)
+    Object.assign(env, protonEnv(prefix))
+    ;[spawnExe, spawnArgs] = [proton.script, ['run', exe, ...args]]
+  }
+
   if (!IS_WIN && cpuList) {
     cb.onLog(`[ELauncher] CPU pinned to ${cpuList.split(',').length} cores (plan limit)`)
-    ;[spawnExe, spawnArgs] = ['taskset', ['-c', cpuList, exe, ...args]]
+    ;[spawnExe, spawnArgs] = ['taskset', ['-c', cpuList, spawnExe, ...spawnArgs]]
   }
   const proc = spawn(spawnExe, spawnArgs, { cwd: dir, windowsHide: true, detached: !IS_WIN, env })
 
@@ -561,7 +790,7 @@ export function startSteamGame(
   const markReady = (): void => {
     if (ready) return
     ready = true
-    cb.onLog(`[ELauncher] ${STEAM_GAMES[game].label} server is up`)
+    cb.onLog(`[ELauncher] ${STEAM_GAME_INFO[game].label} server is up`)
     cb.onReady()
   }
 
@@ -579,6 +808,11 @@ export function startSteamGame(
       // the authoritative readiness signal is RCON accepting the password
       // below; this only catches it sooner when the banner does appear
       if (!ready && /SERVER STARTED/i.test(line)) markReady()
+    } else if (isArk(game)) {
+      // ARK loads the world long before it accepts joins; this is the line that
+      // marks the difference, and RCON below is the backstop if it's missed.
+      // Player names come from ListPlayers — the log names only tribes and tames.
+      if (!ready && /now advertising for join/i.test(line)) markReady()
     } else if (game === 'tmodloader') {
       if (!ready && /Server started/i.test(line)) markReady()
       // terraria announces both sides of a session on the console
@@ -638,31 +872,53 @@ export function startSteamGame(
     timers.push(setInterval(() => telnetSend('lp'), 15_000))
   }
 
-  // ---- zomboid rcon admin channel (localhost only) ----
+  // ---- rcon admin channel: zomboid and both arks (localhost only) ----
+  // Same protocol, three differences — where the port and password come from,
+  // what asks for the roster, and how that roster is spelled.
+  const rconSpec: { port: number; password: string; listCommand: string; parsePlayers: (body: string) => string[] } | null =
+    game === 'zomboid'
+      ? {
+          port: Number(settings.RCONPort) || port + 2,
+          password: settings.RCONPassword ?? '',
+          listCommand: 'players',
+          // "Players connected (2):" then one "-name" per line
+          parsePlayers: (body) =>
+            body
+              .split(/\r?\n/)
+              .map((l) => l.trim())
+              .filter((l) => l.startsWith('-'))
+              .map((l) => l.slice(1).trim())
+              .filter(Boolean)
+        }
+      : isArk(game)
+        ? {
+            // derived from the live port, not from `settings` — that was read
+            // before the branch above pinned RCONPort, so on a server whose port
+            // was reallocated it still holds the old one, and a stale port here
+            // costs the console, the player list and the save-on-stop silently
+            port: port + 3,
+            // ARK authenticates RCON with the admin password — there is no separate one
+            password: settings.ServerAdminPassword ?? '',
+            listCommand: 'ListPlayers',
+            // "0. SomeSurvivor, 76561198000000000" per player; the empty server
+            // answers "No Players Connected", which matches nothing and clears
+            parsePlayers: (body) => [...body.matchAll(/^\s*\d+\.\s*(.+?),\s*\d+\s*$/gm)].map((m) => m[1].trim())
+          }
+        : null
+
   let rcon: RconChannel | null = null
   const rconSend = (cmd: string, onReply?: (body: string) => void): void => rcon?.send(cmd, onReply)
-  if (game === 'zomboid') {
-    const rconPort = Number(settings.RCONPort) || port + 2
-    const rconPassword = settings.RCONPassword ?? ''
-    // "Players connected (2):" then one "-name" per line
-    const readPlayers = (body: string): void => {
-      cb.onPlayers(
-        body
-          .split(/\r?\n/)
-          .map((l) => l.trim())
-          .filter((l) => l.startsWith('-'))
-          .map((l) => l.slice(1).trim())
-          .filter(Boolean)
-      )
-    }
+  if (rconSpec) {
+    const spec = rconSpec
+    const readPlayers = (body: string): void => cb.onPlayers(spec.parsePlayers(body))
     const connectRcon = (): void => {
-      if (exited || !rconPassword) return
-      rcon = rconConnect(rconPort, rconPassword, {
+      if (exited || !spec.password) return
+      rcon = rconConnect(spec.port, spec.password, {
         onReady: () => {
           // the port refuses the password until the world is loaded, so getting
           // in is the most reliable "this server is actually up" we have
           markReady()
-          rconSend('players', readPlayers)
+          rconSend(spec.listCommand, readPlayers)
         },
         onClose: () => {
           rcon = null
@@ -672,7 +928,7 @@ export function startSteamGame(
     }
     timers.push(setTimeout(connectRcon, 20_000))
     // pushed once, not per connection, so reconnects don't stack pollers
-    timers.push(setInterval(() => rconSend('players', readPlayers), 15_000))
+    timers.push(setInterval(() => rconSend(spec.listCommand, readPlayers), 15_000))
   }
 
   proc.on('exit', (code) => {
@@ -694,6 +950,11 @@ export function startSteamGame(
       telnetSend('shutdown') // saves and exits cleanly
     } else if (game === 'zomboid' && rcon) {
       rconSend('quit') // saves every player and the world, then exits
+    } else if (isArk(game) && rcon) {
+      // ARK exits instantly on DoExit whether or not the world is flushed, so
+      // it's sent only once SaveWorld has answered — an unsaved ARK world loses
+      // every structure and tame built since the last autosave
+      rconSend('SaveWorld', () => rconSend('DoExit'))
     } else if (game === 'tmodloader' && proc.stdin?.writable) {
       proc.stdin.write('exit\n') // terraria's console: save and shut down
     } else if (!IS_WIN && proc.pid) {
@@ -703,14 +964,23 @@ export function startSteamGame(
         proc.kill('SIGINT')
       }
     }
-    setTimeout(() => {
-      if (!exited) killProcessTree(proc)
-    }, 25_000)
+    // last resort if the clean path stalls. A mature ARK world can take a
+    // minute to write, and killing mid-save is what corrupts it, so the ARKs
+    // get considerably longer to finish than the games with small saves.
+    setTimeout(
+      () => {
+        if (!exited) killProcessTree(proc)
+      },
+      isArk(game) ? 120_000 : 25_000
+    )
   }
+
+  const rconCommand = (cmd: string): void =>
+    rconSend(cmd, (body) => body.split(/\r?\n/).forEach((l) => l && cb.onLog(l)))
 
   const command =
     game === 'sdtd' ? telnetSend
-    : game === 'zomboid' ? (cmd: string) => rconSend(cmd, (body) => body.split(/\r?\n/).forEach((l) => l && cb.onLog(l)))
+    : game === 'zomboid' || isArk(game) ? rconCommand
     : game === 'tmodloader' ? (cmd: string) => { if (proc.stdin?.writable) proc.stdin.write(cmd + '\n') }
     : undefined
 

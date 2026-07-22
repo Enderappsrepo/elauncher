@@ -45,6 +45,8 @@ import {
 import Select from '../components/Select'
 import AutomationCard from '../components/server/AutomationCard'
 import PalworldSettingsTab from '../components/server/PalworldSettingsTab'
+import SteamSettingsTab from '../components/server/SteamSettingsTab'
+import { STEAM_GAME_IDS, STEAM_GAME_INFO, isSteamGameId } from '@shared/games'
 import PalworldPlayersTab from '../components/server/PalworldPlayersTab'
 import FilesTab from '../components/server/FilesTab'
 import PlayersTab from '../components/server/PlayersTab'
@@ -53,6 +55,14 @@ import RemoteServers from '../components/server/RemoteServers'
 import HostReadiness from '../components/server/HostReadiness'
 
 const MODDABLE_KINDS: ReadonlySet<ServerKind> = new Set(['fabric', 'neoforge', 'forge'])
+
+/**
+ * The renderer has no process.platform, so the UA string stands in. Only used to
+ * warn early about ARK: Survival Ascended, which has no Linux server build — the
+ * main process refuses the install regardless, this just says so before the
+ * download rather than after.
+ */
+const IS_WINDOWS = navigator.userAgent.includes('Windows')
 
 interface Status {
   state: LocalServerState
@@ -101,6 +111,18 @@ const KIND_OPTIONS: { value: ServerKind; label: string }[] = [
   { value: 'forge', label: 'Forge — for Forge mods' }
 ]
 
+/** Every game a server can be created as, in picker order. */
+const GAME_OPTIONS: { value: ServerGame; label: string }[] = [
+  { value: 'minecraft', label: 'Minecraft' },
+  { value: 'palworld', label: 'Palworld' },
+  ...STEAM_GAME_IDS.map((id) => ({ value: id as ServerGame, label: STEAM_GAME_INFO[id].label }))
+]
+
+const defaultServerName = (game: ServerGame): string =>
+  game === 'minecraft' ? 'My Server'
+  : game === 'palworld' ? 'My Palworld Server'
+  : `My ${STEAM_GAME_INFO[game].label} Server`
+
 /** Create-server dialog: fresh pick, from a modpack, or mirroring an instance. */
 function CreateServerModal({
   onClose,
@@ -112,8 +134,8 @@ function CreateServerModal({
   const { instances, cloudUser } = useAppState()
   const toast = useToast()
   const [game, setGame] = useState<ServerGame>('minecraft')
-  const [palPassword, setPalPassword] = useState('')
-  const [palMaxPlayers, setPalMaxPlayers] = useState(16)
+  const [gamePassword, setGamePassword] = useState('')
+  const [gameMaxPlayers, setGameMaxPlayers] = useState(16)
   const [palCommunity, setPalCommunity] = useState(false)
   const [mode, setModeRaw] = useState<CreateMode>('fresh')
   const [versions, setVersions] = useState<MinecraftVersionInfo[]>([])
@@ -179,9 +201,17 @@ function CreateServerModal({
     return () => clearTimeout(t)
   }, [browseQuery, browseSource, mode, packSource])
 
+  /** Swapping games retitles the server, but only while the name is still the default one. */
+  const changeGame = (next: ServerGame): void => {
+    setName((n) => (n === defaultServerName(game) ? defaultServerName(next) : n))
+    setGame(next)
+  }
+
   const source: ServerSource | null =
     game === 'palworld'
-      ? { type: 'palworld', serverPassword: palPassword || undefined, maxPlayers: palMaxPlayers, communityServer: palCommunity }
+      ? { type: 'palworld', serverPassword: gamePassword || undefined, maxPlayers: gameMaxPlayers, communityServer: palCommunity }
+      : isSteamGameId(game)
+        ? { type: 'steamgame', game, serverPassword: gamePassword || undefined, maxPlayers: gameMaxPlayers }
       : mode === 'fresh'
         ? version
           ? { type: 'fresh', kind, minecraftVersion: version }
@@ -231,26 +261,8 @@ function CreateServerModal({
 
         <div className="field">
           <label>Game</label>
-          <div className="segmented">
-            <button
-              className={game === 'minecraft' ? 'active' : ''}
-              onClick={() => {
-                setGame('minecraft')
-                setName((n) => (n === 'My Palworld Server' ? 'My Server' : n))
-              }}
-            >
-              Minecraft
-            </button>
-            <button
-              className={game === 'palworld' ? 'active' : ''}
-              onClick={() => {
-                setGame('palworld')
-                setName((n) => (n === 'My Server' ? 'My Palworld Server' : n))
-              }}
-            >
-              Palworld
-            </button>
-          </div>
+          <Select value={game} onChange={(v) => changeGame(v as ServerGame)} options={GAME_OPTIONS} />
+          {isSteamGameId(game) && <div className="hint">{STEAM_GAME_INFO[game].blurb}</div>}
         </div>
 
         {game === 'minecraft' && (
@@ -283,9 +295,9 @@ function CreateServerModal({
               <div className="field">
                 <label>Join password (optional)</label>
                 <input
-                  value={palPassword}
+                  value={gamePassword}
                   placeholder="Empty = anyone with the address"
-                  onChange={(e) => setPalPassword(e.target.value)}
+                  onChange={(e) => setGamePassword(e.target.value)}
                 />
               </div>
               <div className="field">
@@ -294,8 +306,8 @@ function CreateServerModal({
                   type="number"
                   min={1}
                   max={32}
-                  value={palMaxPlayers}
-                  onChange={(e) => setPalMaxPlayers(Math.min(32, Math.max(1, Number(e.target.value) || 16)))}
+                  value={gameMaxPlayers}
+                  onChange={(e) => setGameMaxPlayers(Math.min(32, Math.max(1, Number(e.target.value) || 16)))}
                 />
               </div>
             </div>
@@ -309,6 +321,44 @@ function CreateServerModal({
             <div className="hint">
               The dedicated server is a free ~8 GB download from Steam (no Steam account needed) — the first install
               takes a while. Hosting works best with 16 GB of RAM.
+            </div>
+          </>
+        )}
+
+        {isSteamGameId(game) && (
+          <>
+            <div className="props-grid">
+              <div className="field">
+                <label>Join password (optional)</label>
+                <input
+                  value={gamePassword}
+                  placeholder="Empty = anyone with the address"
+                  onChange={(e) => setGamePassword(e.target.value)}
+                />
+              </div>
+              {/* valheim's cap is fixed by the game, so asking for one would be a lie */}
+              {game !== 'valheim' && (
+                <div className="field">
+                  <label>Max players</label>
+                  <input
+                    type="number"
+                    min={1}
+                    max={200}
+                    value={gameMaxPlayers}
+                    onChange={(e) => setGameMaxPlayers(Math.min(200, Math.max(1, Number(e.target.value) || 8)))}
+                  />
+                </div>
+              )}
+            </div>
+            {game === 'arksa' && !IS_WINDOWS && (
+              <div className="hint">
+                ARK: Survival Ascended has no Linux server build, so it runs through GE-Proton — the launcher downloads
+                that once (~400 MB) alongside the game. Needs python3 on the host.
+              </div>
+            )}
+            <div className="hint">
+              The dedicated server downloads from Steam (no Steam account needed) — the first install can take a while.
+              Plan for around {STEAM_GAME_INFO[game].ramHintGb} GB of RAM.
             </div>
           </>
         )}
@@ -382,8 +432,9 @@ function CreateServerModal({
                 </div>
                 {browseSource === 'curseforge' && (
                   <div className="hint" style={{ marginBottom: 8 }}>
-                    CurseForge needs your API key from Settings. Packs install their mods server-side; a client-only
-                    mod may need removing in Files if the console complains.
+                    CurseForge needs your API key from Settings. When the pack publishes a server pack the launcher
+                    installs that one, so client-only mods are already gone; if it doesn't, one may need removing in
+                    Files if the console complains.
                   </div>
                 )}
                 <div className="pick-list">
@@ -421,10 +472,11 @@ function CreateServerModal({
             )}
             {packSource === 'file' && (
               <div className="hint">
-                You'll pick the file when you press Create — a Modrinth <b>.mrpack</b> or a <b>.zip</b> exported from the
-                CurseForge app (open the pack and use Export). The loader, version and mods come from the pack. Modrinth packs
-                skip client-only mods automatically; CurseForge packs don't mark them, so a client-only mod may need
-                removing in Files if the console complains. CurseForge zips need your API key from Settings.
+                You'll pick the file when you press Create — a Modrinth <b>.mrpack</b>, a <b>.zip</b> exported from the
+                CurseForge app, or a CurseForge <b>server pack</b> zip. The loader, version and mods come from the pack.
+                Server packs and Modrinth packs already leave client-only mods out; an exported CurseForge pack doesn't
+                mark them, so one may need removing in Files if the console complains — and it needs your API key from
+                Settings, which a server pack doesn't.
               </div>
             )}
           </div>
@@ -465,6 +517,13 @@ function CreateServerModal({
                 I accept Pocketpair&apos;s{' '}
                 <a href="https://docs.palworldgame.com/" target="_blank" rel="noreferrer">
                   dedicated server terms
+                </a>
+              </>
+            ) : isSteamGameId(game) ? (
+              <>
+                I accept the {STEAM_GAME_INFO[game].label} dedicated server terms and the{' '}
+                <a href="https://store.steampowered.com/subscriber_agreement/" target="_blank" rel="noreferrer">
+                  Steam Subscriber Agreement
                 </a>
               </>
             ) : (
@@ -1352,7 +1411,9 @@ export default function ServerPage(): React.JSX.Element {
                   <span className="srail-info">
                     <span className="srail-name">{s.name}</span>
                     <span className="srail-meta">
-                      {s.game === 'palworld' ? 'Palworld' : `${s.kind} · ${s.minecraftVersion}`}
+                      {s.game === 'palworld' ? 'Palworld'
+                      : isSteamGameId(s.game) ? STEAM_GAME_INFO[s.game].label
+                      : `${s.kind} · ${s.minecraftVersion}`}
                     </span>
                   </span>
                   {st.players.length > 0 && (
@@ -1598,7 +1659,13 @@ export default function ServerPage(): React.JSX.Element {
                 ))}
               {tab === 'settings' && (
                 <>
-                  {selected.game === 'palworld' ? <PalworldSettingsTab server={selected} /> : <PropertiesCard server={selected} />}
+                  {selected.game === 'palworld' ? (
+                    <PalworldSettingsTab server={selected} />
+                  ) : isSteamGameId(selected.game) ? (
+                    <SteamSettingsTab server={selected} />
+                  ) : (
+                    <PropertiesCard server={selected} />
+                  )}
                   <AutomationCard server={selected} />
                 </>
               )}

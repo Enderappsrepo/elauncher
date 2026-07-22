@@ -29,7 +29,9 @@ SSH in: `ssh root@YOUR_VPS_IP`
 ## 2. Install prerequisites
 
 ```bash
-apt update && apt install -y git curl xvfb tar
+# python3 and tar are what GE-Proton needs — see "ARK: Survival Ascended" below.
+# Both are already present on a stock Ubuntu 24.04; this is belt-and-braces.
+apt update && apt install -y git curl xvfb tar python3
 
 # Node 20 (build toolchain)
 curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
@@ -194,6 +196,20 @@ cd /root/elauncher && git pull && npm ci && npm run build && systemctl restart e
   The host itself stays root (firewall + apt still work). Needs `setpriv`
   (util-linux, preinstalled) and `setfacl` (`acl` package — auto-installed via
   apt when missing).
+- **ARK: Survival Evolved** has a native Linux server and needs nothing special,
+  beyond room for a ~20 GB download and roughly 8 GB of RAM at rest.
+- **ARK: Survival Ascended has no Linux server build.** ELauncher runs its Windows
+  binary under **GE-Proton**, which it downloads once (~400 MB, into
+  `~/.config/elauncher-data/proton`) the first time an ASA server is installed.
+  That needs `python3` and `tar` on the host — both stock on Ubuntu 24.04.
+  - Budget disk for it: the game is ~30 GB, plus Proton and a Wine prefix per
+    server (`<serverfolder>/protonprefix`). `df -h` before ordering.
+  - The **first start is slow twice over** — Proton builds the Wine prefix, then
+    ARK does its own long startup. The console says so when it happens; don't
+    read the quiet stretch as a hang.
+  - Proton is pinned to whatever release was current when the first ASA server
+    was installed, so a later GE-Proton regression can't change a working server.
+    Delete the `proton` folder to move to a newer build.
 - **Minecraft** is pure Java and the most reliable to start with — prove the whole
   pipeline (order → provision → manage → play) with a Minecraft server first.
 - **Security:** don't run as root long-term for a real business; create a dedicated
