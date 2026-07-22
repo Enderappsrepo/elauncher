@@ -5,6 +5,7 @@ import { Button, Console, Skeleton, StatusPill, Tabs } from '@web/ui'
 import { Auth } from './Auth'
 import { mockServers, uptime } from './data'
 import type { ServerRow } from './data'
+import { useServers } from './useServers'
 import '@web/styles/ui.css'
 import './App.css'
 
@@ -31,7 +32,9 @@ export function App(): React.JSX.Element {
     if (window.__mockServers) return window.__mockServers
     return sessionStorage.getItem('elauncher:preview') === '1' ? mockServers() : undefined
   }, [])
-  const [servers, setServers] = useState<ServerRow[]>(mock ?? [])
+  const userId = phase.kind === 'signedIn' ? (phase.session?.user.id ?? null) : null
+  const live = useServers(userId, !mock && phase.kind === 'signedIn')
+  const servers = mock ?? live.rows
 
   useEffect(() => {
     if (mock) {
@@ -81,9 +84,11 @@ export function App(): React.JSX.Element {
         {phase.kind === 'signedOut' && <Auth />}
         {phase.kind === 'signedIn' &&
           (open ? (
-            <Detail row={open} onBack={() => setOpenId(null)} onPatch={setServers} />
+            <Detail row={open} onBack={() => setOpenId(null)} />
+          ) : live.loading && !mock ? (
+            <ListSkeleton />
           ) : (
-            <ServerList rows={servers} onOpen={setOpenId} />
+            <ServerList rows={servers} error={live.error} onOpen={setOpenId} />
           ))}
       </main>
     </div>
@@ -100,7 +105,29 @@ function ListSkeleton(): React.JSX.Element {
   )
 }
 
-function ServerList({ rows, onOpen }: { rows: ServerRow[]; onOpen: (id: string) => void }): React.JSX.Element {
+/** Nothing to show is nearly always the same cause, so name it rather than
+ *  leaving a blank page that looks broken. */
+function Empty(): React.JSX.Element {
+  return (
+    <section className="surface pad rise stack">
+      <h2>No servers reporting yet</h2>
+      <p className="dim">
+        Servers appear here once a launcher signed into this account is running them — either the
+        desktop app or a headless host. If one is online, give it a few seconds to publish.
+      </p>
+    </section>
+  )
+}
+
+function ServerList({
+  rows,
+  error,
+  onOpen
+}: {
+  rows: ServerRow[]
+  error: string | null
+  onOpen: (id: string) => void
+}): React.JSX.Element {
   const running = rows.filter((r) => r.state === 'running').length
   return (
     <>
@@ -112,6 +139,12 @@ function ServerList({ rows, onOpen }: { rows: ServerRow[]; onOpen: (id: string) 
           </p>
         </div>
       </div>
+      {error && (
+        <p className="formerr" role="alert">
+          {error}
+        </p>
+      )}
+      {!error && rows.length === 0 && <Empty />}
       <div className="grid stagger">
         {rows.map((row, i) => (
           <ServerCard key={row.server_id} row={row} index={i} onOpen={() => onOpen(row.server_id)} />
@@ -167,14 +200,7 @@ function Metric({ label, value }: { label: string; value: string }): React.JSX.E
   )
 }
 
-function Detail({
-  row,
-  onBack
-}: {
-  row: ServerRow
-  onBack: () => void
-  onPatch: React.Dispatch<React.SetStateAction<ServerRow[]>>
-}): React.JSX.Element {
+function Detail({ row, onBack }: { row: ServerRow; onBack: () => void }): React.JSX.Element {
   const [tab, setTab] = useState<Tab>('console')
   return (
     <div className="detail rise">
