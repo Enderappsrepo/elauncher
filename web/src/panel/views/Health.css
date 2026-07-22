@@ -1,0 +1,142 @@
+/* Fleet health.
+ *
+ * Class names are prefixed because this view is one of several being written
+ * against the same global stylesheet; a bare .card or .meter here would collide
+ * with someone else's.
+ */
+
+.fleet-summary {
+  margin-bottom: 14px;
+}
+
+.fleet-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+}
+
+/* A box that stopped reporting stays on screen — its silence is the news — but
+ * drained of colour so it cannot be misread as a live machine sitting idle. */
+.fleet-card.stale {
+  opacity: 0.6;
+}
+
+.fleet-who {
+  min-width: 0;
+}
+
+.fleet-sub {
+  font-size: var(--fs-small);
+  /* device names and platform strings are arbitrary; clip rather than let one
+   * long word push the status pill off a phone screen */
+  overflow-wrap: anywhere;
+}
+
+.fleet-meter {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.fleet-meter-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: var(--fs-small);
+}
+
+.fleet-meter-row span {
+  color: var(--text-dim);
+  text-align: right;
+  min-width: 0;
+}
+
+.fleet-meter-track {
+  height: 6px;
+  border-radius: 999px;
+  background: var(--track-bg);
+  overflow: hidden;
+}
+
+.fleet-meter-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--accent), var(--accent-2));
+  transition: width 0.4s var(--ease-out);
+}
+
+.fleet-meter.warn .fleet-meter-fill {
+  background: var(--yellow);
+}
+
+.fleet-meter.hot .fleet-meter-fill {
+  background: var(--red);
+}
+
+/* Unknown fills the track in a flat grey: an empty bar reads as "0%, fine",
+ * which is the opposite of what a missing reading means. */
+.fleet-meter.none .fleet-meter-fill {
+  background: color-mix(in srgb, var(--text-faint) 35%, transparent);
+}
+
+.fleet-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.fleet-tag {
+  padding: 3px 9px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--track-bg);
+  color: var(--text-dim);
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+
+.fleet-alerts {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.fleet-alert {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  padding: 9px 11px;
+  border: 1px solid color-mix(in srgb, var(--yellow) 28%, transparent);
+  border-radius: var(--radius-sm);
+  background: var(--yellow-soft);
+  font-size: var(--fs-small);
+}
+
+.fleet-alert.bad {
+  border-color: color-mix(in srgb, var(--red) 32%, transparent);
+  background: var(--red-soft);
+}
+
+.fleet-alert-dot {
+  width: 7px;
+  height: 7px;
+  margin-top: 6px;
+  border-radius: 50%;
+  background: var(--yellow);
+  flex: none;
+}
+
+.fleet-alert.bad .fleet-alert-dot {
+  background: var(--red);
+}
+
+.fleet-alert b {
+  display: block;
+}
+
+.fleet-alert i {
+  font-style: normal;
+  color: var(--text-dim);
+}

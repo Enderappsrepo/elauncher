@@ -1,0 +1,63 @@
+/* Operator view.
+ *
+ * Prefixed classes: several views are being written against the same global
+ * stylesheet, and a bare .hint or .actions here would reach into all of them.
+ */
+
+.ops-body {
+  margin-top: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.ops-toolbar {
+  min-height: 44px;
+}
+
+/* Order metadata is a run-on of plan, customer and reference — none of which
+ * are words, so let them break anywhere rather than widen the card. */
+.ops-sub {
+  font-size: var(--fs-small);
+  overflow-wrap: anywhere;
+}
+
+.ops-hint {
+  color: var(--text-dim);
+  font-size: var(--fs-small);
+}
+
+.ops-warn {
+  color: var(--yellow);
+}
+
+/* The native control is deliberately kept — on a phone it opens the system
+ * picker, which beats anything drawn here. It only needs the panel's font. */
+.ops-select {
+  font: inherit;
+  font-size: var(--fs-body);
+}
+
+/* Two actions side by side, but a confirm button reading "Approve for 30 days"
+ * must wrap rather than push the card sideways. */
+.ops-actions {
+  flex-wrap: wrap;
+}
+
+.ops-plan {
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+
+.ops-plan-who {
+  min-width: 0;
+}
+
+.ops-muted {
+  opacity: 0.5;
+}
+
+.ops-id {
+  color: var(--text-faint);
+  overflow-wrap: anywhere;
+}
