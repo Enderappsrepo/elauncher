@@ -1,39 +1,9 @@
 import type { RunState } from '@web/ui'
 
-/** Games a server can be. Published by the host; older clouds send nothing. */
-export type Game =
-  | 'minecraft' | 'palworld' | 'valheim' | 'sdtd' | 'zomboid' | 'tmodloader' | 'ark' | 'arksa'
-
-export const GAME_LABEL: Record<Game, string> = {
-  minecraft: 'Minecraft',
-  palworld: 'Palworld',
-  valheim: 'Valheim',
-  sdtd: '7 Days to Die',
-  zomboid: 'Project Zomboid',
-  tmodloader: 'tModLoader',
-  ark: 'ARK: Survival Evolved',
-  arksa: 'ARK: Survival Ascended'
-}
-
-/**
- * A colour per game, so a list of eight servers is scannable without reading a
- * word of it. Hue only — the badge takes its lightness from the theme, or the
- * light one would be unreadable.
- */
-export const GAME_HUE: Record<Game, number> = {
-  minecraft: 140,
-  palworld: 202,
-  valheim: 28,
-  sdtd: 8,
-  zomboid: 96,
-  tmodloader: 268,
-  ark: 178,
-  arksa: 318
-}
-
-export function gameLabel(game: string | null): string {
-  return game && game in GAME_LABEL ? GAME_LABEL[game as Game] : 'Server'
-}
+/* Game names, hues and the lineup moved to @web/lib/games so the landing page
+ * and shop share them; re-exported here so the panel's imports keep working. */
+export { GAME_HUE, GAME_LABEL, gameLabel } from '@web/lib/games'
+export type { Game } from '@web/lib/games'
 
 export interface ServerRow {
   server_id: string

@@ -1,0 +1,19 @@
+/* Billing.
+ *
+ * Prefixed classes, same reason as the other views: several screens are written
+ * against one global stylesheet, and a bare .sub here would reach into all of
+ * them.
+ */
+
+/* Plan names and renewal dates are a run-on, and reference codes are not words —
+ * break anywhere rather than push the status pill off a phone screen. */
+.bill-sub {
+  font-size: var(--fs-small);
+  overflow-wrap: anywhere;
+}
+
+/* Closed orders sit below the live ones at a respectful distance: history, not
+ * another pile of work. */
+.bill-closed {
+  margin-top: 22px;
+}

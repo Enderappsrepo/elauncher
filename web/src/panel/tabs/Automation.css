@@ -2,8 +2,8 @@
  *
  * The component layer covers almost all of this — .surface, .field, .input,
  * .formnote. What is left is the handful of shapes that only exist here: a note
- * that contradicts the control above it, a checkbox big enough to hit with a
- * thumb, and a block that has to look like it can end something.
+ * that contradicts the control above it, controls sized for a thumb rather than
+ * a cursor, and a block that has to look like it can end something.
  */
 
 .auto-group h2 {
@@ -43,24 +43,101 @@
   background-position: right 13px center;
 }
 
-/* The whole row is the target, not the 16px box the browser draws. */
+/* The consequence line: what flipping the control above actually arms, in the
+ * quiet voice, inside the same touch target where it can be read before the tap
+ * lands rather than after. */
+.auto-hint {
+  color: var(--text-faint);
+  font-size: var(--fs-small);
+  font-weight: 400;
+  line-height: 1.45;
+}
+
+/* Matches the <label> styling ui.css gives a .field, for the segmented row
+ * whose control is a set of buttons with nothing a <label for> can point at. */
+.auto-label {
+  color: var(--text-dim);
+  font-size: var(--fs-small);
+  font-weight: 600;
+}
+
+/* Three choices, all visible, each a full-height button. */
+.auto-seg {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.auto-seg .btn {
+  padding: 0 8px;
+}
+
+/* Stepper: thumb-sized ends, a real input in the middle. */
+.auto-step {
+  display: grid;
+  grid-template-columns: 52px 1fr 52px;
+  gap: 8px;
+}
+
+.auto-step .btn {
+  padding: 0;
+}
+
+.auto-stepval {
+  position: relative;
+  min-width: 0;
+}
+
+.auto-stepval .input {
+  text-align: center;
+  padding-right: 44px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Spinners on a number the buttons already step would be two controls fighting
+ * over one field. */
+.auto-stepval .input::-webkit-outer-spin-button,
+.auto-stepval .input::-webkit-inner-spin-button {
+  appearance: none;
+  margin: 0;
+}
+
+.auto-stepunit {
+  position: absolute;
+  top: 50%;
+  right: 13px;
+  transform: translateY(-50%);
+  color: var(--text-faint);
+  font-size: var(--fs-small);
+  pointer-events: none;
+}
+
+/* The whole row is the target, not the 20px box the browser draws. */
 .auto-check {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 11px;
   min-height: 44px;
+  padding: 5px 0;
+  cursor: pointer;
 }
 
 .auto-check input {
   width: 20px;
   height: 20px;
+  margin: 2px 0 0;
   flex: none;
   accent-color: var(--accent);
 }
 
-.auto-check label {
-  flex: 1;
+.auto-checkbody {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
   min-width: 0;
+}
+
+.auto-checklabel {
   font-size: var(--fs-body);
   font-weight: 600;
 }
@@ -71,6 +148,80 @@
   align-self: center;
   font-size: var(--fs-small);
   font-variant-numeric: tabular-nums;
+}
+
+/* The scrollback's first reveal: the visible tail of the log cascades in from
+ * the bottom up, capped like the .stagger utility so choreography never delays
+ * reading. The class is removed a beat later, so pages prepended above the
+ * fold never replay it. */
+.auto-log-fresh .console-line {
+  animation: auto-linein 0.38s var(--ease-spring) both;
+}
+
+.auto-log-fresh .console-line:nth-last-child(7) {
+  animation-delay: 36ms;
+}
+
+.auto-log-fresh .console-line:nth-last-child(6) {
+  animation-delay: 72ms;
+}
+
+.auto-log-fresh .console-line:nth-last-child(5) {
+  animation-delay: 108ms;
+}
+
+.auto-log-fresh .console-line:nth-last-child(4) {
+  animation-delay: 144ms;
+}
+
+.auto-log-fresh .console-line:nth-last-child(3) {
+  animation-delay: 180ms;
+}
+
+.auto-log-fresh .console-line:nth-last-child(2) {
+  animation-delay: 216ms;
+}
+
+.auto-log-fresh .console-line:nth-last-child(1) {
+  animation-delay: 252ms;
+}
+
+@keyframes auto-linein {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+
+/* Sticky action dock, twin of the Settings one: it appears only while there are
+ * edits to keep or a failure to read, and it sits where a thumb already is.
+ * Motion drives its entrance and exit; this is only where it sticks. */
+.auto-dock {
+  position: sticky;
+  bottom: 10px;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  background: var(--glass-bg);
+  backdrop-filter: blur(16px) saturate(1.3);
+  box-shadow: var(--shadow-lift);
+}
+
+/* On a phone the shell's bottomnav (~64px of glass, plus the safe area) floats
+ * over the same edge; the dock rides just above it rather than underneath it. */
+@media (max-width: 899px) {
+  .auto-dock {
+    bottom: calc(72px + env(safe-area-inset-bottom));
+  }
+}
+
+.auto-dockmsg {
+  color: var(--text-dim);
+  font-size: var(--fs-small);
 }
 
 /* Destructive block. Red before it is pressed, not after — the border is the

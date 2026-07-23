@@ -22,8 +22,9 @@
   overflow-x: auto;
   scrollbar-width: none;
   /* the trail grows a segment per folder and is the one thing here that is
-   * genuinely wider than a phone, so it scrolls rather than wraps */
-  mask-image: linear-gradient(90deg, transparent, #000 10px);
+   * genuinely wider than a phone, so it scrolls rather than wraps — faded at
+   * both edges, same as the tab strip, so cut-off reads as more-to-come */
+  mask-image: linear-gradient(90deg, transparent, #000 12px, #000 calc(100% - 12px), transparent);
 }
 
 .fm-crumbs::-webkit-scrollbar {
@@ -125,6 +126,8 @@
   place-items: center;
 }
 
+/* The tick is drawn in currentColor, so "unchecked" is simply the tick in
+ * transparent — one element, no swap. */
 .fm-box {
   width: 20px;
   height: 20px;
@@ -133,8 +136,6 @@
   border: 1.5px solid var(--border-strong);
   border-radius: 6px;
   color: transparent;
-  font-size: 12px;
-  line-height: 1;
   transition:
     background-color 0.14s var(--ease-out),
     border-color 0.14s var(--ease-out);
@@ -205,15 +206,25 @@
   flex: none;
   width: 44px;
   align-self: stretch;
+  display: grid;
+  place-items: center;
   color: var(--text-dim);
-  font-size: 17px;
-  line-height: 1;
   border-radius: var(--radius-xs);
 }
 
 .fm-more[aria-expanded='true'] {
   color: var(--text);
   background: var(--bg-hover);
+}
+
+/* Same 44px cell the ⋯ button holds, so a row fetching its bytes swaps the
+ * menu for a spinner without anything else moving. */
+.fm-wait {
+  flex: none;
+  width: 44px;
+  align-self: stretch;
+  display: grid;
+  place-items: center;
 }
 
 /* Row actions open in place rather than in a floating menu: a popover anchored
@@ -225,13 +236,51 @@
   padding: 0 12px 12px;
 }
 
-.fm-empty {
-  padding: 34px 20px;
-  text-align: center;
+/* ---------- skeleton rows ---------- */
+
+/* The loading screen is the listing with the ink not yet dry: same row height,
+ * same icon square, name-shaped bars. */
+.fm-ghost {
+  gap: 10px;
+  padding-inline: 12px;
 }
 
-/* ---------- selection ---------- */
+.fm-ghost-lines {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
 
+/* ---------- bottom dock: selection + transfers ---------- */
+
+/* Rides the bottom of the viewport while the listing scrolls behind it, so the
+ * actions on a fifty-row selection are always under the thumb. Below 900px the
+ * bottomnav owns the bottom edge, so the dock floats above it. When nothing is
+ * selected or moving the dock has no children; :empty keeps the husk from
+ * painting or padding. */
+.fm-dock {
+  position: sticky;
+  bottom: 10px;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.fm-dock:empty {
+  display: none;
+}
+
+@media (max-width: 899px) {
+  .fm-dock {
+    bottom: calc(72px + env(safe-area-inset-bottom));
+  }
+}
+
+/* Opaque base under the accent wash — these float over live rows now, and a
+ * translucent bar over a scrolling list is just noise. */
 .fm-sel {
   display: flex;
   flex-wrap: wrap;
@@ -240,7 +289,10 @@
   padding: 10px 12px;
   border: 1px solid var(--accent-line);
   border-radius: var(--radius-sm);
-  background: var(--accent-soft);
+  background-color: var(--pop-bg);
+  background-image: linear-gradient(var(--accent-soft), var(--accent-soft));
+  box-shadow: var(--shadow-pop);
+  backdrop-filter: blur(14px);
 }
 
 /* ---------- editor and preview ---------- */
@@ -265,8 +317,36 @@
   box-shadow: 0 0 0 3px var(--focus-ring);
 }
 
+/* Not colour alone: the dot plus the word, for the row of eyes that reads
+ * yellow as grey. */
 .fm-dirty {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   color: var(--yellow);
+  font-size: var(--fs-small);
+  font-weight: 600;
+}
+
+.fm-dirty-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+/* The chord hint only where a fine pointer suggests a keyboard exists. */
+.fm-kbdhint {
+  display: none;
+}
+
+@media (pointer: fine) {
+  .fm-kbdhint {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: var(--fs-small);
+  }
 }
 
 .fm-prev {
@@ -292,14 +372,16 @@
   padding: 8px 12px;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
-  background: var(--track-bg);
+  /* opaque like the selection bar: it lives in the dock, over the listing */
+  background-color: var(--pop-bg);
+  box-shadow: var(--shadow-pop);
   font-size: var(--fs-small);
 }
 
 .fm-xfer.bad {
   color: var(--red);
   border-color: color-mix(in srgb, var(--red) 32%, transparent);
-  background: var(--red-soft);
+  background-image: linear-gradient(var(--red-soft), var(--red-soft));
 }
 
 .fm-xname {
@@ -308,6 +390,13 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* kept inline so the name still ellipsizes; nudged so the arrow sits on the
+ * text's optical middle rather than its baseline */
+.fm-xname svg {
+  vertical-align: -2px;
+  margin-right: 2px;
 }
 
 .fm-track {

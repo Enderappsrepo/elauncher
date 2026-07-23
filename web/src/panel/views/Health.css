@@ -17,9 +17,65 @@
 }
 
 /* A box that stopped reporting stays on screen — its silence is the news — but
- * drained of colour so it cannot be misread as a live machine sitting idle. */
+ * it recedes in two steps so it cannot be misread as a live machine sitting
+ * idle: dimmed while the silence is short, further once it has gone on. */
 .fleet-card.stale {
-  opacity: 0.6;
+  opacity: 0.75;
+}
+
+.fleet-card.gone {
+  opacity: 0.5;
+}
+
+/* The heartbeat line. A fresh card carries the same 2.4s pulse as a running
+ * pill, and it is load-bearing here too: a live box and a frozen page look
+ * identical without it. */
+.fleet-seen {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: -4px;
+  color: var(--text-dim);
+  font-size: var(--fs-small);
+}
+
+.fleet-seen-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--green);
+  flex: none;
+  animation: fleet-beat 2.4s var(--ease-out) infinite;
+}
+
+@keyframes fleet-beat {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--green) 55%, transparent);
+  }
+  70% {
+    box-shadow: 0 0 0 6px transparent;
+  }
+}
+
+/* Silence ages amber first — reboots and updates look like this — then red once
+ * it has lasted minutes. The dot stops pulsing: nothing is beating. */
+.fleet-seen.warn {
+  color: var(--yellow);
+}
+
+.fleet-seen.warn .fleet-seen-dot {
+  background: var(--yellow);
+  animation: none;
+}
+
+.fleet-seen.bad {
+  color: var(--red);
+}
+
+.fleet-seen.bad .fleet-seen-dot {
+  background: var(--red);
+  animation: none;
 }
 
 .fleet-who {
@@ -33,10 +89,18 @@
   overflow-wrap: anywhere;
 }
 
+/* The three vitals read as one instrument cluster: tighter together than the
+ * card's own rhythm, so CPU, memory and disk scan as a single glance. */
+.fleet-meters {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+
 .fleet-meter {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 5px;
 }
 
 .fleet-meter-row {

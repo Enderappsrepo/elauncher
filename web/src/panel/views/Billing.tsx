@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useState } from 'react'
+import { ReceiptText } from 'lucide-react'
+import { toast } from 'sonner'
 import { supabase } from '@web/lib/supabase'
-import { Button, Skeleton } from '@web/ui'
+import { Button, EmptyState, Skeleton } from '@web/ui'
+import { AnimatePresence, EASE_OUT, EASE_SPRING, motion } from '@web/ui/motion'
+import './Billing.css'
 
 /**
  * What you rent, what you owe, and how it is going.
@@ -12,6 +16,10 @@ import { Button, Skeleton } from '@web/ui'
  * review and cancel an order, and nothing else — no money moves through the
  * panel at all. Paying happens on PayPal or Stripe, in their own tab, and the
  * reference code is what ties the transfer back to the order.
+ *
+ * Orders paid through Stripe Checkout carry a subscription id set by the
+ * webhook; those renew themselves by card, and this view says so instead of
+ * telling their owner to go send money.
  */
 
 type OrderStatus = 'awaiting_payment' | 'pending_review' | 'active' | 'past_due' | 'rejected' | 'cancelled'
@@ -25,13 +33,15 @@ const STATUSES: readonly OrderStatus[] = [
   'cancelled'
 ]
 
-/** Pill class from ui.css, and the label a customer should read. */
+/** Pill class from ui.css, and the label a customer should read. Rejected and
+ *  cancelled both read as closed rather than as alarms — the order ended, and
+ *  nothing about it is on fire. */
 const STATUS_LOOK: Record<OrderStatus, [string, string]> = {
   awaiting_payment: ['busy', 'Awaiting payment'],
   pending_review: ['busy', 'Payment under review'],
   active: ['running', 'Active'],
   past_due: ['error', 'Past due'],
-  rejected: ['error', 'Rejected'],
+  rejected: ['stopped', 'Rejected'],
   cancelled: ['stopped', 'Cancelled']
 }
 
@@ -45,6 +55,9 @@ interface OrderRow {
   paid_until: string | null
   note: string
   created_at: string
+  /** set by the Stripe webhook when checkout paid for this order — older clouds
+   *  have no such column, and select('*') simply never returns it */
+  stripe_subscription_id: string | null
 }
 
 interface PlanRow {
@@ -75,7 +88,8 @@ function toOrder(raw: Record<string, unknown>): OrderRow {
     server_id: (raw.server_id as string | null) ?? null,
     paid_until: (raw.paid_until as string | null) ?? null,
     note: String(raw.note ?? ''),
-    created_at: String(raw.created_at ?? '')
+    created_at: String(raw.created_at ?? ''),
+    stripe_subscription_id: (raw.stripe_subscription_id as string | null) ?? null
   }
 }
 
@@ -97,6 +111,18 @@ function readable(message: string): string {
   return /schema cache|does not exist|42P01|PGRST205/i.test(message)
     ? 'Hosting needs one migration — open Supabase → SQL Editor and run the latest schema.sql once.'
     : message
+}
+
+/**
+ * paid_until in the customer's words. A card subscription renews itself, so its
+ * date is a renewal; a manual order lapses on that date unless someone pays —
+ * "paid until" would leave the reader to work out which of those they hold.
+ */
+function renewal(order: OrderRow): string {
+  const date = order.paid_until ? new Date(order.paid_until).toLocaleDateString() : ''
+  if (order.stripe_subscription_id) return date ? `auto-renews by card on ${date}` : 'auto-renews by card'
+  if (!date) return ''
+  return new Date(order.paid_until as string).getTime() < Date.now() ? `lapsed ${date}` : `lapses ${date}`
 }
 
 interface BillingState {
@@ -188,6 +214,11 @@ export function Billing({ userId }: { userId: string }): React.JSX.Element {
   const closed = orders.filter((o) => o.status === 'cancelled' || o.status === 'rejected')
   const owing = live.filter((o) => o.status === 'awaiting_payment' || o.status === 'past_due')
 
+  // the cheapest listed plan turns the empty state into an invitation with a
+  // real number on it, rather than a shrug
+  const priced = Object.values(plans).filter((p) => p.price_monthly > 0)
+  const cheapest = priced.length ? priced.reduce((a, b) => (b.price_monthly < a.price_monthly ? b : a)) : null
+
   return (
     <>
       <div className="head rise">
@@ -210,37 +241,49 @@ export function Billing({ userId }: { userId: string }): React.JSX.Element {
       {loading && (
         <div className="grid">
           {[0, 1].map((i) => (
-            <Skeleton key={i} height={196} />
+            <Skeleton key={i} height={220} />
           ))}
         </div>
       )}
 
       {!loading && !error && live.length === 0 && closed.length === 0 && (
-        <section className="surface pad rise stack">
-          <h2>Nothing rented yet</h2>
-          <p className="dim">
-            Servers you rent show up here with what to pay, the reference to quote, and how the setup
-            is going. Ordering happens in the shop.
-          </p>
-        </section>
+        <EmptyState icon={<ReceiptText size={20} />} title="No orders">
+          Servers you rent show up here with what to pay, the reference to quote, and how the setup
+          is going. The Shop has plans
+          {cheapest ? ` from ${money(cheapest.price_monthly, cheapest.currency)}/mo` : ''} — order
+          one and it lands here.
+        </EmptyState>
       )}
 
-      <div className="grid stagger">
-        {live.map((order, i) => (
-          <OrderCard
-            key={order.id}
-            order={order}
-            plan={plans[order.plan_id] ?? null}
-            settings={settings}
-            index={i}
-            reload={reload}
-          />
-        ))}
+      <div className="grid">
+        <AnimatePresence>
+          {live.map((order, i) => (
+            <motion.div
+              key={order.id}
+              layout
+              initial={{ opacity: 0, y: 14, scale: 0.985 }}
+              animate={{
+                opacity: 1,
+                y: 0,
+                scale: 1,
+                transition: { duration: 0.42, ease: EASE_SPRING, delay: Math.min(i, 6) * 0.045 }
+              }}
+              exit={{ opacity: 0, scale: 0.96, transition: { duration: 0.26, ease: EASE_OUT } }}
+            >
+              <OrderCard
+                order={order}
+                plan={plans[order.plan_id] ?? null}
+                settings={settings}
+                reload={reload}
+              />
+            </motion.div>
+          ))}
+        </AnimatePresence>
       </div>
 
       {closed.length > 0 && (
         <>
-          <div className="head" style={{ marginTop: 22 }}>
+          <div className="head bill-closed">
             <h2>Closed</h2>
             <p className="dim">Orders that were cancelled or turned down. Kept for your records.</p>
           </div>
@@ -252,7 +295,7 @@ export function Billing({ userId }: { userId: string }): React.JSX.Element {
                   <span className="spacer" />
                   <StatusPill status={order.status} />
                 </div>
-                <p className="dim">
+                <p className="dim bill-sub">
                   {plans[order.plan_id]?.name ?? order.plan_id} · ref <span className="mono">{order.reference}</span>
                 </p>
               </article>
@@ -278,13 +321,11 @@ function OrderCard({
   order,
   plan,
   settings,
-  index,
   reload
 }: {
   order: OrderRow
   plan: PlanRow | null
   settings: Settings
-  index: number
   reload: () => Promise<void>
 }): React.JSX.Element {
   const [busy, setBusy] = useState(false)
@@ -299,6 +340,7 @@ function OrderCard({
   // hosts write their progress here, and a failed build is the one note that
   // must not be mistaken for a status update
   const noteFailed = /failed/i.test(order.note)
+  const when = renewal(order)
 
   async function mark(status: 'pending_review' | 'cancelled'): Promise<void> {
     setBusy(true)
@@ -307,6 +349,11 @@ function OrderCard({
       const { error } = await supabase.rpc('hosting_mark', { order_id: order.id, new_status: status })
       if (error) throw new Error(error.message)
       setConfirming(false)
+      toast.success(
+        status === 'cancelled'
+          ? `${order.server_name} is cancelled — the order is closed and nothing more is owed.`
+          : 'Marked as paid — the host checks the payment and approves it from there.'
+      )
       await reload()
     } catch (e) {
       setFailed(e instanceof Error ? e.message : 'Could not send that.')
@@ -321,15 +368,15 @@ function OrderCard({
     : ''
 
   return (
-    <article className="surface pad stack" style={{ '--i': index } as React.CSSProperties}>
+    <article className="surface pad stack">
       <div className="row">
         <h2>{order.server_name}</h2>
         <span className="spacer" />
         <StatusPill status={order.status} settingUp={settingUp} />
       </div>
-      <p className="dim">
+      <p className="dim bill-sub">
         {plan?.name ?? order.plan_id}
-        {order.paid_until && ` · renews ${new Date(order.paid_until).toLocaleDateString()}`}
+        {when && ` · ${when}`}
       </p>
 
       {order.note && (

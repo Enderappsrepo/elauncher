@@ -15,6 +15,67 @@
   min-height: 44px;
 }
 
+/* ---------- the order pipeline ---------- */
+
+.ops-lane {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* Lane titles sit between h1 and card h2s; smaller than either, because the
+ * cards are the content and the lane is only the shelf they sit on. */
+.ops-lane-head {
+  min-height: 28px;
+}
+
+.ops-lane-head h2 {
+  font-size: var(--fs-h3);
+}
+
+.ops-lane-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex: none;
+}
+
+/* Same classes the pills use, so a lane and the cards inside it agree. */
+.ops-lane-dot.running {
+  background: var(--green);
+}
+
+.ops-lane-dot.busy {
+  background: var(--yellow);
+}
+
+.ops-lane-dot.error {
+  background: var(--red);
+}
+
+.ops-lane-dot.stopped {
+  background: var(--text-faint);
+}
+
+.ops-count {
+  padding: 1px 9px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--track-bg);
+  color: var(--text-dim);
+  font-size: var(--fs-small);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+/* A Stripe-paid order manages itself — the badge is why there is no Approve
+ * button on a card that plainly went through a checkout. */
+.ops-card-pill {
+  color: var(--accent);
+  border-color: var(--accent-line);
+  background: var(--accent-soft);
+}
+
 /* Order metadata is a run-on of plan, customer and reference — none of which
  * are words, so let them break anywhere rather than widen the card. */
 .ops-sub {
@@ -29,6 +90,7 @@
 
 .ops-warn {
   color: var(--yellow);
+  font-size: var(--fs-small);
 }
 
 /* The native control is deliberately kept — on a phone it opens the system
@@ -47,6 +109,9 @@
 .ops-plan {
   padding-top: 10px;
   border-top: 1px solid var(--border);
+  /* the Hidden pill and the button both live on the right; on a phone they
+   * wrap under the name rather than crush it */
+  flex-wrap: wrap;
 }
 
 .ops-plan-who {
@@ -60,4 +125,13 @@
 .ops-id {
   color: var(--text-faint);
   overflow-wrap: anywhere;
+}
+
+/* Online and Parked are different facts, so they are different pills — stacked
+ * to the right edge, wrapping before they push the host's name off screen. */
+.ops-host-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: flex-end;
 }

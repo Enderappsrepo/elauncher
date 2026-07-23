@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { Activity } from 'lucide-react'
 import { supabase } from '@web/lib/supabase'
-import { Skeleton } from '@web/ui'
+import { EmptyState, Skeleton } from '@web/ui'
 import './Health.css'
 
 /**
@@ -47,6 +48,9 @@ interface StatusRow {
 
 /** Hosts publish about every 10s, so three missed beats means the launcher is gone. */
 const HOST_STALE_MS = 45_000
+/** A short silence reads amber — reboots and updates look exactly like this.
+ *  Past here it turns red: the silence is the story, not a hiccup in it. */
+const HOST_GONE_MS = 5 * 60_000
 /** A status row that stopped being rewritten is a memory of a server, not a server. */
 const SERVER_FRESH_MS = 40_000
 const POLL_MS = 20_000
@@ -263,20 +267,17 @@ export function Health({ userId }: { userId: string }): React.JSX.Element {
       {loading && (
         <div className="grid">
           {[0, 1, 2].map((i) => (
-            <Skeleton key={i} height={264} />
+            <Skeleton key={i} height={330} />
           ))}
         </div>
       )}
 
       {!loading && !error && hosts.length === 0 && (
-        <section className="surface pad rise stack">
-          <h2>No host is reporting yet</h2>
-          <p className="dim">
-            A machine appears here as soon as a launcher signed into this account is hosting — the
-            desktop app or a headless host. If one is online, give it a minute to publish its first
-            heartbeat.
-          </p>
-        </section>
+        <EmptyState icon={<Activity size={20} />} title="No machines reporting">
+          A signed-in launcher or headless host appears here on its first heartbeat — the desktop
+          app while it is hosting, or a VPS running the headless host. If one is online, give it a
+          minute.
+        </EmptyState>
       )}
 
       {hosts.length > 0 && (
@@ -342,7 +343,9 @@ function HostCard({
   now: number
   index: number
 }): React.JSX.Element {
-  const stale = now - new Date(host.updated_at).getTime() > HOST_STALE_MS
+  const age = now - new Date(host.updated_at).getTime()
+  const stale = age > HOST_STALE_MS
+  const gone = age > HOST_GONE_MS
   const label = host.host_name || owner || 'Unknown host'
   const ramPct = pctOf(host.ram_used_mb, host.ram_total_mb)
   const diskUsed = host.disk_total_gb === null || host.disk_free_gb === null ? null : host.disk_total_gb - host.disk_free_gb
@@ -351,7 +354,7 @@ function HostCard({
 
   return (
     <article
-      className={`surface fleet-card ${stale ? 'stale' : ''}`}
+      className={`surface fleet-card ${gone ? 'gone' : stale ? 'stale' : ''}`}
       style={{ '--i': index } as React.CSSProperties}
     >
       <div className="row">
@@ -366,25 +369,34 @@ function HostCard({
         </span>
       </div>
 
-      <Meter
-        label="CPU"
-        pct={host.cpu_percent}
-        detail={
-          host.cpu_percent === null
-            ? 'not readable'
-            : `${host.cpu_percent}%${host.load1 !== null ? ` · load ${host.load1}` : ''}`
-        }
-      />
-      <Meter
-        label="Memory"
-        pct={ramPct}
-        detail={host.ram_total_mb ? `${gb(host.ram_used_mb)} of ${gb(host.ram_total_mb)}` : 'not readable'}
-      />
-      <Meter
-        label="Disk"
-        pct={diskPct}
-        detail={host.disk_total_gb ? `${host.disk_free_gb} GB free of ${host.disk_total_gb} GB` : 'not readable'}
-      />
+      {/* the heartbeat line: alive is shown rather than implied, and silence
+          ages from amber to red as it stops looking like a reboot */}
+      <p className={`fleet-seen ${gone ? 'bad' : stale ? 'warn' : ''}`}>
+        <span className="fleet-seen-dot" aria-hidden />
+        {stale ? `last seen ${age < 60_000 ? 'moments' : ago(age)} ago` : 'reporting live'}
+      </p>
+
+      <div className="fleet-meters">
+        <Meter
+          label="CPU"
+          pct={host.cpu_percent}
+          detail={
+            host.cpu_percent === null
+              ? 'not readable'
+              : `${host.cpu_percent}%${host.load1 !== null ? ` · load ${host.load1}` : ''}`
+          }
+        />
+        <Meter
+          label="Memory"
+          pct={ramPct}
+          detail={host.ram_total_mb ? `${gb(host.ram_used_mb)} of ${gb(host.ram_total_mb)}` : 'not readable'}
+        />
+        <Meter
+          label="Disk"
+          pct={diskPct}
+          detail={host.disk_total_gb ? `${host.disk_free_gb} GB free of ${host.disk_total_gb} GB` : 'not readable'}
+        />
+      </div>
 
       <div className="metrics">
         <Metric label="Servers" value={`${host.servers_running}/${host.servers_total}`} />

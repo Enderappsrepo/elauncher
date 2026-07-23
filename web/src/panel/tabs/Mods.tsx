@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Button, Skeleton } from '@web/ui'
+import { Blocks, PackageX, RefreshCw, SearchX } from 'lucide-react'
+import { toast } from 'sonner'
+import { Button, EmptyState, Skeleton, Spinner } from '@web/ui'
+import { AnimatePresence, EASE_OUT, EASE_SPRING, motion } from '@web/ui/motion'
 import type { TabProps } from './types'
 
 /**
@@ -56,6 +59,27 @@ const CLIP: React.CSSProperties = {
 
 const SUB: React.CSSProperties = { ...CLIP, fontSize: 'var(--fs-small)' }
 
+/** Rows hold 44px even around a small button, so a thumb never has to aim. */
+const ROW: React.CSSProperties = { minHeight: 44 }
+
+/** installMod holds the line for up to 40 seconds; the copy owns that. */
+const SLOW_COPY = 'Installing — big mods take a minute…'
+
+/* One motion vocabulary for every list here: rows arrive with a small capped
+ * stagger, and leave (only the installed list loses rows) by folding closed. */
+const rowIn = (i: number): React.ComponentProps<typeof motion.div>['animate'] => ({
+  opacity: 1,
+  y: 0,
+  transition: { duration: 0.32, ease: EASE_SPRING, delay: Math.min(i, 6) * 0.04 }
+})
+
+const ROW_OUT = {
+  opacity: 0,
+  height: 0,
+  overflow: 'hidden',
+  transition: { duration: 0.24, ease: EASE_OUT }
+} as const
+
 function msg(e: unknown): string {
   return e instanceof Error ? e.message : 'Something went wrong.'
 }
@@ -111,6 +135,26 @@ function Icon({ url }: { url?: string }): React.JSX.Element {
   )
 }
 
+/* The loading list is the list with the ink not yet dry — icon square, a
+ * name-shaped bar, a button-shaped block, at the heights the real rows use.
+ * Bars vary in width so the screen has the texture of content, not of stripes. */
+function GhostRows({ rows }: { rows: number }): React.JSX.Element {
+  return (
+    <div className="stack" aria-hidden>
+      {Array.from({ length: rows }, (_, i) => (
+        <div className="row" style={ROW} key={i}>
+          <Skeleton height={26} width={26} />
+          <div className="stack" style={{ flex: 1, gap: 6 }}>
+            <Skeleton height={12} width={`${62 - (i % 3) * 14}%`} />
+            <Skeleton height={9} width={110} />
+          </div>
+          <Skeleton height={34} width={78} />
+        </div>
+      ))}
+    </div>
+  )
+}
+
 /**
  * Destructive actions confirm in place rather than through window.confirm: the
  * dialog cannot name the file in the panel's own voice, and on a phone it is
@@ -159,7 +203,8 @@ export function Mods({ row, ask }: TabProps): React.JSX.Element {
   const [confirming, setConfirming] = useState<ServerMod | null>(null)
   const [removing, setRemoving] = useState(false)
   const [actionErr, setActionErr] = useState('')
-  const [notice, setNotice] = useState('')
+
+  const searchInput = useRef<HTMLInputElement>(null)
 
   // The shell is free to hand this tab a fresh `ask` on every render. Reading it
   // from a ref keeps that out of the effect dependencies, where it would restart
@@ -169,8 +214,11 @@ export function Mods({ row, ask }: TabProps): React.JSX.Element {
     askRef.current = ask
   })
 
-  const load = useCallback(async (): Promise<void> => {
-    setLoading(true)
+  // `keep` refreshes behind the list that is already up — after an install the
+  // panel knows a row is coming, and blanking the rest to skeletons to prove it
+  // reads as a crash.
+  const load = useCallback(async (keep = false): Promise<void> => {
+    if (!keep) setLoading(true)
     setLoadErr('')
     try {
       const list = await askRef.current<ServerMod[]>('mods')
@@ -220,19 +268,26 @@ export function Mods({ row, ask }: TabProps): React.JSX.Element {
   async function install(projectId: string, name: string): Promise<void> {
     setBusyId(projectId)
     setActionErr('')
-    setNotice('')
     try {
       await askRef.current('installMod', { projectId })
-      setNotice(`${name} installed${row.state === 'running' ? ' — restart the server to apply' : ''}.`)
+      // a toast, because forty seconds is long enough to have wandered off
+      toast.success(
+        `${name} installed.`,
+        row.state === 'running' ? { description: 'Restart the server to load it.' } : undefined
+      )
       setById('')
-      await load()
+      await load(true)
     } catch (e) {
       const text = msg(e)
-      setActionErr(
-        stillWorking(text)
-          ? `${name} is taking longer than the panel waits for an answer. It may still be installing — refresh the list in a moment to see.`
-          : text
-      )
+      if (stillWorking(text)) {
+        // not a failure — the host is still downloading, so it must not sound
+        // like one
+        toast(`${name} is still installing`, {
+          description: 'It outlasted the panel’s patience, not the host’s — refresh the list in a moment.'
+        })
+      } else {
+        toast.error(text)
+      }
     } finally {
       setBusyId('')
     }
@@ -241,15 +296,18 @@ export function Mods({ row, ask }: TabProps): React.JSX.Element {
   async function remove(mod: ServerMod): Promise<void> {
     setRemoving(true)
     setActionErr('')
-    setNotice('')
     try {
       // the host answers with the folder as it now stands, so there is no second
       // round trip just to find out what survived
       const list = await askRef.current<ServerMod[]>('removeMod', { fileName: mod.fileName })
       setInstalled(Array.isArray(list) ? list : [])
       setConfirming(null)
-      setNotice(`${label(mod)} removed${row.state === 'running' ? ' — restart the server to apply' : ''}.`)
+      toast.success(
+        `${label(mod)} removed.`,
+        row.state === 'running' ? { description: 'Restart the server to let it go.' } : undefined
+      )
     } catch (e) {
+      // inline, not toasted: whoever is removing is standing at the confirm
       setActionErr(msg(e))
     } finally {
       setRemoving(false)
@@ -260,7 +318,6 @@ export function Mods({ row, ask }: TabProps): React.JSX.Element {
 
   return (
     <div className="stack">
-      {notice && <p className="formnote">{notice}</p>}
       {actionErr && (
         <p className="formerr" role="alert">
           {actionErr}
@@ -271,61 +328,81 @@ export function Mods({ row, ask }: TabProps): React.JSX.Element {
         <div className="row">
           <h2 style={CLIP}>Installed{!loading && !loadErr ? ` (${installed.length})` : ''}</h2>
           <Button size="sm" variant="ghost" disabled={loading} onClick={() => void load()}>
-            {loading ? 'Loading…' : 'Refresh'}
+            <RefreshCw size={14} aria-hidden /> {loading ? 'Loading…' : 'Refresh'}
           </Button>
         </div>
 
-        {loading && (
-          <>
-            <Skeleton height={40} />
-            <Skeleton height={40} />
-            <Skeleton height={40} />
-          </>
-        )}
+        {loading && <GhostRows rows={3} />}
 
         {!loading && loadErr && (
-          <p className="formerr" role="alert">
+          <EmptyState
+            icon={<PackageX size={18} />}
+            title="Couldn't load the mod list"
+            action={
+              <Button size="sm" onClick={() => void load()}>
+                Try again
+              </Button>
+            }
+          >
             {loadErr}
-          </p>
+          </EmptyState>
         )}
 
         {!loading && !loadErr && installed.length === 0 && (
-          <p className="dim">Nothing installed yet — search below to add something.</p>
+          <EmptyState
+            icon={<Blocks size={18} />}
+            title="Nothing installed yet"
+            action={
+              <Button variant="primary" onClick={() => searchInput.current?.focus()}>
+                Search Modrinth
+              </Button>
+            }
+          >
+            Mods and plugins land in this list the moment they install — a restart loads them.
+          </EmptyState>
         )}
 
-        {!loading &&
-          !loadErr &&
-          installed.map((mod) =>
-            confirming?.fileName === mod.fileName ? (
-              <Confirm
+        {!loading && !loadErr && (
+          <AnimatePresence>
+            {installed.map((mod, i) => (
+              <motion.div
                 key={mod.fileName}
-                text={`Remove ${label(mod)} (${mod.fileName})? The jar is deleted from the server.`}
-                cta="Remove"
-                busy={removing}
-                onConfirm={() => void remove(mod)}
-                onCancel={() => setConfirming(null)}
-              />
-            ) : (
-              <div className="row" key={mod.fileName}>
-                <Icon url={mod.iconUrl} />
-                <div style={{ ...CLIP, display: 'flex', flexDirection: 'column' }}>
-                  <span style={CLIP}>{label(mod)}</span>
-                  <span className="dim" style={SUB}>
-                    {[mod.versionNumber || mod.fileName, size(mod.sizeBytes)].filter(Boolean).join(' · ')}
-                  </span>
-                </div>
-                <Button
-                  size="sm"
-                  variant="danger"
-                  disabled={removing}
-                  onClick={() => setConfirming(mod)}
-                  aria-label={`Remove ${label(mod)}`}
-                >
-                  Remove
-                </Button>
-              </div>
-            )
-          )}
+                initial={{ opacity: 0, y: 10 }}
+                animate={rowIn(i)}
+                exit={ROW_OUT}
+              >
+                {confirming?.fileName === mod.fileName ? (
+                  <Confirm
+                    text={`Remove ${label(mod)} (${mod.fileName})? The jar is deleted from the server.`}
+                    cta="Remove"
+                    busy={removing}
+                    onConfirm={() => void remove(mod)}
+                    onCancel={() => setConfirming(null)}
+                  />
+                ) : (
+                  <div className="row" style={ROW}>
+                    <Icon url={mod.iconUrl} />
+                    <div style={{ ...CLIP, display: 'flex', flexDirection: 'column' }}>
+                      <span style={CLIP}>{label(mod)}</span>
+                      <span className="dim" style={SUB}>
+                        {[mod.versionNumber || mod.fileName, size(mod.sizeBytes)].filter(Boolean).join(' · ')}
+                      </span>
+                    </div>
+                    <Button
+                      size="sm"
+                      variant="danger"
+                      disabled={removing}
+                      onClick={() => setConfirming(mod)}
+                      aria-label={`Remove ${label(mod)}`}
+                    >
+                      Remove
+                    </Button>
+                  </div>
+                )}
+              </motion.div>
+            ))}
+          </AnimatePresence>
+        )}
       </section>
 
       <section className="surface pad stack">
@@ -335,15 +412,17 @@ export function Mods({ row, ask }: TabProps): React.JSX.Element {
           <label htmlFor="mod-search">Search Modrinth</label>
           <input
             id="mod-search"
+            ref={searchInput}
             className="input"
             value={query}
             autoComplete="off"
+            enterKeyHint="search"
             placeholder="Search mods and plugins…"
             onChange={(e) => setQuery(e.target.value)}
           />
         </div>
 
-        {searching && <Skeleton height={40} />}
+        {searching && <GhostRows rows={4} />}
 
         {!searching && searchErr && (
           <p className="formerr" role="alert">
@@ -353,23 +432,51 @@ export function Mods({ row, ask }: TabProps): React.JSX.Element {
 
         {!searching && !searchErr && hits === null && <p className="dim">Type to search.</p>}
 
-        {!searching && !searchErr && hits?.length === 0 && <p className="dim">Nothing matched that.</p>}
+        {/* an empty search is Modrinth's silence, not an empty server — it must
+          * never wear the same face as "nothing installed" */}
+        {!searching && !searchErr && hits?.length === 0 && (
+          <EmptyState
+            icon={<SearchX size={18} />}
+            title={`No matches for “${query.trim()}”`}
+            action={
+              <Button variant="ghost" onClick={() => setQuery('')}>
+                Clear search
+              </Button>
+            }
+          >
+            Modrinth indexes mods and plugins by project name — fewer or shorter words find more.
+          </EmptyState>
+        )}
 
         {!searching &&
           !searchErr &&
-          hits?.map((hit) => (
-            <div className="row" key={hit.projectId}>
+          hits?.map((hit, i) => (
+            <motion.div
+              className="row"
+              style={ROW}
+              key={hit.projectId}
+              initial={{ opacity: 0, y: 10 }}
+              animate={rowIn(i)}
+            >
               <Icon url={hit.iconUrl} />
               <div style={{ ...CLIP, display: 'flex', flexDirection: 'column' }}>
                 <span style={CLIP}>{hit.title}</span>
-                <span className="dim" style={SUB}>
-                  {hit.downloads.toLocaleString()} downloads
-                </span>
+                {busyId === hit.projectId ? (
+                  <span style={{ ...SUB, color: 'var(--yellow)' }}>{SLOW_COPY}</span>
+                ) : (
+                  <span className="dim" style={SUB}>
+                    {hit.downloads.toLocaleString()} downloads
+                  </span>
+                )}
               </div>
               {installedIds.has(hit.projectId) ? (
                 <span className="dim" style={{ fontSize: 'var(--fs-small)', flex: 'none' }}>
                   Installed
                 </span>
+              ) : busyId === hit.projectId ? (
+                <Button size="sm" variant="primary" disabled aria-label={`Installing ${hit.title}`}>
+                  <Spinner /> Installing…
+                </Button>
               ) : (
                 <Button
                   size="sm"
@@ -378,10 +485,10 @@ export function Mods({ row, ask }: TabProps): React.JSX.Element {
                   onClick={() => void install(hit.projectId, hit.title)}
                   aria-label={`Install ${hit.title}`}
                 >
-                  {busyId === hit.projectId ? 'Installing…' : 'Install'}
+                  Install
                 </Button>
               )}
-            </div>
+            </motion.div>
           ))}
 
         <div className="field">
@@ -404,9 +511,18 @@ export function Mods({ row, ask }: TabProps): React.JSX.Element {
               disabled={!byId.trim() || busyId !== ''}
               onClick={() => void install(byId.trim(), byId.trim())}
             >
-              {busyId === byId.trim() ? 'Installing…' : 'Install'}
+              {busyId !== '' && busyId === byId.trim() ? (
+                <>
+                  <Spinner /> Installing…
+                </>
+              ) : (
+                'Install'
+              )}
             </Button>
           </div>
+          {busyId !== '' && busyId === byId.trim() && (
+            <p style={{ color: 'var(--yellow)', fontSize: 'var(--fs-small)' }}>{SLOW_COPY}</p>
+          )}
         </div>
 
         <p className="dim" style={{ fontSize: 'var(--fs-small)' }}>

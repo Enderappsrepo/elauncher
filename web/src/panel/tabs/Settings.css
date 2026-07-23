@@ -38,6 +38,27 @@
   line-height: 1.45;
 }
 
+/* The mark of an edited-but-unsaved field. One dot, everywhere the state
+ * exists: beside the label it belongs to, on the head of a group hiding one,
+ * and in the dock doing the counting. */
+.set-dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-left: 7px;
+  border-radius: 50%;
+  vertical-align: middle;
+  background: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+  animation: set-dotin 0.24s var(--ease-spring) both;
+}
+
+@keyframes set-dotin {
+  from {
+    transform: scale(0);
+  }
+}
+
 /* The whole row is the target, not the 20px box. */
 .set-check {
   display: flex;
@@ -94,6 +115,11 @@
   text-align: left;
 }
 
+.set-grouphead .set-dot {
+  margin-left: 0;
+  flex: none;
+}
+
 .set-grouptitle {
   flex: 1;
   min-width: 0;
@@ -116,20 +142,40 @@
 
 /* Sticky action dock. It appears only when there is something to save or
  * something to report, so the screen keeps its full height the rest of the
- * time, and it sits at the bottom where a thumb already is. */
+ * time, and it sits at the bottom where a thumb already is. Motion drives its
+ * entrance and exit now; this is only where it sticks and what it is made of. */
 .set-dock {
   position: sticky;
-  bottom: 0;
+  bottom: 10px;
   z-index: 5;
   display: flex;
   flex-direction: column;
   gap: 10px;
   padding: 12px;
-  padding-bottom: calc(12px + env(safe-area-inset-bottom));
   border: 1px solid var(--border-strong);
   border-radius: var(--radius);
   background: var(--glass-bg);
   backdrop-filter: blur(16px) saturate(1.3);
   box-shadow: var(--shadow-lift);
-  animation: rise 0.32s var(--ease-spring) both;
+}
+
+/* On a phone the shell's bottomnav (~64px of glass, plus the safe area) floats
+ * over the same edge; the dock rides just above it rather than underneath it. */
+@media (max-width: 899px) {
+  .set-dock {
+    bottom: calc(72px + env(safe-area-inset-bottom));
+  }
+}
+
+.set-dockmsg {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  color: var(--text-dim);
+  font-size: var(--fs-small);
+}
+
+.set-dockmsg .set-dot {
+  margin-left: 0;
+  flex: none;
 }

@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useState } from 'react'
+import { CheckCheck, CreditCard, HardDrive, Inbox, Lock, ShoppingBag } from 'lucide-react'
+import { toast } from 'sonner'
 import { supabase } from '@web/lib/supabase'
-import { Button, Skeleton, Tabs } from '@web/ui'
+import { Button, EmptyState, Skeleton, Tabs } from '@web/ui'
+import { AnimatePresence, EASE_OUT, EASE_SPRING, motion } from '@web/ui/motion'
 import './Admin.css'
 
 /**
@@ -19,6 +22,10 @@ import './Admin.css'
  * (hosting_hosts). Money is deliberately absent. Approving an order records
  * that it is paid until a date; it does not take a payment, and there is no
  * refund path in the schema to expose — refunds happen in PayPal or Stripe.
+ *
+ * Stripe Checkout is the one path around this desk: its webhook activates the
+ * order it was paid for, so a card order arrives here already active — badged
+ * as such, and never asking to be approved.
  */
 
 type OrderStatus = 'awaiting_payment' | 'pending_review' | 'active' | 'past_due' | 'rejected' | 'cancelled'
@@ -52,6 +59,16 @@ const RANK: Record<OrderStatus, number> = {
   cancelled: 5
 }
 
+/** What each pile of the pipeline means to the operator, not the enum's name. */
+const LANE_TITLE: Record<OrderStatus, string> = {
+  pending_review: 'Waiting on you',
+  past_due: 'Past due',
+  active: 'Active',
+  awaiting_payment: 'Awaiting payment',
+  rejected: 'Rejected',
+  cancelled: 'Cancelled'
+}
+
 const GAME_LABEL: Record<string, string> = {
   minecraft: 'Minecraft',
   palworld: 'Palworld',
@@ -76,6 +93,10 @@ interface OrderRow {
   created_at: string
   target_device_id: string | null
   provisioner_id: string | null
+  /** set by the Stripe webhook when checkout paid for this order — older clouds
+   *  have neither column, and select('*') simply never returns them */
+  stripe_session_id: string | null
+  stripe_subscription_id: string | null
 }
 
 interface PlanRow {
@@ -129,7 +150,9 @@ function toOrder(raw: Record<string, unknown>): OrderRow {
     note: String(raw.note ?? ''),
     created_at: String(raw.created_at ?? ''),
     target_device_id: (raw.target_device_id as string | null) ?? null,
-    provisioner_id: (raw.provisioner_id as string | null) ?? null
+    provisioner_id: (raw.provisioner_id as string | null) ?? null,
+    stripe_session_id: (raw.stripe_session_id as string | null) ?? null,
+    stripe_subscription_id: (raw.stripe_subscription_id as string | null) ?? null
   }
 }
 
@@ -220,6 +243,17 @@ function readable(message: string): string {
   return /schema cache|does not exist|42P01|PGRST205/i.test(message)
     ? 'Hosting needs one migration — open Supabase → SQL Editor and run the latest schema.sql once.'
     : message
+}
+
+/** "placed 4h ago", from created_at — the queue's age at a glance. */
+function orderAge(iso: string): string {
+  const m = Math.floor((Date.now() - new Date(iso).getTime()) / 60_000)
+  const h = Math.floor(m / 60)
+  const d = Math.floor(h / 24)
+  if (d > 0) return `${d}d ago`
+  if (h > 0) return `${h}h ago`
+  if (m > 0) return `${m}m ago`
+  return 'just now'
 }
 
 interface OperatorState {
@@ -327,7 +361,6 @@ export function Admin({ userId }: { userId: string }): React.JSX.Element {
   // away a beat later is worse than a moment of skeleton
   const [admin, setAdmin] = useState<boolean | null>(null)
   const [section, setSection] = useState<Section>('orders')
-  const [notice, setNotice] = useState('')
   const state = useOperator(userId, admin === true)
   const { reload } = state
 
@@ -348,7 +381,8 @@ export function Admin({ userId }: { userId: string }): React.JSX.Element {
 
   const after = useCallback(
     async (message: string): Promise<void> => {
-      setNotice(message)
+      // a toast survives a section switch, which the old inline notice never did
+      toast.success(message)
       await reload()
     },
     [reload]
@@ -365,13 +399,10 @@ export function Admin({ userId }: { userId: string }): React.JSX.Element {
 
   if (!admin) {
     return (
-      <section className="surface pad rise stack">
-        <h2>Operator view</h2>
-        <p className="dim">
-          This is where hosting orders are approved and the fleet is managed. Your account is not
-          marked as an operator, so there is nothing here for you.
-        </p>
-      </section>
+      <EmptyState icon={<Lock size={20} />} title="Operators only">
+        This is where hosting orders are approved and the fleet is managed. Your account is not
+        marked as an operator, so there is nothing here for you.
+      </EmptyState>
     )
   }
 
@@ -391,17 +422,7 @@ export function Admin({ userId }: { userId: string }): React.JSX.Element {
         </p>
       </div>
 
-      <Tabs
-        tabs={SECTIONS}
-        value={section}
-        // the notice describes something that just happened on the section you
-        // are leaving, so it goes with it
-        onChange={(next) => {
-          setNotice('')
-          setSection(next)
-        }}
-        labels={SECTION_LABELS}
-      />
+      <Tabs tabs={SECTIONS} value={section} onChange={setSection} labels={SECTION_LABELS} />
 
       <div className="ops-body">
         {state.error && (
@@ -409,18 +430,27 @@ export function Admin({ userId }: { userId: string }): React.JSX.Element {
             {state.error}
           </p>
         )}
-        {notice && <p className="formnote">{notice}</p>}
 
         {state.loading && !state.error && (
-          <div className="grid">
-            {[0, 1].map((i) => (
-              <Skeleton key={i} height={200} />
-            ))}
+          <div className="stack">
+            <Skeleton height={22} width={190} />
+            <div className="grid">
+              {[0, 1].map((i) => (
+                <Skeleton key={i} height={230} />
+              ))}
+            </div>
           </div>
         )}
 
         {!state.loading && !blank && section === 'orders' && (
-          <Orders orders={state.orders} plans={state.plans} hosts={state.hosts} customers={state.customers} after={after} />
+          <Orders
+            orders={state.orders}
+            plans={state.plans}
+            hosts={state.hosts}
+            customers={state.customers}
+            shopOpen={state.shopOpen}
+            after={after}
+          />
         )}
         {!state.loading && !blank && section === 'shop' && (
           <Shop plans={state.plans} shopOpen={state.shopOpen} paypal={state.paypal} after={after} />
@@ -443,71 +473,119 @@ function StatusPill({ status, settingUp }: { status: OrderStatus; settingUp?: bo
 
 type After = (message: string) => Promise<void>
 
+/**
+ * The pipeline. Orders are piled by status rather than listed flat, with the
+ * pile that needs a human first — approving and rejecting animate the card out
+ * of its pile instead of snapping the whole list, so what just happened stays
+ * legible on a phone held one-handed.
+ */
 function Orders({
   orders,
   plans,
   hosts,
   customers,
+  shopOpen,
   after
 }: {
   orders: OrderRow[]
   plans: PlanRow[]
   hosts: FleetHost[]
   customers: Record<string, string>
+  shopOpen: boolean
   after: After
 }): React.JSX.Element {
   const [showAll, setShowAll] = useState(false)
   const planById = new Map(plans.map((p) => [p.id, p]))
-  const shown = orders
-    .filter((o) => showAll || RANK[o.status] <= RANK.active)
-    .slice()
-    .sort((a, b) => RANK[a.status] - RANK[b.status] || b.created_at.localeCompare(a.created_at))
+
+  if (orders.length === 0) {
+    const listed = plans.some((p) => p.active)
+    return (
+      <EmptyState icon={<Inbox size={20} />} title="No orders yet">
+        {shopOpen
+          ? listed
+            ? 'The shop is open and the plans are listed — an order appears here the moment a customer picks one, before they have paid. Nothing here means nobody has ordered.'
+            : 'The shop is open but no plan is listed, so there is nothing for a customer to order. List one under Shop.'
+          : 'The shop is closed, so nobody can order right now. Open it under Shop when you are ready to sell.'}
+      </EmptyState>
+    )
+  }
+
+  const lanes = [...STATUSES].sort((a, b) => RANK[a] - RANK[b])
+  const grouped = new Map<OrderStatus, OrderRow[]>(lanes.map((s) => [s, []]))
+  for (const order of orders) grouped.get(order.status)?.push(order)
+  for (const list of grouped.values()) list.sort((a, b) => b.created_at.localeCompare(a.created_at))
+
+  const visible = lanes.filter((s) => (showAll || RANK[s] <= RANK.active) && (grouped.get(s) ?? []).length > 0)
+  const shown = visible.reduce((n, s) => n + (grouped.get(s) ?? []).length, 0)
 
   return (
     <>
-      {orders.length === 0 ? (
-        <section className="surface pad stack">
-          <h2>No orders yet</h2>
-          <p className="dim">
-            Orders appear the moment a customer picks a plan in the shop, before they have paid for
-            it. Nothing here means nobody has ordered.
-          </p>
-        </section>
+      <div className="row ops-toolbar">
+        <span className="dim">
+          {shown} of {orders.length} {orders.length === 1 ? 'order' : 'orders'}
+        </span>
+        <span className="spacer" />
+        <Button variant="ghost" onClick={() => setShowAll((v) => !v)}>
+          {showAll ? 'Only orders that need you' : 'Show every order'}
+        </Button>
+      </div>
+
+      {shown === 0 ? (
+        <EmptyState icon={<CheckCheck size={20} />} title="Nothing needs you">
+          No order is waiting on review, renewal or a build. The rest are unpaid, cancelled or
+          rejected — the button above shows them.
+        </EmptyState>
       ) : (
-        <>
-          <div className="row ops-toolbar">
-            <span className="dim">
-              {shown.length} of {orders.length} {orders.length === 1 ? 'order' : 'orders'}
-            </span>
-            <span className="spacer" />
-            <Button variant="ghost" onClick={() => setShowAll((v) => !v)}>
-              {showAll ? 'Only orders that need you' : 'Show every order'}
-            </Button>
-          </div>
-          {shown.length === 0 ? (
-            <section className="surface pad stack">
-              <h2>Nothing needs you</h2>
-              <p className="dim">
-                No order is waiting on review, renewal or a build. The rest are unpaid, cancelled or
-                rejected — the button above shows them.
-              </p>
-            </section>
-          ) : (
-            <div className="grid stagger">
-              {shown.map((order, i) => (
-                <OrderCard
-                  key={order.id}
-                  order={order}
-                  plan={planById.get(order.plan_id) ?? null}
-                  hosts={hosts}
-                  customer={customers[order.user_id] ?? ''}
-                  index={i}
-                  after={after}
-                />
-              ))}
-            </div>
-          )}
-        </>
+        <AnimatePresence>
+          {visible.map((status) => {
+            const list = grouped.get(status) ?? []
+            const [cls] = STATUS_LOOK[status]
+            return (
+              <motion.section
+                key={status}
+                layout
+                className="ops-lane"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0, y: -6 }}
+                transition={{ duration: 0.26, ease: EASE_OUT }}
+              >
+                <div className="row ops-lane-head">
+                  <span className={`ops-lane-dot ${cls}`} aria-hidden />
+                  <h2>{LANE_TITLE[status]}</h2>
+                  <span className="ops-count">{list.length}</span>
+                  {status === 'pending_review' && <span className="dim ops-hint">your queue</span>}
+                </div>
+                <div className="grid">
+                  <AnimatePresence>
+                    {list.map((order, i) => (
+                      <motion.div
+                        key={order.id}
+                        layout
+                        initial={{ opacity: 0, y: 14, scale: 0.985 }}
+                        animate={{
+                          opacity: 1,
+                          y: 0,
+                          scale: 1,
+                          transition: { duration: 0.42, ease: EASE_SPRING, delay: Math.min(i, 6) * 0.045 }
+                        }}
+                        exit={{ opacity: 0, scale: 0.96, transition: { duration: 0.26, ease: EASE_OUT } }}
+                      >
+                        <OrderCard
+                          order={order}
+                          plan={planById.get(order.plan_id) ?? null}
+                          hosts={hosts}
+                          customer={customers[order.user_id] ?? ''}
+                          after={after}
+                        />
+                      </motion.div>
+                    ))}
+                  </AnimatePresence>
+                </div>
+              </motion.section>
+            )
+          })}
+        </AnimatePresence>
       )}
     </>
   )
@@ -518,14 +596,12 @@ function OrderCard({
   plan,
   hosts,
   customer,
-  index,
   after
 }: {
   order: OrderRow
   plan: PlanRow | null
   hosts: FleetHost[]
   customer: string
-  index: number
   after: After
 }): React.JSX.Element {
   const [stage, setStage] = useState<'none' | 'approve' | 'reject'>('none')
@@ -540,6 +616,10 @@ function OrderCard({
 
   const settingUp = order.status === 'active' && !order.server_id
   const builtOn = hosts.find((h) => h.device_id === order.provisioner_id)
+  const picked = hosts.find((h) => h.device_id === pick) ?? null
+  // paid through Stripe Checkout: the webhook set these, renews the order by
+  // card, and activates it without this desk — so no Approve is ever offered
+  const cardPaid = Boolean(order.stripe_session_id || order.stripe_subscription_id)
   const dayCount = Number.parseInt(days, 10)
   const validDays = Number.isFinite(dayCount) && dayCount >= 1 && dayCount <= 3650
   const until = validDays ? new Date(Date.now() + dayCount * DAY_MS) : null
@@ -553,7 +633,9 @@ function OrderCard({
       setStage('none')
       await after(done)
     } catch (e) {
-      setFailed(e instanceof Error ? e.message : 'That did not go through.')
+      const message = e instanceof Error ? e.message : 'That did not go through.'
+      setFailed(message)
+      toast.error(message)
     } finally {
       setBusy(false)
     }
@@ -602,7 +684,9 @@ function OrderCard({
         // put the picker back: leaving it pointing at a box that refused the
         // order would be the panel lying about where the server will land
         setPick(previous)
-        setFailed(e instanceof Error ? e.message : 'That did not go through.')
+        const message = e instanceof Error ? e.message : 'That did not go through.'
+        setFailed(message)
+        toast.error(message)
       } finally {
         setBusy(false)
       }
@@ -610,7 +694,7 @@ function OrderCard({
   }
 
   return (
-    <article className="surface pad stack" style={{ '--i': index } as React.CSSProperties}>
+    <article className="surface pad stack">
       <div className="row">
         <h2>{order.server_name}</h2>
         <span className="spacer" />
@@ -622,8 +706,18 @@ function OrderCard({
         {customer && ` · ${customer}`}
         {' · ref '}
         <span className="mono">{order.reference}</span>
+        {` · placed ${orderAge(order.created_at)}`}
         {order.paid_until && ` · paid until ${new Date(order.paid_until).toLocaleDateString()}`}
       </p>
+
+      {cardPaid && (
+        <div className="row">
+          <span className="pill ops-card-pill">
+            <CreditCard size={13} aria-hidden />
+            card · auto-renews
+          </span>
+        </div>
+      )}
 
       {order.note && <p className={/failed/i.test(order.note) ? 'formerr' : 'formnote'}>{order.note}</p>}
 
@@ -653,6 +747,15 @@ function OrderCard({
             Which box builds this order. Leave it on “Any free host” to let the first available one
             take it.
           </p>
+          {picked && (!picked.enabled || !hostSeen(picked)) && (
+            <p className="ops-warn">
+              {hostLabel(picked)} is{' '}
+              {picked.enabled
+                ? 'offline — the build waits until it checks back in'
+                : 'parked, so it takes no new orders — unpark it under Hosts first'}
+              .
+            </p>
+          )}
         </div>
       )}
 
@@ -662,12 +765,18 @@ function OrderCard({
         </p>
       )}
 
-      {stage === 'none' && (order.status === 'pending_review' || renewing) && (
+      {stage === 'none' && order.status === 'pending_review' && cardPaid && (
+        <p className="dim ops-hint">
+          Paid by card — Stripe activates this order by itself, so there is nothing here to approve.
+        </p>
+      )}
+
+      {stage === 'none' && ((order.status === 'pending_review' && !cardPaid) || renewing) && (
         <div className="row ops-actions">
           <Button variant="primary" onClick={() => setStage('approve')}>
             {renewing ? 'Renew' : 'Approve'}
           </Button>
-          {order.status === 'pending_review' && (
+          {order.status === 'pending_review' && !cardPaid && (
             <Button variant="danger" onClick={() => setStage('reject')}>
               Reject
             </Button>
@@ -750,7 +859,9 @@ function Shop({
       await what()
       await after(done)
     } catch (e) {
-      setFailed(e instanceof Error ? e.message : 'That did not go through.')
+      const message = e instanceof Error ? e.message : 'That did not go through.'
+      setFailed(message)
+      toast.error(message)
     } finally {
       setBusy('')
     }
@@ -793,16 +904,13 @@ function Shop({
         </p>
       )}
 
-      <section className="surface pad stack">
+      <section className="surface pad stack rise">
         <div className="row">
-          <div>
-            <h2>{shopOpen ? 'Shop is open' : 'Shop is closed'}</h2>
-            <p className="dim ops-hint">
-              {shopOpen
-                ? 'Customers can order new servers.'
-                : 'Ordering is hidden from customers. Existing servers keep running.'}
-            </p>
-          </div>
+          <h2>Shop</h2>
+          <span className={`pill ${shopOpen ? 'running' : 'stopped'}`}>
+            <span className="dot" aria-hidden />
+            {shopOpen ? 'Open' : 'Closed'}
+          </span>
           <span className="spacer" />
           <Button
             variant={shopOpen ? 'danger' : 'primary'}
@@ -812,18 +920,20 @@ function Shop({
             {busy === 'shop' ? 'Saving…' : shopOpen ? 'Close shop' : 'Open shop'}
           </Button>
         </div>
+        <p className="dim ops-hint">
+          {shopOpen
+            ? 'Customers can order new servers.'
+            : 'Ordering is hidden from customers. Existing servers keep running.'}
+        </p>
       </section>
 
       {plans.length === 0 ? (
-        <section className="surface pad stack">
-          <h2>No plans</h2>
-          <p className="dim">
-            There is nothing to sell yet. Plans are rows in hosting_plans — the latest schema.sql
-            seeds a starter lineup.
-          </p>
-        </section>
+        <EmptyState icon={<ShoppingBag size={20} />} title="No plans">
+          There is nothing to sell yet. Plans are rows in hosting_plans — the latest schema.sql
+          seeds a starter lineup.
+        </EmptyState>
       ) : (
-        <section className="surface pad stack">
+        <section className="surface pad stack rise">
           <h2>Plans</h2>
           {plans.map((p) => (
             <div key={p.id} className="row ops-plan">
@@ -835,6 +945,12 @@ function Shop({
                 </p>
               </div>
               <span className="spacer" />
+              {!p.active && (
+                <span className="pill stopped">
+                  <span className="dot" aria-hidden />
+                  Hidden
+                </span>
+              )}
               <Button disabled={busy === p.id} onClick={() => setPlan(p, !p.active)}>
                 {busy === p.id ? 'Saving…' : p.active ? 'Hide' : 'List'}
               </Button>
@@ -849,13 +965,10 @@ function Shop({
 function Hosts({ hosts, after }: { hosts: FleetHost[]; after: After }): React.JSX.Element {
   if (hosts.length === 0) {
     return (
-      <section className="surface pad stack">
-        <h2>No hosts have checked in</h2>
-        <p className="dim">
-          Sign a launcher into this hosting account and the box appears here within a minute, ready
-          to be named and given orders.
-        </p>
-      </section>
+      <EmptyState icon={<HardDrive size={20} />} title="No hosts have checked in">
+        Sign a launcher into this hosting account and the box appears here within a minute, ready
+        to be named and given orders.
+      </EmptyState>
     )
   }
   return (
@@ -882,7 +995,9 @@ function HostCard({ host, index, after }: { host: FleetHost; index: number; afte
       if (error) throw new Error(error.message)
       await after(done)
     } catch (e) {
-      setFailed(e instanceof Error ? e.message : 'That did not save.')
+      const message = e instanceof Error ? e.message : 'That did not save.'
+      setFailed(message)
+      toast.error(message)
     } finally {
       setBusy(false)
     }
@@ -907,9 +1022,17 @@ function HostCard({ host, index, after }: { host: FleetHost; index: number; afte
           </p>
         </div>
         <span className="spacer" />
-        <span className={`pill ${online ? 'running' : 'stopped'}`}>
-          <span className="dot" aria-hidden />
-          {online ? 'Online' : 'Offline'}
+        <span className="ops-host-pills">
+          {!host.enabled && (
+            <span className="pill stopped">
+              <span className="dot" aria-hidden />
+              Parked
+            </span>
+          )}
+          <span className={`pill ${online ? 'running' : 'stopped'}`}>
+            <span className="dot" aria-hidden />
+            {online ? 'Online' : 'Offline'}
+          </span>
         </span>
       </div>
 

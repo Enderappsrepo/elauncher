@@ -171,3 +171,46 @@ export function Console({
 export function Skeleton({ height, width }: { height: number; width?: number | string }): React.JSX.Element {
   return <div className="skeleton" style={{ height, width: width ?? '100%' }} />
 }
+
+/**
+ * Named nothingness. Every list screen renders this instead of a bare gap so
+ * "working, and empty" can never be mistaken for "broken" — with the reason,
+ * and where there is one, the next step as a real control.
+ */
+export function EmptyState({
+  icon,
+  title,
+  children,
+  action
+}: {
+  icon?: ReactNode
+  title: string
+  children?: ReactNode
+  action?: ReactNode
+}): React.JSX.Element {
+  return (
+    <section className="empty surface rise">
+      {icon && (
+        <div className="empty-icon" aria-hidden>
+          {icon}
+        </div>
+      )}
+      <h2>{title}</h2>
+      {children && <p className="dim">{children}</p>}
+      {action}
+    </section>
+  )
+}
+
+export function Kbd({ children }: { children: ReactNode }): React.JSX.Element {
+  return <kbd className="kbd">{children}</kbd>
+}
+
+export function Spinner({ label }: { label?: string }): React.JSX.Element {
+  return (
+    <span className="row" role="status" aria-live="polite">
+      <span className="spinner" aria-hidden />
+      {label && <span className="dim">{label}</span>}
+    </span>
+  )
+}

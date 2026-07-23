@@ -14,6 +14,13 @@
   padding-top: 12px;
 }
 
+/* Draft rows enter and leave through a motion wrapper, so their divider hangs
+ * on the wrapper — a row can fade out without its border flashing first. */
+.port-slot + .port-slot {
+  border-top: 1px solid var(--border);
+  padding-top: 12px;
+}
+
 .port-dot {
   width: 9px;
   height: 9px;
@@ -48,20 +55,51 @@
 }
 
 .port-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
   color: var(--text-dim);
+}
+
+.port-meta > * {
+  min-width: 0;
   overflow-wrap: anywhere;
 }
 
-.port-why {
-  margin-top: 6px;
-  padding-left: 21px;
-  color: var(--text-faint);
-  font-size: var(--fs-small);
-  line-height: 1.45;
+/* The two protocols as tinted chips: UDP wears the cyan accent, TCP the
+ * violet, so a mixed list scans without reading a word. The letters still
+ * carry it for anyone the tint is lost on. */
+.proto {
+  display: inline-flex;
+  align-items: center;
+  flex: none;
+  padding: 1px 7px;
+  border: 1px solid;
+  border-radius: 999px;
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
 }
 
-.port-why.bad {
-  color: var(--red);
+.proto.udp {
+  color: var(--accent-2);
+  border-color: color-mix(in srgb, var(--accent-2) 36%, transparent);
+  background: color-mix(in srgb, var(--accent-2) 10%, transparent);
+}
+
+.proto.tcp {
+  color: var(--accent);
+  border-color: var(--accent-line);
+  background: var(--accent-soft);
+}
+
+/* The caution rides under its row in the panel's note voice (.formnote, or
+ * .formerr when the host reported a failure) — the row states where the port
+ * reaches; this states why opening it deserves a second thought. */
+.port-why {
+  margin-top: 8px;
 }
 
 .port-presets {
@@ -79,6 +117,15 @@
   text-align: left;
 }
 
+.port-preset svg {
+  flex: none;
+  color: var(--accent);
+}
+
+.port-preset-top {
+  width: 100%;
+}
+
 .port-preset .port-name {
   flex: 1;
 }
@@ -89,6 +136,20 @@
   font-weight: 400;
   line-height: 1.4;
   white-space: normal;
+}
+
+/* Section header with the port budget riding its right edge. */
+.net-grow {
+  flex: 1;
+  min-width: 0;
+}
+
+.net-left {
+  flex: none;
+}
+
+.net-or {
+  font-size: var(--fs-small);
 }
 
 /* Stacked on a phone, one line once there is room for it. */
@@ -107,6 +168,12 @@
 
 .port-choice {
   flex-wrap: wrap;
+}
+
+/* The empty state sits inside an already-padded card: keep the ceremony, lose
+ * some of the air. */
+.net .empty {
+  padding: 24px 18px;
 }
 
 /* Sticky action dock, so the save is under the thumb rather than at the end of

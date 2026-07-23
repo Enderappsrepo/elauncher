@@ -417,6 +417,256 @@
   }
 }
 
+/* ---------- shared text + spacing utilities ----------
+ * Hoisted from the panel's App.css: the landing uses them too, and a utility
+ * that exists in only one of the two apps is a bug that styles itself as
+ * working markup. */
+
+.dim {
+  color: var(--text-dim);
+}
+
+.mono {
+  font-family: var(--mono);
+  font-size: var(--fs-small);
+}
+
+.pad {
+  padding: 16px;
+}
+
+/* ---------- empty states ---------- */
+
+/* A blank screen and a broken screen are indistinguishable; an empty state is
+ * how the panel says "working, and there is nothing" — always with the reason
+ * and, when one exists, the next step as a real action. */
+.empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 36px 24px;
+  text-align: center;
+}
+
+.empty-icon {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  margin-bottom: 6px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--accent-line);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.empty h2 {
+  font-size: var(--fs-h2);
+  font-weight: 700;
+}
+
+.empty p {
+  max-width: 44ch;
+}
+
+.empty .btn {
+  margin-top: 10px;
+}
+
+/* ---------- kbd ---------- */
+
+.kbd {
+  display: inline-block;
+  min-width: 20px;
+  padding: 2px 6px;
+  border: 1px solid var(--border-strong);
+  border-bottom-width: 2px;
+  border-radius: 6px;
+  background: var(--bg-elevated);
+  color: var(--text-dim);
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.4;
+  text-align: center;
+}
+
+/* ---------- spinner ---------- */
+
+.spinner {
+  width: 16px;
+  height: 16px;
+  flex: none;
+  border-radius: 50%;
+  border: 2px solid var(--border-strong);
+  border-top-color: var(--accent);
+  animation: spin 0.7s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ---------- toasts (sonner) ----------
+ * Sonner ships neutral styles; these vars re-skin it to the token layer so a
+ * toast is unmistakably part of the same instrument. */
+
+[data-sonner-toaster] {
+  --normal-bg: var(--pop-bg);
+  --normal-border: var(--border-strong);
+  --normal-text: var(--text);
+  --success-bg: var(--pop-bg);
+  --success-border: color-mix(in srgb, var(--green) 36%, transparent);
+  --success-text: var(--green);
+  --error-bg: var(--pop-bg);
+  --error-border: color-mix(in srgb, var(--red) 36%, transparent);
+  --error-text: var(--red);
+  font-family: inherit;
+}
+
+[data-sonner-toast] {
+  backdrop-filter: blur(14px);
+  border-radius: var(--radius-sm) !important;
+  box-shadow: var(--shadow-pop) !important;
+}
+
+/* ---------- skip link ----------
+ * First tab stop on the page; invisible until it has focus. */
+
+.skip {
+  position: fixed;
+  top: 10px;
+  left: 10px;
+  z-index: 100;
+  padding: 10px 14px;
+  border: 1px solid var(--accent-line);
+  border-radius: var(--radius-sm);
+  background: var(--pop-bg);
+  color: var(--text);
+  font-size: var(--fs-small);
+  font-weight: 600;
+  transform: translateY(-64px);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.skip:focus-visible {
+  transform: none;
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* ---------- command palette (cmdk) ---------- */
+
+.palette-veil {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: min(14vh, 120px) 14px 14px;
+  background: rgba(4, 4, 8, 0.55);
+  backdrop-filter: blur(6px);
+}
+
+.palette {
+  width: min(560px, 100%);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  background: var(--pop-bg);
+  box-shadow: var(--shadow-pop);
+  overflow: hidden;
+}
+
+.palette [cmdk-input] {
+  width: 100%;
+  min-height: 52px;
+  padding: 0 16px;
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  background: none;
+  color: var(--text);
+  font: inherit;
+  font-size: var(--fs-body);
+  outline: none;
+}
+
+.palette [cmdk-input]::placeholder {
+  color: var(--text-faint);
+}
+
+.palette [cmdk-list] {
+  max-height: min(48vh, 380px);
+  overflow-y: auto;
+  padding: 8px;
+  scroll-padding-block: 8px;
+}
+
+.palette [cmdk-empty] {
+  padding: 18px 12px;
+  color: var(--text-faint);
+  font-size: var(--fs-small);
+  text-align: center;
+}
+
+.palette [cmdk-group-heading] {
+  padding: 8px 8px 4px;
+  color: var(--text-faint);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.palette [cmdk-item] {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 42px;
+  padding: 0 10px;
+  border-radius: var(--radius-xs);
+  color: var(--text-dim);
+  font-size: var(--fs-body);
+  cursor: pointer;
+}
+
+.palette [cmdk-item][data-selected='true'] {
+  background: var(--accent-soft);
+  color: var(--text);
+}
+
+.pal-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pal-state {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-faint);
+  text-transform: capitalize;
+}
+
+.pal-state.running {
+  color: var(--green);
+}
+
+.pal-state.error {
+  color: var(--red);
+}
+
+.pal-state.starting,
+.pal-state.stopping {
+  color: var(--yellow);
+}
+
 /* ---------- motion utilities ---------- */
 
 .rise {

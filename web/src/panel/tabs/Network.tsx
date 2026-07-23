@@ -1,6 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { Cable, Check, Plus } from 'lucide-react'
+import { toast } from 'sonner'
 import { supabase } from '@web/lib/supabase'
-import { Button, Skeleton } from '@web/ui'
+import { Button, EmptyState, Skeleton } from '@web/ui'
+import { AnimatePresence, EASE_OUT, EASE_SPRING, motion } from '@web/ui/motion'
 import type { TabProps } from './types'
 import './Network.css'
 
@@ -115,6 +118,12 @@ async function readListing(serverId: string): Promise<boolean | null> {
   }
 }
 
+/** TCP and UDP are categories, not prose, so they wear the panel's two accent
+ *  tints instead of sitting inline in the meta line. */
+function Proto({ protocol }: { protocol: Protocol }): React.JSX.Element {
+  return <span className={`proto ${protocol === 'UDP' ? 'udp' : 'tcp'}`}>{protocol}</span>
+}
+
 function PortRow({
   rule,
   live,
@@ -145,8 +154,10 @@ function PortRow({
         <span className={`port-dot ${tone}`} aria-hidden />
         <div className="port-body">
           <div className="port-name">{rule.label}</div>
-          <div className="port-meta mono">
-            {rule.protocol} {rule.port} · {where}
+          <div className="port-meta">
+            <Proto protocol={rule.protocol} />
+            <span className="mono">{rule.port}</span>
+            <span className="mono">· {where}</span>
           </div>
         </div>
         {onRemove && (
@@ -155,7 +166,7 @@ function PortRow({
           </Button>
         )}
       </div>
-      {why && <p className={`port-why ${live?.error ? 'bad' : ''}`}>{why}</p>}
+      {why && <p className={live?.error ? 'formerr port-why' : 'formnote port-why'}>{why}</p>}
     </div>
   )
 }
@@ -168,7 +179,6 @@ export function Network({ row, userId, ask }: TabProps): React.JSX.Element {
 
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState('')
-  const [saved, setSaved] = useState('')
 
   const [label, setLabel] = useState('')
   const [protocol, setProtocol] = useState<Protocol>('UDP')
@@ -179,6 +189,8 @@ export function Network({ row, userId, ask }: TabProps): React.JSX.Element {
   const [listed, setListed] = useState<boolean | null>(null)
   const [listingBusy, setListingBusy] = useState(false)
   const [listingError, setListingError] = useState('')
+
+  const labelRef = useRef<HTMLInputElement>(null)
 
   // makeAsk hands out a fresh closure for every render of the shell, so the load
   // is keyed on the server it is about rather than on the function's identity —
@@ -192,7 +204,6 @@ export function Network({ row, userId, ask }: TabProps): React.JSX.Element {
     let alive = true
     setView(null)
     setLoadError('')
-    setSaved('')
     setSaveError('')
     void (async () => {
       try {
@@ -249,11 +260,12 @@ export function Network({ row, userId, ask }: TabProps): React.JSX.Element {
   const live = new Map(view.ports.map((entry) => [keyOf(entry), entry]))
   const main = view.ports.find((entry) => entry.main)
   const used = new Set(draft.map(keyOf))
+  // clamped: a host that lowered its ceiling must not put "-1 left" on screen
+  const left = Math.max(0, view.maxExtra - draft.length)
   const full = draft.length >= view.maxExtra
 
   function add(rule: Rule): void {
     setAddError('')
-    setSaved('')
     setDraft((prev) => [...prev, rule])
   }
 
@@ -278,20 +290,34 @@ export function Network({ row, userId, ask }: TabProps): React.JSX.Element {
   }
 
   function remove(index: number): void {
-    setSaved('')
     setDraft((prev) => prev.filter((_, at) => at !== index))
+  }
+
+  /** The empty state's one action: put the caret where a port gets described. */
+  function focusAdd(): void {
+    labelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    labelRef.current?.focus({ preventScroll: true })
+  }
+
+  /** The truthful version of "saved": while the server runs the save IS the
+   *  apply — the host answers with live state — and while it is stopped the
+   *  holes wait for the next start. */
+  function savedWord(fresh: PortsView): string {
+    const gate = fresh.direct ? 'firewall' : 'router'
+    return row.state === 'running'
+      ? `Ports saved — the ${gate} is applying them now.`
+      : `Ports saved — the ${gate} opens them on the next start.`
   }
 
   async function save(): Promise<void> {
     setSaving(true)
     setSaveError('')
-    setSaved('')
     const startedAt = Date.now()
     try {
       const next = toView(await askRef.current<unknown>('setPorts', { ports: draft }))
       setView(next)
       setDraft(extrasOf(next))
-      setSaved('Ports saved.')
+      toast.success(savedWord(next))
     } catch (e) {
       // Mapping a port is real router work and can outlast the relay's window
       // while still succeeding. Re-reading is the difference between "did that
@@ -302,7 +328,7 @@ export function Network({ row, userId, ask }: TabProps): React.JSX.Element {
         if (settled && shapeOf(extrasOf(settled)) === shapeOf(draft)) {
           setView(settled)
           setDraft(extrasOf(settled))
-          setSaved('Ports saved — the router took a while to answer.')
+          toast.success('Ports saved — the router took a while to answer.')
           return
         }
       }
@@ -315,7 +341,6 @@ export function Network({ row, userId, ask }: TabProps): React.JSX.Element {
   async function refresh(): Promise<void> {
     setSaving(true)
     setSaveError('')
-    setSaved('')
     try {
       const next = toView(await askRef.current<unknown>('ports'))
       setView(next)
@@ -333,6 +358,9 @@ export function Network({ row, userId, ask }: TabProps): React.JSX.Element {
     try {
       await askRef.current('setCommunity', { on })
       setListed(on)
+      toast.success(
+        on ? 'Listed — the community browser shows it after the next restart.' : 'Delisted — applies on the next restart.'
+      )
     } catch (e) {
       setListingError(say(e))
     } finally {
@@ -353,52 +381,90 @@ export function Network({ row, userId, ask }: TabProps): React.JSX.Element {
 
       <section className="surface pad stack">
         <h2>Ports your mods need</h2>
-        <p className="dim">
-          Some mods listen on a port of their own — proximity voice chat, live web maps, Bedrock crossplay.{' '}
-          {view.direct
-            ? 'This host has a public IP of its own, so there is no router to configure — ELauncher opens each port in the firewall while this server runs.'
-            : 'ELauncher opens these on the router while this server runs and releases them when it stops.'}
-        </p>
-        {draft.length === 0 && <p className="dim">No extra ports. Add one below if a mod asks for it.</p>}
-        {draft.map((rule, index) => (
-          <PortRow
-            key={`${keyOf(rule)}-${index}`}
-            rule={rule}
-            live={live.get(keyOf(rule))}
-            caution={view.cautions[String(rule.port)]}
-            onRemove={() => remove(index)}
-          />
-        ))}
+        {draft.length === 0 ? (
+          <EmptyState
+            icon={<Cable size={20} />}
+            title="No extra ports"
+            action={
+              <Button variant="primary" onClick={focusAdd}>
+                <Plus size={16} aria-hidden /> Add a port
+              </Button>
+            }
+          >
+            Mods that listen on a port of their own — voice chat, web maps, crossplay — get their hole{' '}
+            {view.direct ? 'opened in the firewall' : 'punched through the router'} here while this server runs.
+          </EmptyState>
+        ) : (
+          <>
+            <p className="dim">
+              Some mods listen on a port of their own — proximity voice chat, live web maps, Bedrock crossplay.{' '}
+              {view.direct
+                ? 'This host has a public IP of its own, so there is no router to configure — ELauncher opens each port in the firewall while this server runs.'
+                : 'ELauncher opens these on the router while this server runs and releases them when it stops.'}
+            </p>
+            {/* the divider lives on the motion wrapper rather than the row, so a
+                row can fade out without its border flashing out of order */}
+            <AnimatePresence initial={false}>
+              {draft.map((rule, index) => (
+                <motion.div
+                  key={keyOf(rule)}
+                  className="port-slot"
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, transition: { duration: 0.16, ease: EASE_OUT } }}
+                  transition={{ duration: 0.38, ease: EASE_SPRING }}
+                >
+                  <PortRow
+                    rule={rule}
+                    live={live.get(keyOf(rule))}
+                    caution={view.cautions[String(rule.port)]}
+                    onRemove={() => remove(index)}
+                  />
+                </motion.div>
+              ))}
+            </AnimatePresence>
+          </>
+        )}
       </section>
 
       <section className="surface pad stack">
-        <h2>Add a port</h2>
+        <div className="row">
+          <h2 className="net-grow">Add a port</h2>
+          {/* the budget stays on screen, so hitting the ceiling is never a surprise */}
+          <span className="dim mono net-left">
+            {left} of {view.maxExtra} left
+          </span>
+        </div>
         {/* Each preset carries what the mod is and why it needs its own port.
             That note is the whole reason the list is worth having, so it is on
             the card rather than in a tooltip nobody on a phone can reach. */}
         {view.presets.length > 0 && (
           <div className="port-presets">
-            {view.presets.map((preset) => (
-              <Button
-                key={keyOf(preset)}
-                className="port-preset"
-                disabled={used.has(keyOf(preset)) || full}
-                onClick={() => add({ port: preset.port, protocol: preset.protocol, label: preset.label })}
-              >
-                <span className="row">
-                  <span aria-hidden>{used.has(keyOf(preset)) ? '✓' : '+'}</span>
-                  <span className="port-name">{preset.label}</span>
-                  <span className="mono dim">
-                    {preset.protocol} {preset.port}
+            {view.presets.map((preset) => {
+              const taken = used.has(keyOf(preset))
+              return (
+                <Button
+                  key={keyOf(preset)}
+                  className="port-preset"
+                  disabled={taken || full}
+                  onClick={() => add({ port: preset.port, protocol: preset.protocol, label: preset.label })}
+                >
+                  <span className="row port-preset-top">
+                    {taken ? <Check size={16} aria-hidden /> : <Plus size={16} aria-hidden />}
+                    <span className="port-name">{preset.label}</span>
+                    <Proto protocol={preset.protocol} />
+                    <span className="mono dim">{preset.port}</span>
                   </span>
-                </span>
-                <span className="port-note">{preset.note}</span>
-              </Button>
-            ))}
+                  <span className="port-note">{preset.note}</span>
+                </Button>
+              )
+            })}
           </div>
         )}
+        {view.presets.length > 0 && <p className="dim net-or">Not on the list? Describe it yourself:</p>}
         <div className="port-new">
           <input
+            ref={labelRef}
             className="input"
             value={label}
             disabled={full}
@@ -486,14 +552,14 @@ export function Network({ row, userId, ask }: TabProps): React.JSX.Element {
       )}
 
       {/* The dock rides the bottom of the screen: on a phone the save button
-          belongs under the thumb, not below however many rules were added. */}
+          belongs under the thumb, not below however many rules were added.
+          Success speaks through a toast; only failure stays pinned here. */}
       <div className="port-dock">
         {saveError && (
           <p className="formerr" role="alert">
             {saveError}
           </p>
         )}
-        {saved && !saveError && <p className="formnote">{saved}</p>}
         <div className="row">
           <Button variant="ghost" disabled={saving} onClick={refresh}>
             {changed ? 'Discard changes' : 'Refresh'}

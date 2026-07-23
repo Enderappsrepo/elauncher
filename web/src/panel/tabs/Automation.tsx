@@ -1,7 +1,10 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
+import { Minus, Plus, ScrollText } from 'lucide-react'
+import { toast } from 'sonner'
 import type { PlanLimits, ServerAutomation, ServerGame, ServerKind } from '@shared/types'
-import { Button, Console, Skeleton } from '@web/ui'
+import { Button, Console, EmptyState, Skeleton, Spinner } from '@web/ui'
+import { AnimatePresence, Collapse, EASE_OUT, EASE_SPRING, motion, staggerChild, staggerParent } from '@web/ui/motion'
 import type { TabProps } from './types'
 import './Automation.css'
 
@@ -65,6 +68,22 @@ const MEMORY_LIMITS: { value: number; label: string }[] = [
   { value: 16384, label: '16 GB' }
 ]
 
+const SLEEP_MINUTES: { value: number; label: string }[] = [
+  { value: 0, label: 'never — stay up' },
+  { value: 5, label: 'after 5 minutes empty' },
+  { value: 10, label: 'after 10 minutes empty' },
+  { value: 15, label: 'after 15 minutes empty' },
+  { value: 30, label: 'after 30 minutes empty' },
+  { value: 60, label: 'after an hour empty' },
+  { value: 120, label: 'after 2 hours empty' }
+]
+
+const RESTART_MODES: { value: NonNullable<ServerAutomation['restartMode']>; label: string }[] = [
+  { value: 'off', label: 'Never' },
+  { value: 'interval', label: 'On a timer' },
+  { value: 'daily', label: 'Daily' }
+]
+
 const LOADERS: ServerKind[] = ['paper', 'vanilla', 'fabric', 'neoforge', 'forge']
 
 /** Recent releases, so a rebuild still has something to offer when Mojang is unreachable. */
@@ -117,10 +136,10 @@ function Note({ tone, children }: { tone?: 'warn'; children: ReactNode }): React
 
 function Group({ title, children }: { title: string; children: ReactNode }): React.JSX.Element {
   return (
-    <section className="surface pad stack auto-group">
+    <motion.section variants={staggerChild} className="surface pad stack auto-group">
       <h2>{title}</h2>
       {children}
-    </section>
+    </motion.section>
   )
 }
 
@@ -129,12 +148,15 @@ function Picker({
   label,
   value,
   options,
+  hint,
   onChange
 }: {
   id: string
   label: string
   value: number
   options: { value: number; label: string }[]
+  /** the consequence, spelled out where the finger already is */
+  hint?: ReactNode
   onChange: (value: number) => void
 }): React.JSX.Element {
   return (
@@ -147,25 +169,89 @@ function Picker({
           </option>
         ))}
       </select>
+      {hint && <p className="auto-hint">{hint}</p>}
     </div>
   )
 }
 
+/** The whole row is the target, not the 20px box the browser draws — and the
+ *  consequence line under the label is part of the row, so tapping it counts. */
 function Check({
   id,
   checked,
+  hint,
   onChange,
   children
 }: {
   id: string
   checked: boolean
+  hint?: ReactNode
   onChange: (checked: boolean) => void
   children: ReactNode
 }): React.JSX.Element {
   return (
-    <div className="auto-check">
+    <label className="auto-check" htmlFor={id}>
       <input id={id} type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} />
-      <label htmlFor={id}>{children}</label>
+      <span className="auto-checkbody">
+        <span className="auto-checklabel">{children}</span>
+        {hint && <span className="auto-hint">{hint}</span>}
+      </span>
+    </label>
+  )
+}
+
+/**
+ * A number with thumb-sized ends. The input in the middle stays real — a jump
+ * from 6 to 48 is typed, not tapped — but on a phone the minus and plus are
+ * the control.
+ */
+function Stepper({
+  id,
+  label,
+  value,
+  min,
+  max,
+  fallback,
+  unit,
+  onChange
+}: {
+  id: string
+  label: string
+  value: number
+  min: number
+  max: number
+  /** what a cleared field settles on, matching the schedule's own default */
+  fallback: number
+  unit: string
+  onChange: (value: number) => void
+}): React.JSX.Element {
+  const clamp = (n: number): number => Math.min(max, Math.max(min, Number.isFinite(n) ? n : fallback))
+  return (
+    <div className="field">
+      <label htmlFor={id}>{label}</label>
+      <div className="auto-step">
+        <Button aria-label={`${label} — less`} disabled={value <= min} onClick={() => onChange(clamp(value - 1))}>
+          <Minus size={16} aria-hidden />
+        </Button>
+        <div className="auto-stepval">
+          <input
+            id={id}
+            className="input"
+            type="number"
+            inputMode="numeric"
+            min={min}
+            max={max}
+            value={value}
+            onChange={(e) => onChange(clamp(Number(e.target.value)))}
+          />
+          <span className="auto-stepunit" aria-hidden>
+            {unit}
+          </span>
+        </div>
+        <Button aria-label={`${label} — more`} disabled={value >= max} onClick={() => onChange(clamp(value + 1))}>
+          <Plus size={16} aria-hidden />
+        </Button>
+      </div>
     </div>
   )
 }
@@ -179,7 +265,6 @@ export function Automation({ row, userId, ask }: TabProps): React.JSX.Element {
   const [saved, setSaved] = useState('{}')
   const [saving, setSaving] = useState(false)
   const [saveFailed, setSaveFailed] = useState('')
-  const [savedNote, setSavedNote] = useState('')
 
   // Nothing guarantees the shell hands down a stable `ask`, and an identity that
   // changes every render would turn the load below into an endless relay loop.
@@ -216,18 +301,18 @@ export function Automation({ row, userId, ask }: TabProps): React.JSX.Element {
   }
 
   if (!info) {
+    // shaped like the three groups this becomes, tallest in the middle
     return (
-      <div className="stack">
-        <Skeleton height={188} />
-        <Skeleton height={232} />
-        <Skeleton height={196} />
+      <div className="stack" aria-busy="true">
+        <Skeleton height={250} />
+        <Skeleton height={210} />
+        <Skeleton height={330} />
       </div>
     )
   }
 
   const patch = (change: Partial<ServerAutomation>): void => {
     setAuto((a) => ({ ...a, ...change }))
-    setSavedNote('')
     setSaveFailed('')
   }
 
@@ -236,13 +321,12 @@ export function Automation({ row, userId, ask }: TabProps): React.JSX.Element {
   async function save(): Promise<void> {
     setSaving(true)
     setSaveFailed('')
-    setSavedNote('')
     try {
       // the host replaces the record with exactly this object, which is safe only
       // because it started life as the one the host handed back
       await ask('setAutomation', { automation: auto })
       setSaved(JSON.stringify(auto))
-      setSavedNote('Saved. Timers re-arm now if the server is running, otherwise on its next start.')
+      toast.success('Automation saved — timers re-arm now if the server is running, otherwise on its next start.')
     } catch (e) {
       setSaveFailed(e instanceof Error ? e.message : 'Could not save that.')
     } finally {
@@ -264,7 +348,7 @@ export function Automation({ row, userId, ask }: TabProps): React.JSX.Element {
   const memoryPinned = !info.owner && info.game !== 'minecraft' ? (info.limits?.memoryMb ?? 0) : 0
 
   return (
-    <div className="stack autopane">
+    <motion.div className="stack autopane" variants={staggerParent} initial="hidden" animate="show">
       <Group title="Keeping the world safe">
         <Picker
           id="auto-save"
@@ -286,7 +370,7 @@ export function Automation({ row, userId, ask }: TabProps): React.JSX.Element {
           options={BACKUP_HOURS}
           onChange={(v) => patch({ backupIntervalHours: v })}
         />
-        {(auto.backupIntervalHours ?? 0) > 0 && (
+        <Collapse open={(auto.backupIntervalHours ?? 0) > 0}>
           <Picker
             id="auto-keep"
             label="And keep"
@@ -294,7 +378,7 @@ export function Automation({ row, userId, ask }: TabProps): React.JSX.Element {
             options={BACKUP_KEEP.map((k) => ({ value: k, label: `${k} of them` }))}
             onChange={(v) => patch({ backupKeep: v })}
           />
-        )}
+        </Collapse>
         <Note>
           Backups are folder copies under <code>backups/</code>, not zips — fast, but they take real disk. Keep fewer
           if space is tight.
@@ -302,41 +386,44 @@ export function Automation({ row, userId, ask }: TabProps): React.JSX.Element {
       </Group>
 
       <Group title="Restarts">
-        <div className="field">
-          <label htmlFor="auto-mode">Restart this server</label>
-          <select
-            id="auto-mode"
-            className="input"
-            value={mode}
-            onChange={(e) => {
-              const next = e.target.value as ServerAutomation['restartMode']
-              if (next === 'interval') patch({ restartMode: 'interval', restartEveryHours: auto.restartEveryHours ?? 6 })
-              else if (next === 'daily') patch({ restartMode: 'daily', restartDailyAt: auto.restartDailyAt ?? '04:00' })
-              else patch({ restartMode: 'off' })
-            }}
-          >
-            <option value="off">never</option>
-            <option value="interval">on a repeating timer</option>
-            <option value="daily">at the same time daily</option>
-          </select>
+        {/* three choices, all on screen — a select would hide two of them behind
+            a tap, and this is the row that decides whether anything below shows */}
+        <div className="field" role="group" aria-label="Restart this server">
+          <span className="auto-label">Restart this server</span>
+          <div className="auto-seg">
+            {RESTART_MODES.map((m) => (
+              <Button
+                key={m.value}
+                variant={mode === m.value ? 'primary' : undefined}
+                aria-pressed={mode === m.value}
+                onClick={() => {
+                  if (m.value === 'interval')
+                    patch({ restartMode: 'interval', restartEveryHours: auto.restartEveryHours ?? 6 })
+                  else if (m.value === 'daily')
+                    patch({ restartMode: 'daily', restartDailyAt: auto.restartDailyAt ?? '04:00' })
+                  else patch({ restartMode: 'off' })
+                }}
+              >
+                {m.label}
+              </Button>
+            ))}
+          </div>
         </div>
 
-        {mode === 'interval' && (
-          <div className="field">
-            <label htmlFor="auto-every">Every … hours</label>
-            <input
-              id="auto-every"
-              className="input"
-              type="number"
-              min={1}
-              max={168}
-              value={auto.restartEveryHours ?? 6}
-              onChange={(e) => patch({ restartEveryHours: Math.min(168, Math.max(1, Number(e.target.value) || 6)) })}
-            />
-          </div>
-        )}
+        <Collapse open={mode === 'interval'}>
+          <Stepper
+            id="auto-every"
+            label="Every … hours"
+            value={auto.restartEveryHours ?? 6}
+            min={1}
+            max={168}
+            fallback={6}
+            unit="h"
+            onChange={(v) => patch({ restartEveryHours: v })}
+          />
+        </Collapse>
 
-        {mode === 'daily' && (
+        <Collapse open={mode === 'daily'}>
           <div className="field">
             <label htmlFor="auto-at">At</label>
             <input
@@ -347,22 +434,20 @@ export function Automation({ row, userId, ask }: TabProps): React.JSX.Element {
               onChange={(e) => patch({ restartDailyAt: e.target.value || '04:00' })}
             />
           </div>
-        )}
+        </Collapse>
 
-        {mode !== 'off' && (
-          <>
-            <div className="field">
-              <label htmlFor="auto-warn">Warn players … minutes first</label>
-              <input
-                id="auto-warn"
-                className="input"
-                type="number"
-                min={1}
-                max={60}
-                value={warnMin}
-                onChange={(e) => patch({ restartWarningMin: Math.min(60, Math.max(1, Number(e.target.value) || 5)) })}
-              />
-            </div>
+        <Collapse open={mode !== 'off'}>
+          <div className="stack">
+            <Stepper
+              id="auto-warn"
+              label="Warn players … minutes first"
+              value={warnMin}
+              min={1}
+              max={60}
+              fallback={5}
+              unit="min"
+              onChange={(v) => patch({ restartWarningMin: v })}
+            />
             {when && (
               <Note>
                 <b>Next restart {when.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</b>
@@ -370,8 +455,8 @@ export function Automation({ row, userId, ask }: TabProps): React.JSX.Element {
                 {running ? '' : ' · timers only run while the server is running, so this starts counting once it is up'}
               </Note>
             )}
-          </>
-        )}
+          </div>
+        </Collapse>
       </Group>
 
       <Group title="Safety nets">
@@ -380,6 +465,7 @@ export function Automation({ row, userId, ask }: TabProps): React.JSX.Element {
           label="Restart if memory goes above"
           value={auto.restartAboveMemoryMB ?? 0}
           options={MEMORY_LIMITS}
+          hint="Players get the usual restart warning first, then the server comes back fresh — the net that catches slow memory leaks."
           onChange={(v) => patch({ restartAboveMemoryMB: v })}
         />
         {memoryPinned > 0 && (
@@ -395,39 +481,83 @@ export function Automation({ row, userId, ask }: TabProps): React.JSX.Element {
             launcher build and needs updating.
           </Note>
         )}
+        <Picker
+          id="auto-sleep"
+          label="Sleep when nobody is on"
+          value={auto.sleepWhenEmptyMin ?? 0}
+          options={SLEEP_MINUTES}
+          hint="Stops the server once it has sat empty that long and frees its RAM. It keeps its address and starts itself again the moment someone connects."
+          onChange={(v) => patch({ sleepWhenEmptyMin: v })}
+        />
         <Check
           id="auto-crash"
           checked={Boolean(auto.restartOnCrash)}
+          hint="A crash within 90 seconds of starting is treated as a failed start, not a crash, so a broken server cannot restart-loop."
           onChange={(v) => patch({ restartOnCrash: v })}
         >
           Restart automatically after a crash
         </Check>
-        <Note>
-          A crash within 90 seconds of starting is treated as a failed start, not a crash, so a broken server cannot
-          restart-loop.
-        </Note>
-        <Check id="auto-boot" checked={Boolean(auto.autoStart)} onChange={(v) => patch({ autoStart: v })}>
+        <Check
+          id="auto-boot"
+          checked={Boolean(auto.autoStart)}
+          hint={
+            row.owner_id !== userId
+              ? 'That is the launcher on the machine hosting this server, not anything you have to run.'
+              : undefined
+          }
+          onChange={(v) => patch({ autoStart: v })}
+        >
           Start this server when the launcher opens
         </Check>
-        {row.owner_id !== userId && (
-          <Note>That is the launcher on the machine hosting this server, not anything you have to run.</Note>
-        )}
       </Group>
-
-      {saveFailed && (
-        <p className="formerr" role="alert">
-          {saveFailed}
-        </p>
-      )}
-      {savedNote && <Note>{savedNote}</Note>}
-      <Button variant="primary" block disabled={!dirty || saving} onClick={() => void save()}>
-        {saving ? 'Saving…' : dirty ? 'Save automation' : 'Saved'}
-      </Button>
 
       <Scrollback ask={ask} serverId={row.server_id} />
 
       {info.game === 'minecraft' && <Rebuild ask={ask} info={info} name={row.name} />}
-    </div>
+
+      {/* The dock rides the bottom of the screen while there are edits to keep or
+          a failure to read — nothing here survives leaving the tab, and it says
+          so instead of letting anyone find out. */}
+      <AnimatePresence>
+        {(dirty || saveFailed) && (
+          <motion.div
+            className="auto-dock"
+            initial={{ opacity: 0, y: 18 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 18, transition: { duration: 0.2, ease: EASE_OUT } }}
+            transition={{ duration: 0.32, ease: EASE_SPRING }}
+          >
+            {saveFailed && (
+              <p className="formerr" role="alert">
+                {saveFailed}
+              </p>
+            )}
+            {dirty && (
+              <>
+                <p className="auto-dockmsg">Unsaved automation changes — leaving this tab loses them.</p>
+                <div className="row">
+                  <Button
+                    variant="ghost"
+                    disabled={saving}
+                    onClick={() => {
+                      setAuto(JSON.parse(saved) as ServerAutomation)
+                      setSaveFailed('')
+                    }}
+                  >
+                    Discard
+                  </Button>
+                  <span className="spacer" />
+                  <Button variant="primary" disabled={saving} onClick={() => void save()}>
+                    {saving && <Spinner />}
+                    {saving ? 'Saving…' : 'Save automation'}
+                  </Button>
+                </div>
+              </>
+            )}
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </motion.div>
   )
 }
 
@@ -446,10 +576,14 @@ function Scrollback({ ask, serverId }: { ask: TabProps['ask']; serverId: string 
   const [atStart, setAtStart] = useState(false)
   const [busy, setBusy] = useState(false)
   const [failed, setFailed] = useState('')
+  /** true for a beat after the first page lands, so the visible tail cascades in
+   *  once — and never again on the pages prepended above it */
+  const [fresh, setFresh] = useState(false)
 
   const box = useRef<HTMLDivElement>(null)
   /** distance from the bottom to hold still across a prepend */
   const anchor = useRef<number | null>(null)
+  const freshTimer = useRef(0)
 
   useEffect(() => {
     // a different server's scrollback is a different log entirely
@@ -457,7 +591,10 @@ function Scrollback({ ask, serverId }: { ask: TabProps['ask']; serverId: string 
     setStart(null)
     setAtStart(false)
     setFailed('')
+    setFresh(false)
   }, [serverId])
+
+  useEffect(() => () => window.clearTimeout(freshTimer.current), [])
 
   // Console pins itself to the newest line, which is right for a live tail and
   // exactly wrong the moment someone asks for the lines above it: the page they
@@ -471,6 +608,7 @@ function Scrollback({ ask, serverId }: { ask: TabProps['ask']; serverId: string 
 
   async function loadEarlier(): Promise<void> {
     if (busy || atStart) return
+    const first = lines === null
     const log = box.current?.querySelector<HTMLElement>('.console-log')
     if (log) anchor.current = log.scrollHeight - log.scrollTop
     setBusy(true)
@@ -481,6 +619,11 @@ function Scrollback({ ask, serverId }: { ask: TabProps['ask']; serverId: string 
       setLines((have) => (have === null ? older : older.concat(have)))
       setStart(page.start ?? 0)
       setAtStart(Boolean(page.atStart))
+      if (first && older.length > 0) {
+        setFresh(true)
+        window.clearTimeout(freshTimer.current)
+        freshTimer.current = window.setTimeout(() => setFresh(false), 900)
+      }
     } catch (e) {
       anchor.current = null
       setFailed(e instanceof Error ? e.message : 'Could not read the log.')
@@ -490,7 +633,7 @@ function Scrollback({ ask, serverId }: { ask: TabProps['ask']; serverId: string 
   }
 
   return (
-    <section className="surface pad stack auto-group">
+    <motion.section variants={staggerChild} className="surface pad stack auto-group">
       <h2>Earlier console output</h2>
       <p className="dim">
         The Console tab shows the live tail. This reaches back through the thousand lines the host keeps, which is
@@ -502,13 +645,27 @@ function Scrollback({ ask, serverId }: { ask: TabProps['ask']; serverId: string 
         </p>
       )}
       {lines === null ? (
-        <Button block disabled={busy} onClick={() => void loadEarlier()}>
-          {busy ? 'Reading the log…' : 'Load earlier output'}
-        </Button>
+        busy ? (
+          // a placeholder the size the console will be, so the reveal replaces
+          // like for like instead of shoving the page around
+          <Skeleton height={260} />
+        ) : (
+          <Button block onClick={() => void loadEarlier()}>
+            Load earlier output
+          </Button>
+        )
       ) : lines.length === 0 ? (
-        <p className="dim">This server has written nothing to its log yet.</p>
+        <EmptyState icon={<ScrollText size={18} />} title="Nothing logged yet">
+          Events appear here as the server runs — start it and check back.
+        </EmptyState>
       ) : (
-        <div ref={box}>
+        <motion.div
+          ref={box}
+          className={fresh ? 'auto-log auto-log-fresh' : 'auto-log'}
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.42, ease: EASE_SPRING }}
+        >
           <Console text={lines.join('\n')}>
             <span className="dim auto-logcount">
               {lines.length} lines{atStart ? ' · start of the buffer' : ''}
@@ -517,9 +674,9 @@ function Scrollback({ ask, serverId }: { ask: TabProps['ask']; serverId: string 
               {busy ? 'Loading…' : atStart ? 'Nothing earlier' : 'Load earlier'}
             </Button>
           </Console>
-        </div>
+        </motion.div>
       )}
-    </section>
+    </motion.section>
   )
 }
 
@@ -567,6 +724,7 @@ function Rebuild({
     try {
       await ask('rebuild', { loader, version })
       setDone(`Rebuilt as ${loader} ${version} — it is starting fresh.`)
+      toast.success(`Rebuilt as ${loader} ${version}`)
       setArming(false)
       setTyped('')
     } catch (e) {
@@ -586,7 +744,7 @@ function Rebuild({
   }
 
   return (
-    <section className="surface pad stack auto-danger">
+    <motion.section variants={staggerChild} className="surface pad stack auto-danger">
       <h2>Change loader and version</h2>
       <p className="auto-danger-lead">
         Rebuilding deletes the world, the mods, and every other file on this server, then installs a fresh one. There
@@ -639,7 +797,7 @@ function Rebuild({
       )}
       {done && <Note>{done}</Note>}
 
-      {!arming ? (
+      {!arming && (
         // Rebuilding to the same loader and version is not a no-op — it is how a
         // server that has been broken beyond repair gets put back — so it stays
         // available and the label says what it really is.
@@ -656,7 +814,8 @@ function Rebuild({
             ? `Reinstall ${loader} ${version} from scratch…`
             : `Rebuild as ${loader} ${version}…`}
         </Button>
-      ) : (
+      )}
+      <Collapse open={arming}>
         <div className="stack auto-confirm">
           <p>
             <b>“{name}”</b> becomes a fresh {loader} {version} server. Its world, its {info.kind} setup, its mods, its
@@ -690,7 +849,7 @@ function Rebuild({
             Keep the server as it is
           </Button>
         </div>
-      )}
-    </section>
+      </Collapse>
+    </motion.section>
   )
 }

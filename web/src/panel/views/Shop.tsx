@@ -114,6 +114,8 @@ interface PlanRow {
   price_monthly: number
   currency: string
   stripe_link: string | null
+  /** set → card checkout via the stripe-checkout function; null → manual flow */
+  stripe_price_id: string | null
   active: boolean
   sort: number
 }
@@ -159,6 +161,7 @@ function toPlan(raw: Record<string, unknown>): PlanRow {
     price_monthly: Number(raw.price_monthly ?? 0),
     currency: String(raw.currency ?? 'USD'),
     stripe_link: (raw.stripe_link as string | null) ?? null,
+    stripe_price_id: (raw.stripe_price_id as string | null) ?? null,
     // older clouds predate the column; an absent flag has always meant listed
     active: raw.active !== false,
     sort: Number(raw.sort ?? 0)
@@ -368,10 +371,28 @@ function useShop(userId: string): ShopState & { reload: () => Promise<void> } {
   return { ...state, reload: load }
 }
 
+/**
+ * Where Stripe Checkout drops the customer afterwards. Read once, then scrubbed
+ * from the URL so a reload doesn't replay the banner (or re-announce a payment
+ * that is by now last week's).
+ */
+function takeStripeReturn(): { kind: 'success' | 'cancelled'; reference: string } | null {
+  const params = new URLSearchParams(window.location.search)
+  const kind = params.get('stripe')
+  if (kind !== 'success' && kind !== 'cancelled') return null
+  const reference = params.get('order') ?? ''
+  params.delete('stripe')
+  params.delete('order')
+  const rest = params.toString()
+  history.replaceState(null, '', `${window.location.pathname}${rest ? `?${rest}` : ''}`)
+  return { kind, reference }
+}
+
 export function Shop({ userId }: { userId: string }): React.JSX.Element {
   const { plans, settings, owing, loading, error, mocked, reload } = useShop(userId)
   const [chosen, setChosen] = useState<PlanRow | null>(null)
   const [placed, setPlaced] = useState<Placed | null>(null)
+  const [returned, setReturned] = useState(() => takeStripeReturn())
 
   return (
     <>
@@ -379,6 +400,39 @@ export function Shop({ userId }: { userId: string }): React.JSX.Element {
         <h1>Rent a server</h1>
         <p className="dim">{headline(plans, settings, loading, error)}</p>
       </div>
+
+      {returned && (
+        <section className="surface pad rise stack" style={{ marginBottom: 14 }}>
+          {returned.kind === 'success' ? (
+            <>
+              <div className="row">
+                <h2>Payment received</h2>
+                <span className="spacer" />
+                <span className="pill running">
+                  <span className="dot" aria-hidden />
+                  Paid
+                </span>
+              </div>
+              <p className="dim">
+                Order <span className="mono">{returned.reference}</span> is paid — it activates by
+                itself within a few seconds, and a hosting machine starts building your server.
+                Watch it appear under <b>Servers</b>; Billing has the receipt.
+              </p>
+            </>
+          ) : (
+            <>
+              <h2>Checkout cancelled</h2>
+              <p className="dim">
+                Nothing was charged. Order <span className="mono">{returned.reference}</span> is
+                saved under Billing — you can pay it from there whenever you like, or cancel it.
+              </p>
+            </>
+          )}
+          <Button variant="ghost" onClick={() => setReturned(null)}>
+            Dismiss
+          </Button>
+        </section>
+      )}
 
       {/* An order that exists outranks everything else on this screen: a load
           that fails a moment after one is placed must not take the reference
@@ -962,6 +1016,7 @@ function Receipt({
   onDone: () => void
 }): React.JSX.Element {
   const [busy, setBusy] = useState(false)
+  const [carding, setCarding] = useState(false)
   const [flagged, setFlagged] = useState(false)
   const [failed, setFailed] = useState('')
 
@@ -970,6 +1025,39 @@ function Receipt({
   const paypal = settings.paypal
     ? `https://paypal.me/${encodeURIComponent(settings.paypal)}/${plan.price_monthly.toFixed(2)}`
     : ''
+  const card = Boolean(plan.stripe_price_id)
+
+  /** Real checkout: the stripe-checkout function opens a session for this order
+   *  and the webhook activates it — no review step, no reference-typing. */
+  async function payByCard(): Promise<void> {
+    setCarding(true)
+    setFailed('')
+    try {
+      if (mocked) throw new Error('Preview mode — there is no cloud behind this.')
+      const { data, error } = await supabase.functions.invoke<{ url?: string; error?: string }>(
+        'stripe-checkout',
+        { body: { order_id: placed.id, return_url: `${location.origin}${location.pathname}` } }
+      )
+      if (error) {
+        // the function writes its reason as JSON; surface that, not the wrapper
+        let reason = error.message
+        try {
+          const ctx = (error as { context?: Response }).context
+          if (ctx) reason = ((await ctx.json()) as { error?: string }).error ?? reason
+        } catch {
+          /* keep the wrapper message */
+        }
+        throw new Error(reason)
+      }
+      if (!data?.url) throw new Error(data?.error ?? 'Stripe did not return a checkout link.')
+      window.location.assign(data.url)
+      // no setCarding(false): the page is navigating away, and re-enabling the
+      // button for a beat first would invite a second session
+    } catch (e) {
+      setFailed(msg(e, 'Could not open the card checkout.'))
+      setCarding(false)
+    }
+  }
 
   async function flag(): Promise<void> {
     setBusy(true)
@@ -1001,13 +1089,21 @@ function Receipt({
         {placed.serverName} · {plan.name} · {price}/mo
       </p>
 
-      <p className="formnote">
-        Nothing has been charged. Your reference is <b className="mono">{placed.reference}</b> — send{' '}
-        <b>{price}</b> and put that reference in the payment note, because it is what ties the
-        payment to this order. The host checks it and your server is built after that.
-      </p>
+      {card ? (
+        <p className="formnote">
+          Nothing has been charged. Pay by card and this order handles itself — it activates the
+          moment Stripe confirms, and your server starts building. Reference{' '}
+          <b className="mono">{placed.reference}</b> is on the receipt if you ever need to quote it.
+        </p>
+      ) : (
+        <p className="formnote">
+          Nothing has been charged. Your reference is <b className="mono">{placed.reference}</b> —
+          send <b>{price}</b> and put that reference in the payment note, because it is what ties
+          the payment to this order. The host checks it and your server is built after that.
+        </p>
+      )}
 
-      {!paypal && !plan.stripe_link && (
+      {!paypal && !plan.stripe_link && !card && (
         <p className="formnote">
           The host has not set up a payment link yet. Contact them and quote reference{' '}
           <span className="mono">{placed.reference}</span> — the order is saved either way.
@@ -1021,12 +1117,22 @@ function Receipt({
       )}
 
       <div className="stack">
+        {card && (
+          <Button variant="primary" block disabled={carding} onClick={() => void payByCard()}>
+            {carding ? 'Opening secure checkout…' : `Pay ${price}/mo by card — instant setup`}
+          </Button>
+        )}
         {paypal && (
-          <a className="btn primary block" href={paypal} target="_blank" rel="noreferrer">
+          <a
+            className={`btn block${card ? '' : ' primary'}`}
+            href={paypal}
+            target="_blank"
+            rel="noreferrer"
+          >
             Pay {price} with PayPal
           </a>
         )}
-        {plan.stripe_link && (
+        {!card && plan.stripe_link && (
           <a className="btn block" href={plan.stripe_link} target="_blank" rel="noreferrer">
             Pay by card
           </a>
@@ -1042,6 +1148,12 @@ function Receipt({
               {busy ? 'Sending…' : 'I’ve paid — submit for review'}
             </Button>
           )
+        )}
+        {card && (paypal || plan.stripe_link) && (
+          <p className="dim shop-hint">
+            Card is automatic; the other options need the &ldquo;I&rsquo;ve paid&rdquo; step and a
+            human check.
+          </p>
         )}
       </div>
 

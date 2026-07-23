@@ -4,6 +4,153 @@
   min-height: 100%;
 }
 
+/* ---------- app shell: rail (desktop) + bottom nav (phones) ---------- */
+
+.with-rail {
+  flex-direction: row;
+}
+
+.main-col {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+}
+
+/* Hidden until there is room for it; the phone layout leads. */
+.rail {
+  display: none;
+}
+
+@media (min-width: 900px) {
+  .rail {
+    position: sticky;
+    top: 0;
+    align-self: flex-start;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    width: 236px;
+    flex: none;
+    height: 100dvh;
+    padding: 16px 12px 14px;
+    border-right: 1px solid var(--border);
+    background: var(--sidebar-bg);
+    backdrop-filter: blur(20px);
+  }
+
+  /* the rail carries brand, nav and account — a second bar would just repeat it */
+  .with-rail .topbar {
+    display: none;
+  }
+}
+
+.rail .brand {
+  padding: 2px 8px;
+}
+
+.rail-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  flex: 1;
+}
+
+.navbtn {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  min-height: 42px;
+  padding: 0 11px;
+  border-radius: var(--radius-sm);
+  color: var(--text-dim);
+  font-size: var(--fs-body);
+  font-weight: 600;
+  transition:
+    color 0.16s var(--ease-out),
+    background-color 0.16s var(--ease-out);
+}
+
+.navbtn:hover {
+  color: var(--text);
+  background: var(--bg-hover);
+}
+
+.navbtn.on {
+  color: var(--text);
+  background: var(--accent-soft);
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+
+.rail-foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 8px;
+}
+
+.rail-foot .who {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.iconbtn {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  flex: none;
+  border-radius: var(--radius-xs);
+  color: var(--text-dim);
+  transition:
+    color 0.16s var(--ease-out),
+    background-color 0.16s var(--ease-out);
+}
+
+.iconbtn:hover {
+  color: var(--text);
+  background: var(--bg-hover);
+}
+
+/* Sections under the thumb. Sticky (in flow), so it never covers content; the
+ * glass matches the top bar it replaces. */
+.bottomnav {
+  position: sticky;
+  bottom: 0;
+  z-index: 10;
+  display: flex;
+  justify-content: space-around;
+  gap: 2px;
+  padding: 6px max(8px, env(safe-area-inset-left)) calc(6px + env(safe-area-inset-bottom))
+    max(8px, env(safe-area-inset-right));
+  border-top: 1px solid var(--border);
+  background: var(--glass-bg);
+  backdrop-filter: blur(20px) saturate(1.4);
+}
+
+.bottomnav .navbtn {
+  flex-direction: column;
+  gap: 3px;
+  flex: 1;
+  min-height: 52px;
+  padding: 4px 0;
+  font-size: 10.5px;
+}
+
+.bottomnav .navbtn.on {
+  background: none;
+  box-shadow: none;
+  color: var(--accent);
+}
+
+@media (min-width: 900px) {
+  .bottomnav {
+    display: none;
+  }
+}
+
 /* Sticky glass bar. --glass-bg is the surface (translucent on its own) rather
  * than --glass, which is an overlay and would kill the backdrop blur. */
 .topbar {
@@ -73,18 +220,7 @@ h2 {
   letter-spacing: -0.01em;
 }
 
-.dim {
-  color: var(--text-dim);
-}
-
-.mono {
-  font-family: var(--mono);
-  font-size: var(--fs-small);
-}
-
-.pad {
-  padding: 16px;
-}
+/* .dim / .mono / .pad moved to styles/ui.css — the landing needs them too. */
 
 /* Dense grid: as many servers on screen as fit without the cards turning into
  * a list of names. One column on a phone, and it fills out from there. */
@@ -165,11 +301,45 @@ h2 {
   font-size: 17px;
 }
 
-/* the game's full name, under the server's own name in the detail header */
-.gname {
-  font-size: var(--fs-small);
-  margin-top: 1px;
+/* unknown game: no hue to lean on, so it reads as plainly missing rather than
+ * as some grey game that does not exist */
+.gbadge.unknown {
+  background: var(--track-bg);
+  border-color: var(--border);
+  color: var(--text-faint);
 }
+
+/* server name + game, stacked, between the badge and the status pill */
+.card-id {
+  min-width: 0;
+}
+
+.card-id h2 {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* the game in words. Colour AND text, so it survives both a mono display and a
+ * colour-blind reader; the hue is shared with the badge beside it. */
+.gtag {
+  display: inline-block;
+  margin-top: 1px;
+  font-size: var(--fs-small);
+  font-weight: 600;
+  color: hsl(var(--hue, 250) 70% 68%);
+}
+
+:root[data-theme='light'] .gtag {
+  color: hsl(var(--hue, 250) 60% 40%);
+}
+
+.gtag.unknown {
+  color: var(--text-faint);
+  font-style: italic;
+  font-weight: 500;
+}
+
 
 .metrics {
   display: grid;

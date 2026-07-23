@@ -1,6 +1,29 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import {
+  ArrowDown,
+  ArrowLeft,
+  ArrowUp,
+  Check,
+  CloudOff,
+  Download,
+  Ellipsis,
+  Eye,
+  Folder,
+  FolderOpen,
+  FolderPlus,
+  PenLine,
+  RefreshCw,
+  Save,
+  SearchX,
+  SquarePen,
+  Trash2,
+  Upload,
+  X
+} from 'lucide-react'
+import { toast } from 'sonner'
 import type { ServerFileEntry } from '@shared/types'
-import { Button, Skeleton } from '@web/ui'
+import { Button, EmptyState, Kbd, Skeleton, Spinner } from '@web/ui'
+import { AnimatePresence, Collapse, EASE_OUT, EASE_SPRING, motion } from '@web/ui/motion'
 import type { RequestAction } from '../relay'
 import type { TabProps } from './types'
 import './Files.css'
@@ -46,6 +69,27 @@ function fmtWhen(ms: number): string {
 }
 
 const msgOf = (e: unknown): string => (e instanceof Error ? e.message : 'That did not work.')
+
+/** The save shortcut reads ⌘ on Apple hardware and Ctrl everywhere else. */
+const IS_MAC = /Mac|iP(hone|ad|od)/.test(navigator.platform)
+
+/* Skeleton rows wear the widths of plausible names rather than one repeated
+ * bar, so the loading screen has the same texture as the screen it becomes. */
+const GHOST_WIDTHS = [64, 42, 71, 55, 38, 60]
+
+/** Rows past the first screenful skip the entrance — a 400-row mods folder must
+ *  not pay for choreography nobody can see below the fold. */
+const ENTER_CAP = 30
+
+/** "3 files and 2 folders", so the delete confirm names what actually goes. */
+function describeNames(names: string[], entries: ServerFileEntry[] | null): string {
+  const dirs = names.filter((n) => entries?.find((e) => e.name === n)?.isDir).length
+  const files = names.length - dirs
+  const parts: string[] = []
+  if (files) parts.push(`${files} file${files === 1 ? '' : 's'}`)
+  if (dirs) parts.push(`${dirs} folder${dirs === 1 ? '' : 's'}`)
+  return parts.join(' and ') || `${names.length} items`
+}
 
 /** Safari only grew randomUUID in 15.4, and this panel lives on phones. */
 const newUploadId = (): string =>
@@ -108,21 +152,30 @@ export function Files({ row, userId, ask }: TabProps): React.JSX.Element {
   const [pending, setPending] = useState<Pending | null>(null)
   const [draft, setDraft] = useState('')
   const [busy, setBusy] = useState<null | 'open' | 'act'>(null)
+  /** The one entry whose bytes are on their way, so its row can say so. */
+  const [opening, setOpening] = useState<string | null>(null)
   const [transfers, setTransfers] = useState<Transfer[]>([])
   const [dropping, setDropping] = useState(false)
 
   const picker = useRef<HTMLInputElement>(null)
+  const crumbBar = useRef<HTMLDivElement>(null)
   const dragDepth = useRef(0)
   const nextId = useRef(0)
   const alive = useRef(true)
+  // Which names are leaving because a delete said so. A row exiting for any
+  // other reason — a filter keystroke can drop three hundred at once — must
+  // vanish for free, so the exit variant reads this ref at the moment it runs.
+  const deleting = useRef<ReadonlySet<string>>(new Set())
   // The shell rebuilds `ask` on every render, so no effect may key off it — the
-  // listing would reload forever. The folder is mirrored for the same reason:
-  // work that outlives a render needs to know where the panel is *now*.
+  // listing would reload forever. The folder and the save routine are mirrored
+  // for the same reason: work that outlives a render needs the current one.
   const askRef = useRef(ask)
   const pathRef = useRef(path)
+  const saveRef = useRef<() => Promise<void>>(async () => {})
   useEffect(() => {
     askRef.current = ask
     pathRef.current = path
+    saveRef.current = save
   })
   useEffect(
     () => () => {
@@ -140,10 +193,13 @@ export function Files({ row, userId, ask }: TabProps): React.JSX.Element {
   // A slow folder that has been navigated away from must not overwrite the one
   // now on screen when it finally answers.
   const loadSeq = useRef(0)
+  // `keep` reloads behind the listing that is already up: after an upload or a
+  // delete the panel knows roughly what changed, and blanking four hundred rows
+  // back to skeletons just to re-learn it reads as a crash.
   const load = useCallback(
-    async (rel: string): Promise<void> => {
+    async (rel: string, keep = false): Promise<void> => {
       const seq = ++loadSeq.current
-      setEntries(null)
+      if (!keep) setEntries(null)
       setError('')
       try {
         const list = await call<ServerFileEntry[]>('files', { path: rel })
@@ -185,6 +241,28 @@ export function Files({ row, userId, ask }: TabProps): React.JSX.Element {
     const url = view.url
     return () => URL.revokeObjectURL(url)
   }, [view])
+
+  // The deepest crumb is where the panel is. When the trail outgrows a phone it
+  // is the start that scrolls away, never the here.
+  useEffect(() => {
+    const el = crumbBar.current
+    if (el) el.scrollLeft = el.scrollWidth
+  }, [path])
+
+  // ⌘S/Ctrl-S saves while the editor is open, and only then — from the listing
+  // the same chord must keep meaning nothing.
+  useEffect(() => {
+    if (view.kind !== 'edit') return
+    const onKey = (e: KeyboardEvent): void => {
+      if (!(e.metaKey || e.ctrlKey) || e.key.toLowerCase() !== 's') return
+      // swallowed even with nothing to save: the browser's own save dialog is
+      // never the right answer to this file
+      e.preventDefault()
+      void saveRef.current()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [view.kind])
 
   const relOf = useCallback((name: string) => (path ? `${path}/${name}` : name), [path])
 
@@ -288,12 +366,16 @@ export function Files({ row, userId, ask }: TabProps): React.JSX.Element {
         settle(id, msgOf(e))
       }
     }
-    setNotice(
-      ok === files.length
-        ? { text: `Uploaded ${ok} file${ok === 1 ? '' : 's'}.`, bad: false }
-        : { text: `Uploaded ${ok} of ${files.length} — the rest are listed below.`, bad: true }
-    )
-    if (pathRef.current === dest) await load(dest)
+    // a toast, because a 40 MB world takes long enough that whoever started it
+    // may be three folders away by the time it lands
+    if (ok === files.length) {
+      toast.success(ok === 1 ? `Uploaded ${files[0].name}.` : `Uploaded ${ok} files.`)
+    } else {
+      toast.error(`Uploaded ${ok} of ${files.length}.`, {
+        description: 'The failed ones stay listed in the panel until dismissed.'
+      })
+    }
+    if (pathRef.current === dest) await load(dest, true)
   }
 
   async function fetchBlob(rel: string, id?: string): Promise<Blob> {
@@ -361,7 +443,7 @@ export function Files({ row, userId, ask }: TabProps): React.JSX.Element {
       await call('mkdir', { path: relOf(clean) })
       setPending(null)
       setNotice({ text: `Created ${clean}.`, bad: false })
-      await load(path)
+      await load(path, true)
     } catch (e) {
       setNotice({ text: msgOf(e), bad: true })
     } finally {
@@ -390,7 +472,7 @@ export function Files({ row, userId, ask }: TabProps): React.JSX.Element {
       setPending(null)
       setMenuFor(null)
       setNotice({ text: `Renamed to ${clean}.`, bad: false })
-      await load(path)
+      await load(path, true)
     } catch (e) {
       setNotice({ text: msgOf(e), bad: true })
     } finally {
@@ -401,24 +483,32 @@ export function Files({ row, userId, ask }: TabProps): React.JSX.Element {
   async function remove(names: string[]): Promise<void> {
     if (names.length === 0) return
     const openRel = view.kind === 'list' ? null : view.rel
+    deleting.current = new Set(names)
     setBusy('act')
     try {
       if (names.length === 1) {
         // one file wants a plain yes or no; a batch wants a tally, so that one
         // locked jar cannot hide the twenty that did go
         await call('deleteFile', { path: relOf(names[0]) })
-        setNotice({ text: `Deleted ${names[0]}.`, bad: false })
+        toast.success(`Deleted ${names[0]}.`)
+        setEntries((prev) => (prev ? prev.filter((e) => e.name !== names[0]) : prev))
       } else {
         const res = await call<{ deleted?: number; failed?: { path: string; error: string }[] }>(
           'deleteFiles',
           { paths: names.map(relOf) }
         )
         const failed = res?.failed ?? []
-        setNotice(
-          failed.length
-            ? { text: `Deleted ${res?.deleted ?? 0}. Still here: ${failed.map((f) => f.path).join(', ')}.`, bad: true }
-            : { text: `Deleted ${res?.deleted ?? names.length} items.`, bad: false }
-        )
+        const kept = new Set(failed.map((f) => baseOf(f.path)))
+        setEntries((prev) => (prev ? prev.filter((e) => kept.has(e.name) || !names.includes(e.name)) : prev))
+        if (failed.length) {
+          toast.error(`Deleted ${res?.deleted ?? 0} of ${names.length}.`, {
+            description: `Still here: ${[...kept].join(', ')}`
+          })
+        } else {
+          // toasted, not noticed: emptying a world folder takes long enough that
+          // whoever asked for it has likely wandered to another tab
+          toast.success(`Deleted ${res?.deleted ?? names.length} items.`)
+        }
       }
       if (openRel && names.some((n) => relOf(n) === openRel)) setView({ kind: 'list' })
       setSelected((prev) => {
@@ -427,15 +517,16 @@ export function Files({ row, userId, ask }: TabProps): React.JSX.Element {
         return next
       })
     } catch (e) {
-      setNotice({ text: msgOf(e), bad: true })
+      toast.error(msgOf(e))
     } finally {
       setPending(null)
       setMenuFor(null)
       setBusy(null)
       // Emptying a world folder can outlast the relay's patience while the host
       // is still working, so the listing — not the request — is what says what
-      // actually went.
-      await load(pathRef.current)
+      // actually went. Reloaded behind the rows so the survivors hold still.
+      await load(pathRef.current, true)
+      deleting.current = new Set()
     }
   }
 
@@ -444,6 +535,7 @@ export function Files({ row, userId, ask }: TabProps): React.JSX.Element {
   async function openFile(entry: ServerFileEntry): Promise<void> {
     setMenuFor(null)
     setBusy('open')
+    setOpening(entry.name)
     try {
       const res = await call<{ content?: string }>('readFile', { path: relOf(entry.name) })
       const text = res?.content ?? ''
@@ -453,6 +545,7 @@ export function Files({ row, userId, ask }: TabProps): React.JSX.Element {
       setNotice({ text: msgOf(e), bad: true })
     } finally {
       setBusy(null)
+      setOpening(null)
     }
   }
 
@@ -463,6 +556,7 @@ export function Files({ row, userId, ask }: TabProps): React.JSX.Element {
     }
     setMenuFor(null)
     setBusy('open')
+    setOpening(entry.name)
     try {
       const blob = await fetchBlob(relOf(entry.name))
       setNotice(null)
@@ -471,10 +565,12 @@ export function Files({ row, userId, ask }: TabProps): React.JSX.Element {
       setNotice({ text: msgOf(e), bad: true })
     } finally {
       setBusy(null)
+      setOpening(null)
     }
   }
 
   function openEntry(entry: ServerFileEntry): void {
+    if (busy === 'open') return // one fetch at a time; the row already says which
     if (selected.size > 0) return toggle(entry.name) // picking, not browsing
     if (entry.isDir) return goTo(relOf(entry.name))
     if (isImage(entry.name)) return void openImage(entry)
@@ -484,7 +580,8 @@ export function Files({ row, userId, ask }: TabProps): React.JSX.Element {
   }
 
   async function save(): Promise<void> {
-    if (view.kind !== 'edit') return
+    // the clean-file guard is for the keyboard path — the button disables itself
+    if (view.kind !== 'edit' || view.text === view.saved) return
     const { rel, text } = view
     setBusy('act')
     try {
@@ -557,9 +654,16 @@ export function Files({ row, userId, ask }: TabProps): React.JSX.Element {
       {pending?.kind === 'delete' && (
         <div className="surface pad stack">
           <h2>
-            Delete {pending.names.length === 1 ? `“${pending.names[0]}”` : `${pending.names.length} items`}?
+            Delete{' '}
+            {pending.names.length === 1 ? `“${pending.names[0]}”` : describeNames(pending.names, entries)}?
           </h2>
-          {pending.names.length > 1 && <p className="dim mono fm-name">{pending.names.join(', ')}</p>}
+          {pending.names.length > 1 && (
+            <p className="dim mono fm-name">
+              {/* named, but not all four hundred — the count above carries the rest */}
+              {pending.names.slice(0, 6).join(', ')}
+              {pending.names.length > 6 ? ` … and ${pending.names.length - 6} more` : ''}
+            </p>
+          )}
           <p className="dim">
             {pending.names.some((n) => entries?.find((e) => e.name === n)?.isDir)
               ? 'Folders go with everything inside them, and this cannot be undone.'
@@ -567,7 +671,15 @@ export function Files({ row, userId, ask }: TabProps): React.JSX.Element {
           </p>
           <div className="row">
             <Button variant="danger" disabled={working} onClick={() => void remove(pending.names)}>
-              {busy === 'act' ? 'Deleting…' : 'Delete'}
+              {busy === 'act' ? (
+                <>
+                  <Spinner /> Deleting…
+                </>
+              ) : (
+                <>
+                  <Trash2 size={16} aria-hidden /> Delete
+                </>
+              )}
             </Button>
             <Button variant="ghost" disabled={working} onClick={() => setPending(null)}>
               Cancel
@@ -638,10 +750,15 @@ export function Files({ row, userId, ask }: TabProps): React.JSX.Element {
         <div className="surface pad stack">
           <div className="row">
             <Button variant="ghost" onClick={leaveView}>
-              ← Files
+              <ArrowLeft size={16} aria-hidden /> Files
             </Button>
             <span className="spacer" />
-            {view.text !== view.saved && <span className="fm-dirty">Unsaved</span>}
+            {view.text !== view.saved && (
+              <span className="fm-dirty">
+                <span className="fm-dirty-dot" aria-hidden />
+                Unsaved
+              </span>
+            )}
           </div>
           <p className="fm-name mono dim">{view.rel}</p>
           <textarea
@@ -653,16 +770,31 @@ export function Files({ row, userId, ask }: TabProps): React.JSX.Element {
           />
           <div className="fm-tools">
             <Button variant="primary" disabled={working || view.text === view.saved} onClick={() => void save()}>
-              {busy === 'act' ? 'Saving…' : 'Save file'}
+              {busy === 'act' ? (
+                <>
+                  <Spinner /> Saving…
+                </>
+              ) : (
+                <>
+                  <Save size={16} aria-hidden /> Save file
+                </>
+              )}
             </Button>
-            <Button onClick={() => void download(view.rel, baseOf(view.rel))}>Download</Button>
+            <Button onClick={() => void download(view.rel, baseOf(view.rel))}>
+              <Download size={16} aria-hidden /> Download
+            </Button>
             <Button
               variant="danger"
               disabled={working}
               onClick={() => askFor({ kind: 'delete', names: [baseOf(view.rel)] })}
             >
-              Delete
+              <Trash2 size={16} aria-hidden /> Delete
             </Button>
+            {/* keyboards are only assumed where a fine pointer suggests one */}
+            <span className="fm-kbdhint dim">
+              <Kbd>{IS_MAC ? '⌘' : 'Ctrl'}</Kbd>
+              <Kbd>S</Kbd> saves
+            </span>
           </div>
         </div>
       )}
@@ -671,7 +803,7 @@ export function Files({ row, userId, ask }: TabProps): React.JSX.Element {
         <div className="surface pad stack">
           <div className="row">
             <Button variant="ghost" onClick={leaveView}>
-              ← Files
+              <ArrowLeft size={16} aria-hidden /> Files
             </Button>
             <span className="spacer" />
           </div>
@@ -680,13 +812,15 @@ export function Files({ row, userId, ask }: TabProps): React.JSX.Element {
             <img src={view.url} alt={view.name} />
           </div>
           <div className="fm-tools">
-            <Button onClick={() => void download(view.rel, view.name)}>Download</Button>
+            <Button onClick={() => void download(view.rel, view.name)}>
+              <Download size={16} aria-hidden /> Download
+            </Button>
             <Button
               variant="danger"
               disabled={working}
               onClick={() => askFor({ kind: 'delete', names: [view.name] })}
             >
-              Delete
+              <Trash2 size={16} aria-hidden /> Delete
             </Button>
           </div>
         </div>
@@ -694,7 +828,7 @@ export function Files({ row, userId, ask }: TabProps): React.JSX.Element {
 
       {view.kind === 'list' && (
         <>
-          <div className="fm-crumbs">
+          <div className="fm-crumbs" ref={crumbBar}>
             <button className={`fm-crumb${crumbs.length ? '' : ' here'}`} onClick={() => goTo('')}>
               {row.name}
             </button>
@@ -716,13 +850,13 @@ export function Files({ row, userId, ask }: TabProps): React.JSX.Element {
           <div className="fm-tools">
             <input ref={picker} type="file" multiple hidden onChange={onPicked} />
             <Button variant="primary" onClick={() => picker.current?.click()}>
-              Upload
+              <Upload size={16} aria-hidden /> Upload
             </Button>
             <Button disabled={working} onClick={() => askFor({ kind: 'mkdir' })}>
-              New folder
+              <FolderPlus size={16} aria-hidden /> New folder
             </Button>
             <Button variant="ghost" disabled={working} onClick={() => void load(path)}>
-              Refresh
+              <RefreshCw size={16} aria-hidden /> Refresh
             </Button>
           </div>
 
@@ -745,32 +879,6 @@ export function Files({ row, userId, ask }: TabProps): React.JSX.Element {
               <option value="largest">Largest</option>
             </select>
           </div>
-
-          {selected.size > 0 && (
-            <div className="fm-sel">
-              <strong>{selected.size} selected</strong>
-              <span className="spacer" />
-              <Button onClick={() => void downloadSelected()}>
-                Download
-              </Button>
-              <Button
-                variant="danger"
-                disabled={working}
-                onClick={() => askFor({ kind: 'delete', names: [...selected] })}
-              >
-                Delete
-              </Button>
-              <Button variant="ghost" onClick={() => setSelected(new Set())}>
-                Clear
-              </Button>
-            </div>
-          )}
-
-          {error && (
-            <p className="formerr" role="alert">
-              {error}
-            </p>
-          )}
 
           <div
             className="fm-zone"
@@ -795,135 +903,211 @@ export function Files({ row, userId, ask }: TabProps): React.JSX.Element {
             }}
             onDrop={onDrop}
           >
-            {dropping && <div className="fm-drop">Drop to upload here</div>}
+            {dropping && (
+              <div className="fm-drop">
+                <span className="row">
+                  <Upload size={17} aria-hidden /> Drop to upload here
+                </span>
+              </div>
+            )}
 
-            {entries === null || busy === 'open' ? (
-              <div className="stack">
-                {[0, 1, 2, 3].map((i) => (
-                  <Skeleton key={i} height={56} />
+            {entries === null ? (
+              <div className="surface fm-list" aria-hidden>
+                {GHOST_WIDTHS.map((w, i) => (
+                  <div key={i} className="fm-item">
+                    <div className="fm-row fm-ghost">
+                      <Skeleton height={34} width={34} />
+                      <div className="fm-ghost-lines">
+                        <Skeleton height={12} width={`${w}%`} />
+                        <Skeleton height={9} width={96} />
+                      </div>
+                    </div>
+                  </div>
                 ))}
               </div>
             ) : shown.length > 0 ? (
               <div className="surface fm-list">
-                {shown.map((entry) => {
-                  const menu = menuFor === entry.name
-                  const picked = selected.has(entry.name)
-                  return (
-                    <div key={entry.name} className="fm-item">
-                      <div className={`fm-row${picked ? ' on' : ''}`}>
-                        <button
-                          className="fm-check"
-                          role="checkbox"
-                          aria-checked={picked}
-                          aria-label={`Select ${entry.name}`}
-                          onClick={() => toggle(entry.name)}
-                        >
-                          <span className="fm-box" aria-hidden>
-                            ✓
-                          </span>
-                        </button>
-                        <button className="fm-main" onClick={() => openEntry(entry)}>
-                          <span className={`fm-icon${entry.isDir ? ' dir' : ''}`} aria-hidden>
-                            {entry.isDir ? (
-                              <svg
-                                viewBox="0 0 24 24"
-                                width="17"
-                                height="17"
-                                fill="none"
-                                stroke="currentColor"
-                                strokeWidth="2"
-                                strokeLinejoin="round"
-                              >
-                                <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
-                              </svg>
-                            ) : (
-                              extOf(entry.name).slice(0, 4) || 'file'
-                            )}
-                          </span>
-                          <span className="fm-text">
-                            <span className="fm-name">{entry.name}</span>
-                            <span className="fm-meta">
-                              {entry.isDir ? 'Folder' : fmtBytes(entry.sizeBytes)} · {fmtWhen(entry.modifiedAt)}
+                <AnimatePresence>
+                  {shown.map((entry, idx) => {
+                    const menu = menuFor === entry.name
+                    const picked = selected.has(entry.name)
+                    return (
+                      <motion.div
+                        key={entry.name}
+                        className="fm-item"
+                        initial={idx < ENTER_CAP ? { opacity: 0, y: 10 } : false}
+                        animate={{
+                          opacity: 1,
+                          y: 0,
+                          transition: { duration: 0.32, ease: EASE_SPRING, delay: Math.min(idx, 8) * 0.03 }
+                        }}
+                        exit="out"
+                        variants={{
+                          // resolved when the exit actually runs, so only a
+                          // deletion collapses — a filter keystroke shedding
+                          // three hundred rows costs three hundred nothings
+                          out: () =>
+                            deleting.current.has(entry.name)
+                              ? {
+                                  opacity: 0,
+                                  height: 0,
+                                  overflow: 'hidden',
+                                  transition: { duration: 0.26, ease: EASE_OUT }
+                                }
+                              : { opacity: 0, transition: { duration: 0 } }
+                        }}
+                      >
+                        <div className={`fm-row${picked ? ' on' : ''}`}>
+                          <button
+                            className="fm-check"
+                            role="checkbox"
+                            aria-checked={picked}
+                            aria-label={`Select ${entry.name}`}
+                            onClick={() => toggle(entry.name)}
+                          >
+                            <span className="fm-box" aria-hidden>
+                              <Check size={13} strokeWidth={3.5} />
                             </span>
-                          </span>
-                        </button>
-                        <button
-                          className="fm-more"
-                          aria-expanded={menu}
-                          aria-label={`Actions for ${entry.name}`}
-                          onClick={() => setMenuFor(menu ? null : entry.name)}
-                        >
-                          ⋯
-                        </button>
-                      </div>
-
-                      {menu && (
-                        <div className="fm-acts">
-                          {entry.isDir && (
-                            <Button onClick={() => goTo(relOf(entry.name))}>
-                              Open
-                            </Button>
+                          </button>
+                          <button className="fm-main" onClick={() => openEntry(entry)}>
+                            <span className={`fm-icon${entry.isDir ? ' dir' : ''}`} aria-hidden>
+                              {entry.isDir ? <Folder size={17} /> : extOf(entry.name).slice(0, 4) || 'file'}
+                            </span>
+                            <span className="fm-text">
+                              <span className="fm-name">{entry.name}</span>
+                              <span className="fm-meta">
+                                {entry.isDir ? 'Folder' : fmtBytes(entry.sizeBytes)} · {fmtWhen(entry.modifiedAt)}
+                              </span>
+                            </span>
+                          </button>
+                          {opening === entry.name ? (
+                            <span className="fm-wait">
+                              <Spinner />
+                            </span>
+                          ) : (
+                            <button
+                              className="fm-more"
+                              aria-expanded={menu}
+                              aria-label={`Actions for ${entry.name}`}
+                              onClick={() => setMenuFor(menu ? null : entry.name)}
+                            >
+                              <Ellipsis size={18} />
+                            </button>
                           )}
-                          {!entry.isDir && entry.isText && (
-                            <Button disabled={working} onClick={() => void openFile(entry)}>
-                              Edit
-                            </Button>
-                          )}
-                          {!entry.isDir && isImage(entry.name) && (
-                            <Button disabled={working} onClick={() => void openImage(entry)}>
-                              Preview
-                            </Button>
-                          )}
-                          {!entry.isDir && (
-                            <Button onClick={() => void download(relOf(entry.name), entry.name)}>
-                              Download
-                            </Button>
-                          )}
-                          <Button
-                            disabled={working}
-                            onClick={() => askFor({ kind: 'rename', from: entry.name }, entry.name)}
-                          >
-                            Rename
-                          </Button>
-                          <Button
-                            variant="danger"
-                            disabled={working}
-                            onClick={() => askFor({ kind: 'delete', names: [entry.name] })}
-                          >
-                            Delete
-                          </Button>
                         </div>
-                      )}
-                    </div>
-                  )
-                })}
+
+                        <Collapse open={menu}>
+                          <div className="fm-acts">
+                            {entry.isDir && (
+                              <Button onClick={() => goTo(relOf(entry.name))}>
+                                <FolderOpen size={16} aria-hidden /> Open
+                              </Button>
+                            )}
+                            {!entry.isDir && entry.isText && (
+                              <Button disabled={working} onClick={() => void openFile(entry)}>
+                                <SquarePen size={16} aria-hidden /> Edit
+                              </Button>
+                            )}
+                            {!entry.isDir && isImage(entry.name) && (
+                              <Button disabled={working} onClick={() => void openImage(entry)}>
+                                <Eye size={16} aria-hidden /> Preview
+                              </Button>
+                            )}
+                            {!entry.isDir && (
+                              <Button onClick={() => void download(relOf(entry.name), entry.name)}>
+                                <Download size={16} aria-hidden /> Download
+                              </Button>
+                            )}
+                            <Button
+                              disabled={working}
+                              onClick={() => askFor({ kind: 'rename', from: entry.name }, entry.name)}
+                            >
+                              <PenLine size={16} aria-hidden /> Rename
+                            </Button>
+                            <Button
+                              variant="danger"
+                              disabled={working}
+                              onClick={() => askFor({ kind: 'delete', names: [entry.name] })}
+                            >
+                              <Trash2 size={16} aria-hidden /> Delete
+                            </Button>
+                          </div>
+                        </Collapse>
+                      </motion.div>
+                    )
+                  })}
+                </AnimatePresence>
               </div>
-            ) : error ? null : (
-              <div className="surface fm-empty stack">
-                <h2>{query.trim() ? 'Nothing matches that' : 'This folder is empty'}</h2>
-                <p className="dim">
-                  {query.trim()
-                    ? `No file here contains “${query.trim()}”.`
-                    : 'Upload a file, or drop one here.'}
-                </p>
-              </div>
+            ) : error ? (
+              // failing to hear is not the same as hearing "nothing here", and
+              // the two screens must never look alike
+              <EmptyState
+                icon={<CloudOff size={18} />}
+                title="Couldn't open this folder"
+                action={<Button onClick={() => void load(path)}>Try again</Button>}
+              >
+                {error}
+              </EmptyState>
+            ) : query.trim() ? (
+              <EmptyState
+                icon={<SearchX size={18} />}
+                title="Nothing matches"
+                action={
+                  <Button variant="ghost" onClick={() => setQuery('')}>
+                    Clear filter
+                  </Button>
+                }
+              >
+                No file here contains “{query.trim()}”.
+              </EmptyState>
+            ) : (
+              <EmptyState
+                icon={<FolderOpen size={18} />}
+                title="This folder is empty"
+                action={
+                  <Button variant="primary" onClick={() => picker.current?.click()}>
+                    <Upload size={16} aria-hidden /> Upload a file
+                  </Button>
+                }
+              >
+                Anything uploaded — or dropped straight onto this screen — lands
+                {path ? ` in “${baseOf(path)}”` : ' here'}.
+              </EmptyState>
             )}
           </div>
         </>
       )}
 
-      {transfers.length > 0 && (
-        <div className="stack" style={{ '--gap': '6px' } as React.CSSProperties}>
+      {/* Transfers and the selection bar dock at the bottom, where the thumb
+        * already is, and stay put while the listing scrolls behind them. The
+        * dock is empty most of the time; :empty in the CSS keeps the husk from
+        * painting or padding. */}
+      <div className="fm-dock">
+        <AnimatePresence>
           {transfers.map((t) => {
             const pct = t.total ? Math.min(100, Math.round((t.sent / t.total) * 100)) : t.state === 'done' ? 100 : 0
             return (
-              <div key={t.id} className={`fm-xfer ${t.state}`}>
+              <motion.div
+                key={t.id}
+                className={`fm-xfer ${t.state}`}
+                initial={{ opacity: 0, y: 14 }}
+                animate={{ opacity: 1, y: 0, transition: { duration: 0.32, ease: EASE_SPRING } }}
+                exit={{ opacity: 0, y: 8, transition: { duration: 0.2, ease: EASE_OUT } }}
+              >
                 <span className="fm-xname">
-                  {t.way === 'up' ? '↑' : '↓'} {t.name}
+                  {t.way === 'up' ? <ArrowUp size={14} aria-label="Upload" /> : <ArrowDown size={14} aria-label="Download" />}{' '}
+                  {t.name}
                   {t.state === 'bad' && t.error ? ` — ${t.error}` : ''}
                 </span>
                 {t.state === 'live' && (
-                  <span className="fm-track" aria-hidden>
+                  <span
+                    className="fm-track"
+                    role="progressbar"
+                    aria-label={`${t.way === 'up' ? 'Uploading' : 'Downloading'} ${t.name}`}
+                    aria-valuenow={pct}
+                    aria-valuemin={0}
+                    aria-valuemax={100}
+                  >
                     <span className="fm-fill" style={{ width: `${pct}%` }} />
                   </span>
                 )}
@@ -936,14 +1120,45 @@ export function Files({ row, userId, ask }: TabProps): React.JSX.Element {
                     aria-label={`Dismiss ${t.name}`}
                     onClick={() => setTransfers((list) => list.filter((x) => x.id !== t.id))}
                   >
-                    ✕
+                    <X size={16} />
                   </Button>
                 )}
-              </div>
+              </motion.div>
             )
           })}
-        </div>
-      )}
+
+          {view.kind === 'list' && selected.size > 0 && (
+            <motion.div
+              key="sel"
+              className="fm-sel"
+              initial={{ opacity: 0, y: 14 }}
+              animate={{ opacity: 1, y: 0, transition: { duration: 0.32, ease: EASE_SPRING } }}
+              exit={{ opacity: 0, y: 14, transition: { duration: 0.2, ease: EASE_OUT } }}
+            >
+              <strong>{selected.size} selected</strong>
+              <span className="spacer" />
+              {selected.size < shown.length && (
+                <Button variant="ghost" onClick={() => setSelected(new Set(shown.map((e) => e.name)))}>
+                  All
+                </Button>
+              )}
+              <Button onClick={() => void downloadSelected()}>
+                <Download size={16} aria-hidden /> Download
+              </Button>
+              <Button
+                variant="danger"
+                disabled={working}
+                onClick={() => askFor({ kind: 'delete', names: [...selected] })}
+              >
+                <Trash2 size={16} aria-hidden /> Delete
+              </Button>
+              <Button variant="ghost" aria-label="Clear selection" onClick={() => setSelected(new Set())}>
+                <X size={16} />
+              </Button>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
     </div>
   )
 }

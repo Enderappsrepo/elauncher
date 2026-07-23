@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Button, Skeleton } from '@web/ui'
+import { toast } from 'sonner'
+import { Button, Skeleton, Spinner } from '@web/ui'
+import { AnimatePresence, Collapse, EASE_OUT, EASE_SPRING, motion, staggerChild, staggerParent } from '@web/ui/motion'
 import type { TabProps } from './types'
 import './Settings.css'
 
@@ -548,6 +550,11 @@ function Control({
   return <input id={id} className="input" value={value} onChange={(e) => onChange(e.target.value)} />
 }
 
+/** The accent dot that marks an edited-but-unsaved field. */
+function Dot(): React.JSX.Element {
+  return <span className="set-dot" aria-hidden />
+}
+
 function SettingRow({
   game,
   propKey,
@@ -555,6 +562,7 @@ function SettingRow({
   value,
   original,
   pristine,
+  dirty,
   onChange
 }: {
   game: Game
@@ -563,6 +571,8 @@ function SettingRow({
   value: string
   original: string
   pristine: boolean
+  /** differs from what the host has — marked so a save is never a mystery diff */
+  dirty: boolean
   onChange: (value: string) => void
 }): React.JSX.Element {
   const hint = HINTS[propKey]
@@ -581,7 +591,10 @@ function SettingRow({
           onChange={(e) => onChange(boolStr(game, e.target.checked))}
         />
         <span className="set-checkbody">
-          <span className="set-checklabel">{label}</span>
+          <span className="set-checklabel">
+            {label}
+            {dirty && <Dot />}
+          </span>
           {hint && <span className="set-hint">{hint}</span>}
         </span>
       </label>
@@ -590,7 +603,17 @@ function SettingRow({
 
   return (
     <div className="field" role={group ? 'group' : undefined} aria-label={group ? label : undefined}>
-      {group ? <span className="set-label">{label}</span> : <label htmlFor={id}>{label}</label>}
+      {group ? (
+        <span className="set-label">
+          {label}
+          {dirty && <Dot />}
+        </span>
+      ) : (
+        <label htmlFor={id}>
+          {label}
+          {dirty && <Dot />}
+        </label>
+      )}
       <Control
         game={game}
         propKey={propKey}
@@ -613,7 +636,6 @@ export function Settings({ row, userId, ask }: TabProps): React.JSX.Element {
   const [edits, setEdits] = useState<Record<string, string>>({})
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState('')
-  const [saved, setSaved] = useState('')
   const [query, setQuery] = useState('')
   const [opened, setOpened] = useState<Record<string, boolean>>({})
   const [attempt, setAttempt] = useState(0)
@@ -631,7 +653,6 @@ export function Settings({ row, userId, ask }: TabProps): React.JSX.Element {
     setProps(null)
     setLoadError('')
     setEdits({})
-    setSaved('')
     setSaveError('')
     void askRef.current<Record<string, string>>('getProps').then(
       (raw) => {
@@ -677,11 +698,16 @@ export function Settings({ row, userId, ask }: TabProps): React.JSX.Element {
   }
 
   if (!props || !model) {
+    // shaped like the screen it becomes: header card, essentials grid, the
+    // search box, then a run of collapsed group heads
     return (
-      <div className="stack">
-        <Skeleton height={64} />
-        <Skeleton height={220} />
-        <Skeleton height={160} />
+      <div className="stack" aria-busy="true">
+        <Skeleton height={96} />
+        <Skeleton height={280} />
+        <Skeleton height={46} />
+        <Skeleton height={52} />
+        <Skeleton height={52} />
+        <Skeleton height={52} />
       </div>
     )
   }
@@ -690,30 +716,37 @@ export function Settings({ row, userId, ask }: TabProps): React.JSX.Element {
   const valueOf = (key: string): string => edits[key] ?? props[key] ?? ''
   const change = (key: string) => (value: string) => {
     setEdits((prev) => ({ ...prev, [key]: value }))
-    setSaved('')
+    setSaveError('')
   }
+
+  // a key typed back to exactly what the host has is not a change — the dot,
+  // the count and the save all agree on that
+  const isDirty = (key: string): boolean => key in edits && edits[key] !== (props[key] ?? '')
+  const dirtyKeys = Object.keys(edits).filter(isDirty)
+  const dirtyCount = dirtyKeys.length
 
   const needle = query.trim().toLowerCase()
   const matches = (key: string): boolean =>
     !needle || `${key} ${labelFor(key)} ${HINTS[key] ?? ''}`.toLowerCase().includes(needle)
 
-  const dirtyCount = Object.keys(edits).length
-
   async function save(): Promise<void> {
+    // only real differences go over the wire, so a field someone touched and
+    // put back is never written
+    const updates: Record<string, string> = {}
+    for (const key of dirtyKeys) updates[key] = edits[key]
     setSaving(true)
     setSaveError('')
-    setSaved('')
     try {
-      const answer = await askRef.current<Record<string, string>>('setProps', { updates: edits })
+      const answer = await askRef.current<Record<string, string>>('setProps', { updates })
       // the host replies with the file as it now reads, so a value it clamped or
       // normalised replaces what was typed instead of sitting there looking taken
       const written = toProps(answer)
-      setProps((prev) => (Object.keys(written).length > 0 ? written : { ...(prev ?? {}), ...edits }))
+      setProps((prev) => (Object.keys(written).length > 0 ? written : { ...(prev ?? {}), ...updates }))
       setEdits({})
-      setSaved(
+      toast.success(
         row.state === 'running'
-          ? 'Saved — the server picks these up on its next restart.'
-          : 'Saved — they apply the next time this server starts.'
+          ? 'Settings saved — the server picks them up on its next restart.'
+          : 'Settings saved — they apply the next time this server starts.'
       )
     } catch (e) {
       setSaveError(say(e))
@@ -724,133 +757,159 @@ export function Settings({ row, userId, ask }: TabProps): React.JSX.Element {
 
   return (
     <div className="stack set">
-      <section className="surface pad stack">
-        <h2>{GAME_LABEL[game]} settings</h2>
-        <p className="dim">
-          The essentials are up top; everything else this server writes is grouped below. Changes are sent
-          together when you save, and the game reads them at its next start.
-        </p>
-      </section>
-
-      {/* A server that has never started has no settings file yet, and the host
-          answers with an empty map rather than an error. */}
-      {essentials.length === 0 && buckets.length === 0 && (
-        <section className="surface pad">
+      <motion.div className="stack" variants={staggerParent} initial="hidden" animate="show">
+        <motion.section variants={staggerChild} className="surface pad stack">
+          <h2>{GAME_LABEL[game]} settings</h2>
           <p className="dim">
-            This server has not written a settings file yet. It appears here once the game has started for the
-            first time and saved its own defaults.
+            The essentials are up top; everything else this server writes is grouped below. Changes are sent
+            together when you save, and the game reads them at its next start.
           </p>
-        </section>
-      )}
+        </motion.section>
 
-      {essentials.length > 0 && (
-        <section className="surface pad">
-          <div className="set-grid">
-            {essentials.map(([key, label]) => (
-              <div key={key} className={WIDE_KEYS.has(key) || isBool(props[key] ?? '') ? 'full' : undefined}>
-                <SettingRow
-                  game={game}
-                  propKey={key}
-                  label={label ?? labelFor(key)}
-                  value={valueOf(key)}
-                  original={props[key] ?? ''}
-                  pristine={!(key in edits)}
-                  onChange={change(key)}
-                />
-              </div>
-            ))}
-          </div>
-        </section>
-      )}
+        {/* A server that has never started has no settings file yet, and the host
+            answers with an empty map rather than an error. */}
+        {essentials.length === 0 && buckets.length === 0 && (
+          <motion.section variants={staggerChild} className="surface pad">
+            <p className="dim">
+              This server has not written a settings file yet. It appears here once the game has started for the
+              first time and saved its own defaults.
+            </p>
+          </motion.section>
+        )}
 
-      {buckets.length > 0 && (
-        <div className="stack">
-          <h2>Advanced settings</h2>
-          {/* named for what it actually searches: the essentials above are always
-              on screen, so filtering them would only make the page jump */}
-          <input
-            className="input"
-            type="search"
-            value={query}
-            aria-label="Search the settings below"
-            placeholder="Search these settings…"
-            onChange={(e) => setQuery(e.target.value)}
-          />
-        </div>
-      )}
-
-      {needle && !buckets.some((bucket) => bucket.keys.some(matches)) && (
-        <p className="dim">Nothing below matches “{query.trim()}”.</p>
-      )}
-
-      {buckets.map((bucket) => {
-        const keys = bucket.keys.filter(matches)
-        if (keys.length === 0) return null
-        // a search is a request to see what matched, so it opens every group that
-        // has a hit rather than leaving the answer one tap away
-        const open = needle ? true : Boolean(opened[bucket.title])
-        return (
-          <section key={bucket.title} className="surface">
-            <button
-              className="set-grouphead"
-              aria-expanded={open}
-              onClick={() => setOpened((prev) => ({ ...prev, [bucket.title]: !open }))}
-            >
-              <span aria-hidden>{bucket.icon}</span>
-              <span className="set-grouptitle">{bucket.title}</span>
-              <span className="dim">{keys.length}</span>
-              <span className={`set-chev ${open ? 'open' : ''}`} aria-hidden>
-                ›
-              </span>
-            </button>
-            {open && (
-              <div className="set-groupbody stack">
-                {bucket.note && <p className="formnote">{bucket.note}</p>}
-                {keys.map((key) => (
+        {essentials.length > 0 && (
+          <motion.section variants={staggerChild} className="surface pad">
+            <div className="set-grid">
+              {essentials.map(([key, label]) => (
+                <div key={key} className={WIDE_KEYS.has(key) || isBool(props[key] ?? '') ? 'full' : undefined}>
                   <SettingRow
-                    key={key}
                     game={game}
                     propKey={key}
-                    label={labelFor(key)}
+                    label={label ?? labelFor(key)}
                     value={valueOf(key)}
                     original={props[key] ?? ''}
                     pristine={!(key in edits)}
+                    dirty={isDirty(key)}
                     onChange={change(key)}
                   />
-                ))}
-              </div>
-            )}
-          </section>
-        )
-      })}
+                </div>
+              ))}
+            </div>
+          </motion.section>
+        )}
+
+        {buckets.length > 0 && (
+          <motion.div variants={staggerChild} className="stack">
+            <h2>Advanced settings</h2>
+            {/* named for what it actually searches: the essentials above are always
+                on screen, so filtering them would only make the page jump */}
+            <input
+              className="input"
+              type="search"
+              value={query}
+              aria-label="Search the settings below"
+              placeholder="Search these settings…"
+              onChange={(e) => setQuery(e.target.value)}
+            />
+          </motion.div>
+        )}
+
+        {needle && !buckets.some((bucket) => bucket.keys.some(matches)) && (
+          <p className="dim">Nothing below matches “{query.trim()}”.</p>
+        )}
+
+        {buckets.map((bucket) => {
+          const keys = bucket.keys.filter(matches)
+          if (keys.length === 0) return null
+          // a search is a request to see what matched, so it opens every group that
+          // has a hit rather than leaving the answer one tap away
+          const open = needle ? true : Boolean(opened[bucket.title])
+          // edits hiding inside a closed group still show on its head
+          const holdsEdits = bucket.keys.some(isDirty)
+          return (
+            <motion.section variants={staggerChild} key={bucket.title} className="surface">
+              <button
+                className="set-grouphead"
+                aria-expanded={open}
+                onClick={() => setOpened((prev) => ({ ...prev, [bucket.title]: !open }))}
+              >
+                <span aria-hidden>{bucket.icon}</span>
+                <span className="set-grouptitle">{bucket.title}</span>
+                {holdsEdits && <Dot />}
+                <span className="dim">{keys.length}</span>
+                <span className={`set-chev ${open ? 'open' : ''}`} aria-hidden>
+                  ›
+                </span>
+              </button>
+              <Collapse open={open}>
+                <div className="set-groupbody stack">
+                  {bucket.note && <p className="formnote">{bucket.note}</p>}
+                  {keys.map((key) => (
+                    <SettingRow
+                      key={key}
+                      game={game}
+                      propKey={key}
+                      label={labelFor(key)}
+                      value={valueOf(key)}
+                      original={props[key] ?? ''}
+                      pristine={!(key in edits)}
+                      dirty={isDirty(key)}
+                      onChange={change(key)}
+                    />
+                  ))}
+                </div>
+              </Collapse>
+            </motion.section>
+          )
+        })}
+      </motion.div>
 
       {/* The dock rides the bottom of the screen while there is anything to say or
           do: a save button at the far end of a 150-key list is a save button
-          nobody on a phone ever reaches. */}
-      {(dirtyCount > 0 || saved || saveError) && (
-        <div className="set-dock">
-          {saveError && (
-            <p className="formerr" role="alert">
-              {saveError}
-            </p>
-          )}
-          {saved && !saveError && <p className="formnote">{saved}</p>}
-          {dirtyCount > 0 && (
-            <div className="row">
-              <span className="dim">
-                {dirtyCount} change{dirtyCount === 1 ? '' : 's'}
-              </span>
-              <span className="spacer" />
-              <Button variant="ghost" disabled={saving} onClick={() => setEdits({})}>
-                Discard
-              </Button>
-              <Button variant="primary" disabled={saving} onClick={save}>
-                {saving ? 'Saving…' : 'Save settings'}
-              </Button>
-            </div>
-          )}
-        </div>
-      )}
+          nobody on a phone ever reaches. Nothing here survives leaving the tab,
+          and the dock says so instead of letting anyone find out. */}
+      <AnimatePresence>
+        {(dirtyCount > 0 || saveError) && (
+          <motion.div
+            className="set-dock"
+            initial={{ opacity: 0, y: 18 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 18, transition: { duration: 0.2, ease: EASE_OUT } }}
+            transition={{ duration: 0.32, ease: EASE_SPRING }}
+          >
+            {saveError && (
+              <p className="formerr" role="alert">
+                {saveError}
+              </p>
+            )}
+            {dirtyCount > 0 && (
+              <>
+                <p className="set-dockmsg">
+                  <Dot />
+                  {dirtyCount} unsaved change{dirtyCount === 1 ? '' : 's'} — leaving this tab loses them.
+                </p>
+                <div className="row">
+                  <Button
+                    variant="ghost"
+                    disabled={saving}
+                    onClick={() => {
+                      setEdits({})
+                      setSaveError('')
+                    }}
+                  >
+                    Discard
+                  </Button>
+                  <span className="spacer" />
+                  <Button variant="primary" disabled={saving} onClick={() => void save()}>
+                    {saving && <Spinner />}
+                    {saving ? 'Saving…' : dirtyCount === 1 ? 'Save change' : `Save ${dirtyCount} changes`}
+                  </Button>
+                </div>
+              </>
+            )}
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   )
 }

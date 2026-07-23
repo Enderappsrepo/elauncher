@@ -1,26 +1,34 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react'
 import type { Session } from '@supabase/supabase-js'
+import { Activity, LogOut, ReceiptText, Search, Server, ShieldCheck, ShoppingBag } from 'lucide-react'
+import { Toaster } from 'sonner'
 import { supabase } from '@web/lib/supabase'
-import { Button, Console, Skeleton, StatusPill, Tabs } from '@web/ui'
+import { Button, Console, Kbd, Skeleton, StatusPill, Tabs } from '@web/ui'
+import { MotionRoot, Switch } from '@web/ui/motion'
 import { Auth } from './Auth'
+import { Palette } from './Palette'
 import { GAME_HUE, gameLabel, mockServers, uptime } from './data'
 import type { Game, ServerRow } from './data'
 import { primeSenderName, queueCommand } from './relay'
 import { makeAsk } from './tabs/types'
-import { Access } from './tabs/Access'
-import { Automation } from './tabs/Automation'
-import { Files } from './tabs/Files'
-import { Mods } from './tabs/Mods'
-import { Network } from './tabs/Network'
-import { Players } from './tabs/Players'
-import { Settings } from './tabs/Settings'
-import { Admin } from './views/Admin'
-import { Billing } from './views/Billing'
-import { Health } from './views/Health'
-import { Shop } from './views/Shop'
 import { useServers } from './useServers'
 import '@web/styles/ui.css'
 import './App.css'
+
+/* Every tab and section past the server list loads on demand. The panel's
+ * first paint is the list — the thing someone opened it to check — and a
+ * 900-line Files browser has no business in that critical path. */
+const Access = lazy(() => import('./tabs/Access').then((m) => ({ default: m.Access })))
+const Automation = lazy(() => import('./tabs/Automation').then((m) => ({ default: m.Automation })))
+const Files = lazy(() => import('./tabs/Files').then((m) => ({ default: m.Files })))
+const Mods = lazy(() => import('./tabs/Mods').then((m) => ({ default: m.Mods })))
+const Network = lazy(() => import('./tabs/Network').then((m) => ({ default: m.Network })))
+const Players = lazy(() => import('./tabs/Players').then((m) => ({ default: m.Players })))
+const Settings = lazy(() => import('./tabs/Settings').then((m) => ({ default: m.Settings })))
+const Admin = lazy(() => import('./views/Admin').then((m) => ({ default: m.Admin })))
+const Billing = lazy(() => import('./views/Billing').then((m) => ({ default: m.Billing })))
+const Health = lazy(() => import('./views/Health').then((m) => ({ default: m.Health })))
+const Shop = lazy(() => import('./views/Shop').then((m) => ({ default: m.Shop })))
 
 /** Send an instruction to the machine running a server. */
 type Control = (row: ServerRow, action: 'start' | 'stop' | 'command', payload?: string) => Promise<void>
@@ -64,6 +72,13 @@ const SECTION_LABELS: Record<Section, string> = {
   billing: 'Billing',
   health: 'Health',
   admin: 'Admin'
+}
+const SECTION_ICONS: Record<Section, React.JSX.Element> = {
+  servers: <Server size={17} aria-hidden />,
+  shop: <ShoppingBag size={17} aria-hidden />,
+  billing: <ReceiptText size={17} aria-hidden />,
+  health: <Activity size={17} aria-hidden />,
+  admin: <ShieldCheck size={17} aria-hidden />
 }
 
 export function App(): React.JSX.Element {
@@ -132,67 +147,178 @@ export function App(): React.JSX.Element {
   }, [mock])
 
   const open = servers.find((s) => s.server_id === openId) ?? null
+  const signedIn = phase.kind === 'signedIn'
+  const nav = isAdmin ? SECTIONS : SECTIONS.filter((s) => s !== 'admin')
+  const [palette, setPalette] = useState(false)
+
+  const go = useCallback((next: Section): void => {
+    setOpenId(null)
+    setSection(next)
+  }, [])
+
+  // Global keys: ⌘K / Ctrl-K opens the palette anywhere; Escape steps back out
+  // of a server — unless something is being typed, where Escape belongs to the
+  // field being escaped from.
+  useEffect(() => {
+    if (!signedIn) return
+    const onKey = (e: KeyboardEvent): void => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault()
+        setPalette((p) => !p)
+        return
+      }
+      if (e.key === 'Escape' && !palette) {
+        const el = e.target as HTMLElement | null
+        const typing =
+          el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable)
+        if (!typing) setOpenId(null)
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [signedIn, palette])
 
   return (
-    <div className="shell">
-      <header className="topbar">
-        <div className="wrap row">
-          <button className="brand" onClick={() => setOpenId(null)}>
-            <span className="mark" aria-hidden />
-            <span className="wordmark">ELauncher</span>
-          </button>
-          <span className="chip">Remote</span>
-          <span className="spacer" />
-          {phase.kind === 'signedIn' && (
-            <>
-              <span className="who">{phase.session?.user.email ?? 'preview'}</span>
-              <Button size="sm" variant="ghost" onClick={() => void supabase.auth.signOut()}>
-                Sign out
-              </Button>
-            </>
+    <MotionRoot>
+      <div className={`shell${signedIn ? ' with-rail' : ''}`}>
+        <a className="skip" href="#main">
+          Skip to content
+        </a>
+        {/* Desktop: a proper sidebar. It carries brand, sections, search and the
+            account, so the top bar can disappear and the content own the width. */}
+        {signedIn && (
+          <aside className="rail">
+            <button className="brand" onClick={() => go('servers')}>
+              <span className="mark" aria-hidden />
+              <span className="wordmark">ELauncher</span>
+              <span className="chip">Remote</span>
+            </button>
+            <nav className="rail-nav" aria-label="Sections">
+              {nav.map((s) => (
+                <button
+                  key={s}
+                  className={`navbtn${section === s && !open ? ' on' : ''}`}
+                  aria-current={section === s && !open ? 'page' : undefined}
+                  onClick={() => go(s)}
+                >
+                  {SECTION_ICONS[s]}
+                  <span>{SECTION_LABELS[s]}</span>
+                </button>
+              ))}
+            </nav>
+            <button className="navbtn" onClick={() => setPalette(true)}>
+              <Search size={17} aria-hidden />
+              <span>Search</span>
+              <span className="spacer" />
+              <Kbd>Ctrl K</Kbd>
+            </button>
+            <div className="rail-foot">
+              <span className="who" title={phase.session?.user.email ?? 'preview'}>
+                {phase.session?.user.email ?? 'preview'}
+              </span>
+              <button
+                className="iconbtn"
+                aria-label="Sign out"
+                title="Sign out"
+                onClick={() => void supabase.auth.signOut()}
+              >
+                <LogOut size={16} aria-hidden />
+              </button>
+            </div>
+          </aside>
+        )}
+
+        <div className="main-col">
+          {/* Phones (and signed-out everywhere): the sticky glass top bar. */}
+          <header className="topbar">
+            <div className="wrap row">
+              <button className="brand" onClick={() => go('servers')}>
+                <span className="mark" aria-hidden />
+                <span className="wordmark">ELauncher</span>
+              </button>
+              <span className="chip">Remote</span>
+              <span className="spacer" />
+              {signedIn && (
+                <>
+                  <button
+                    className="iconbtn"
+                    aria-label="Search — Ctrl K"
+                    onClick={() => setPalette(true)}
+                  >
+                    <Search size={17} aria-hidden />
+                  </button>
+                  <Button size="sm" variant="ghost" onClick={() => void supabase.auth.signOut()}>
+                    Sign out
+                  </Button>
+                </>
+              )}
+            </div>
+          </header>
+
+          <main className="wrap page" id="main">
+            {phase.kind === 'loading' && <ListSkeleton />}
+            {phase.kind === 'signedOut' && <Auth />}
+            {signedIn && (
+              <Switch id={open ? `server-${open.server_id}` : section}>
+                <Suspense fallback={<ListSkeleton />}>
+                {section === 'servers' &&
+                  (open ? (
+                    <Detail
+                      row={open}
+                      userId={userId ?? ''}
+                      preview={Boolean(mock)}
+                      control={control}
+                      onBack={() => setOpenId(null)}
+                    />
+                  ) : live.loading && !mock ? (
+                    <ListSkeleton />
+                  ) : (
+                    <ServerList rows={servers} error={live.error} control={control} onOpen={setOpenId} />
+                  ))}
+                {section === 'shop' && <Shop userId={userId ?? ''} />}
+                {section === 'health' && <Health userId={userId ?? ''} />}
+                {section === 'billing' && <Billing userId={userId ?? ''} />}
+                {section === 'admin' && isAdmin && <Admin userId={userId ?? ''} />}
+                </Suspense>
+              </Switch>
+            )}
+          </main>
+
+          {/* Phones: sections live under the thumb, not behind a hamburger. */}
+          {signedIn && (
+            <nav className="bottomnav" aria-label="Sections">
+              {nav.map((s) => (
+                <button
+                  key={s}
+                  className={`navbtn${section === s && !open ? ' on' : ''}`}
+                  aria-current={section === s && !open ? 'page' : undefined}
+                  onClick={() => go(s)}
+                >
+                  {SECTION_ICONS[s]}
+                  <span>{SECTION_LABELS[s]}</span>
+                </button>
+              ))}
+            </nav>
           )}
         </div>
-      </header>
 
-      <main className="wrap page">
-        {phase.kind === 'loading' && <ListSkeleton />}
-        {phase.kind === 'signedOut' && <Auth />}
-        {phase.kind === 'signedIn' && (
-          <>
-            {/* the section switcher is hidden inside a server, where the tab strip
-                is already carrying the navigation and two rows of it would compete */}
-            {!open && (
-              <div className="sections">
-                <Tabs
-                  tabs={isAdmin ? SECTIONS : SECTIONS.filter((s) => s !== 'admin')}
-                  value={section}
-                  onChange={setSection}
-                  labels={SECTION_LABELS}
-                />
-              </div>
-            )}
-            {section === 'servers' &&
-              (open ? (
-                <Detail
-                  row={open}
-                  userId={userId ?? ''}
-                  preview={Boolean(mock)}
-                  control={control}
-                  onBack={() => setOpenId(null)}
-                />
-              ) : live.loading && !mock ? (
-                <ListSkeleton />
-              ) : (
-                <ServerList rows={servers} error={live.error} control={control} onOpen={setOpenId} />
-              ))}
-            {section === 'shop' && <Shop userId={userId ?? ''} />}
-            {section === 'health' && <Health userId={userId ?? ''} />}
-            {section === 'billing' && <Billing userId={userId ?? ''} />}
-            {section === 'admin' && isAdmin && <Admin userId={userId ?? ''} />}
-          </>
+        {signedIn && (
+          <Palette
+            open={palette}
+            onClose={() => setPalette(false)}
+            servers={servers}
+            isAdmin={isAdmin}
+            goSection={go}
+            openServer={(id) => {
+              setSection('servers')
+              setOpenId(id)
+            }}
+            control={(row, action) => control(row, action)}
+          />
         )}
-      </main>
-    </div>
+        <Toaster position="top-center" offset={16} gap={8} />
+      </div>
+    </MotionRoot>
   )
 }
 
@@ -275,6 +401,9 @@ function ServerCard({
   onOpen: () => void
 }): React.JSX.Element {
   const live = row.state === 'running'
+  // a server mid-transition is nobody's to command; the pill already says which
+  // way it is going, so the button just waits it out
+  const settling = row.state === 'starting' || row.state === 'stopping'
   const [busy, setBusy] = useState(false)
   const [failed, setFailed] = useState('')
 
@@ -298,7 +427,12 @@ function ServerCard({
       <button className="card-hit" onClick={onOpen} aria-label={`Open ${row.name}`} />
       <div className="row">
         <GameBadge game={row.game} />
-        <h2>{row.name}</h2>
+        <div className="card-id">
+          <h2>{row.name}</h2>
+          {/* the game in words, coloured to match the badge — two servers named
+              the same are told apart here, which is the whole point */}
+          <GameTag game={row.game} />
+        </div>
         <span className="spacer" />
         <StatusPill state={row.state} />
       </div>
@@ -315,8 +449,16 @@ function ServerCard({
         </p>
       )}
       <div className="row actions">
-        <Button size="sm" variant={live ? 'danger' : 'primary'} disabled={busy} onClick={press}>
-          {busy ? 'Sending…' : live ? 'Stop' : 'Start'}
+        <Button size="sm" variant={live ? 'danger' : 'primary'} disabled={busy || settling} onClick={press}>
+          {busy
+            ? 'Sending…'
+            : settling
+              ? row.state === 'starting'
+                ? 'Starting…'
+                : 'Stopping…'
+              : live
+                ? 'Stop'
+                : 'Start'}
         </Button>
         <Button size="sm" variant="ghost" onClick={onOpen}>
           Console
@@ -341,12 +483,27 @@ function GameBadge({ game, big }: { game: string | null; big?: boolean }): React
   const label = gameLabel(game)
   return (
     <span
-      className={`gbadge${big ? ' big' : ''}`}
+      className={`gbadge${big ? ' big' : ''}${known ? '' : ' unknown'}`}
       title={label}
       style={hue === null ? undefined : ({ '--hue': hue } as React.CSSProperties)}
       aria-hidden
     >
-      {label.slice(0, 1)}
+      {known ? label.slice(0, 1) : '?'}
+    </span>
+  )
+}
+
+/** The game's name in words, tinted to its hue. The text is what a colour-blind
+ *  reader relies on, so it is never abbreviated to the initial alone. */
+function GameTag({ game }: { game: string | null }): React.JSX.Element {
+  const known = game && game in GAME_HUE
+  const hue = known ? GAME_HUE[game as Game] : null
+  return (
+    <span
+      className={`gtag${known ? '' : ' unknown'}`}
+      style={hue === null ? undefined : ({ '--hue': hue } as React.CSSProperties)}
+    >
+      {gameLabel(game)}
     </span>
   )
 }
@@ -457,15 +614,16 @@ function Detail({
       </div>
       <div className="row detail-title">
         <GameBadge game={row.game} big />
-        <div>
+        <div className="card-id">
           <h1>{row.name}</h1>
-          <p className="dim gname">{gameLabel(row.game)}</p>
+          <GameTag game={row.game} />
         </div>
         <span className="spacer" />
         <StatusPill state={row.state} />
       </div>
       <Tabs tabs={TABS} value={tab} onChange={setTab} labels={TAB_LABELS} />
       <div className="tabbody">
+        <Suspense fallback={<Skeleton height={320} />}>
         {tab === 'console' && <ConsoleTab row={row} control={control} />}
         {tab === 'overview' && (
           <div className="surface pad">
@@ -484,6 +642,7 @@ function Detail({
         {tab === 'network' && <Network row={row} userId={userId} ask={ask} />}
         {tab === 'automation' && <Automation row={row} userId={userId} ask={ask} />}
         {tab === 'access' && <Access row={row} userId={userId} ask={ask} />}
+        </Suspense>
       </div>
     </div>
   )

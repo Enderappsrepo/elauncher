@@ -1,0 +1,88 @@
+/* Players tab.
+ *
+ * One screen, two tempos. The online list is live — rows arrive and leave
+ * because the relay said so, and motion is what marks a join as "just now".
+ * The roster lists are files, where every row is an edit waiting to happen.
+ * Moderation comes in bursts, so a row is one line tall, its confirm opens
+ * beneath it rather than replacing it, and nothing shifts the next target out
+ * from under the thumb.
+ */
+
+/* Sized up from the 26px list avatar: this one carries a head or an initial. */
+.avatar.pl-face {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  overflow: hidden;
+  border-radius: var(--radius-sm);
+  color: var(--text-dim);
+  font-size: var(--fs-small);
+  font-weight: 700;
+}
+
+.pl-face img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* A row is a 44px target end to end; its buttons stay compact so three of
+ * them still fit beside a name on a phone. */
+.pl-row {
+  min-height: 44px;
+}
+
+.pl-act {
+  flex: none;
+  padding: 0 13px;
+}
+
+/* The roster remove is an icon, but it is still a full-size target. */
+.pl-x {
+  flex: none;
+  min-width: 44px;
+  padding: 0;
+}
+
+.pl-col {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+
+/* Names are typed by other people; they truncate, controls keep their place. */
+.pl-clip {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.row > .pl-clip {
+  flex: 1;
+}
+
+.pl-sub {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Opens under its row (Collapse), so the row itself never moves. */
+.pl-confirm {
+  --gap: 10px;
+  margin-top: 10px;
+}
+
+.pl-fine {
+  font-size: var(--fs-small);
+  line-height: 1.6;
+}
+
+/* Empty states sit inside an already-padded card: keep the ceremony, lose
+ * some of the air. */
+.pl-pane .empty {
+  padding: 24px 18px;
+}
