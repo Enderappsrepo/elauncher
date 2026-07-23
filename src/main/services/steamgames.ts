@@ -916,8 +916,17 @@ export function startSteamGame(
       rcon = rconConnect(spec.port, spec.password, {
         onReady: () => {
           // the port refuses the password until the world is loaded, so getting
-          // in is the most reliable "this server is actually up" we have
-          markReady()
+          // in is the most reliable "this server is actually up" we have.
+          // Except ASA: its RCON admits you a minute-plus before the server
+          // starts advertising for joins (observed 84s on real hardware), and
+          // "running" before players can actually get in reads as a broken
+          // server. There the advertising log line stays the primary signal,
+          // and RCON only backstops it if that line never shows.
+          if (game === 'arksa') {
+            timers.push(setTimeout(markReady, 150_000))
+          } else {
+            markReady()
+          }
           rconSend(spec.listCommand, readPlayers)
         },
         onClose: () => {

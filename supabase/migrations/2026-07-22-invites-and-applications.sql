@@ -145,7 +145,9 @@ begin
     'closed', closed,
     -- live status is best-effort: a host that has never checked in simply has none
     'state', coalesce(st.state, 'unknown'),
-    'players', coalesce(st.players_online, 0)
+    -- server_status.players is the text[] of names; the card only wants a count
+    -- (array_length of an empty array is null, hence the coalesce)
+    'players', coalesce(array_length(st.players, 1), 0)
   );
 end;
 $$;

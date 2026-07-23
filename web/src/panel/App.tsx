@@ -7,7 +7,7 @@ import { Button, Console, Kbd, Skeleton, StatusPill, Tabs } from '@web/ui'
 import { MotionRoot, Switch } from '@web/ui/motion'
 import { Auth } from './Auth'
 import { Palette } from './Palette'
-import { GAME_HUE, gameLabel, mockServers, uptime } from './data'
+import { GAME_HUE, gameLabel, isStale, lastSeen, mockServers, uptime } from './data'
 import type { Game, ServerRow } from './data'
 import { primeSenderName, queueCommand } from './relay'
 import { makeAsk } from './tabs/types'
@@ -155,6 +155,16 @@ export function App(): React.JSX.Element {
     setOpenId(null)
     setSection(next)
   }, [])
+
+  // Staleness is a function of the clock, not of the data: a host going quiet
+  // changes nothing in the rows, so a slow tick is what flips its cards to
+  // "unreachable" while the page just sits there.
+  const [, setTick] = useState(0)
+  useEffect(() => {
+    if (!signedIn) return
+    const t = setInterval(() => setTick((n) => n + 1), 30_000)
+    return () => clearInterval(t)
+  }, [signedIn])
 
   // Global keys: ⌘K / Ctrl-K opens the palette anywhere; Escape steps back out
   // of a server — unless something is being typed, where Escape belongs to the
@@ -433,6 +443,9 @@ function ServerCard({
   // a server mid-transition is nobody's to command; the pill already says which
   // way it is going, so the button just waits it out
   const settling = row.state === 'starting' || row.state === 'stopping'
+  // a host that stopped reporting keeps its last written state — which is a
+  // claim about the past, not the present, and must not render as live
+  const stale = isStale(row)
   const [busy, setBusy] = useState(false)
   const [failed, setFailed] = useState('')
 
@@ -452,7 +465,10 @@ function ServerCard({
   }
 
   return (
-    <article className="surface card-server" style={{ '--i': index } as React.CSSProperties}>
+    <article
+      className={`surface card-server${stale ? ' stale' : ''}`}
+      style={{ '--i': index } as React.CSSProperties}
+    >
       <button className="card-hit" onClick={onOpen} aria-label={`Open ${row.name}`} />
       <div className="row">
         <GameBadge game={row.game} />
@@ -463,9 +479,20 @@ function ServerCard({
           <GameTag game={row.game} />
         </div>
         <span className="spacer" />
-        <StatusPill state={row.state} />
+        {stale ? (
+          <span className="pill stopped" title={`Last report ${lastSeen(row)}`}>
+            <span className="dot" aria-hidden />
+            Unreachable
+          </span>
+        ) : (
+          <StatusPill state={row.state} />
+        )}
       </div>
-      <p className="mono dim addr">{row.address ?? 'no address yet'}</p>
+      <p className="mono dim addr">
+        {stale
+          ? `last seen ${lastSeen(row)} — its machine is off or signed out`
+          : (row.address ?? 'no address yet')}
+      </p>
       <div className="metrics">
         <Metric label="Players" value={live ? String(row.players.length) : '—'} />
         <Metric label="Memory" value={row.memory_mb ? `${(row.memory_mb / 1024).toFixed(1)} GB` : '—'} />
@@ -478,16 +505,24 @@ function ServerCard({
         </p>
       )}
       <div className="row actions">
-        <Button size="sm" variant={live ? 'danger' : 'primary'} disabled={busy || settling} onClick={press}>
+        <Button
+          size="sm"
+          variant={live && !stale ? 'danger' : 'primary'}
+          disabled={busy || settling || stale}
+          title={stale ? 'Nothing is listening — start the launcher on that machine first' : undefined}
+          onClick={press}
+        >
           {busy
             ? 'Sending…'
-            : settling
-              ? row.state === 'starting'
-                ? 'Starting…'
-                : 'Stopping…'
-              : live
-                ? 'Stop'
-                : 'Start'}
+            : stale
+              ? 'Host offline'
+              : settling
+                ? row.state === 'starting'
+                  ? 'Starting…'
+                  : 'Stopping…'
+                : live
+                  ? 'Stop'
+                  : 'Start'}
         </Button>
         <Button size="sm" variant="ghost" onClick={onOpen}>
           Console
@@ -648,8 +683,22 @@ function Detail({
           <GameTag game={row.game} />
         </div>
         <span className="spacer" />
-        <StatusPill state={row.state} />
+        {isStale(row) ? (
+          <span className="pill stopped" title={`Last report ${lastSeen(row)}`}>
+            <span className="dot" aria-hidden />
+            Unreachable
+          </span>
+        ) : (
+          <StatusPill state={row.state} />
+        )}
       </div>
+      {isStale(row) && (
+        <p className="formnote" style={{ marginBottom: 12 }}>
+          This server&rsquo;s machine hasn&rsquo;t reported since {lastSeen(row)} — the launcher
+          there is closed, signed out, or the box is off. What you see below is its last known
+          state, and commands will wait until it returns.
+        </p>
+      )}
       <Tabs tabs={TABS} value={tab} onChange={setTab} labels={TAB_LABELS} />
       <div className="tabbody">
         <Suspense fallback={<Skeleton height={320} />}>

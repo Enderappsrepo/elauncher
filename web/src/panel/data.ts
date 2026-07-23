@@ -20,6 +20,31 @@ export interface ServerRow {
   cpu_percent: number | null
   started_at: string | null
   version: string | null
+  /** when the host last wrote this row — staleness is read from here */
+  updated_at: string | null
+}
+
+/**
+ * A status row is a claim by a machine, and a machine that stopped reporting
+ * stopped being entitled to it. Hosts rewrite every row within seconds while
+ * they run, so a minute of silence means the launcher there is closed, signed
+ * out, or the box is off — and its last written state (often "running") must
+ * not be presented as the present tense. This is how a PC that hosted a server
+ * four days ago stops showing a green card forever.
+ */
+export function isStale(row: ServerRow): boolean {
+  if (!row.updated_at) return false // old clouds without the column: no verdict
+  return Date.now() - new Date(row.updated_at).getTime() > 60_000
+}
+
+/** "4d ago", for the card of a host that went quiet. */
+export function lastSeen(row: ServerRow): string {
+  if (!row.updated_at) return 'unknown'
+  const secs = Math.max(0, Math.floor((Date.now() - new Date(row.updated_at).getTime()) / 1000))
+  if (secs < 90) return 'just now'
+  if (secs < 3600) return `${Math.floor(secs / 60)}m ago`
+  if (secs < 172800) return `${Math.floor(secs / 3600)}h ago`
+  return `${Math.floor(secs / 86400)}d ago`
 }
 
 /**
@@ -37,7 +62,25 @@ declare global {
 }
 
 export function mockServers(): ServerRow[] {
+  const fresh = new Date().toISOString()
   return [
+    {
+      server_id: '5',
+      owner_id: '00000000-0000-4000-8000-000000000001',
+      name: 'Old PC world',
+      game: 'palworld',
+      // the fossil case: a host that last reported days ago and still claims
+      // "running" — the UI must present this as unreachable, not live
+      state: 'running',
+      players: [],
+      address: null,
+      version: null,
+      memory_mb: 2101,
+      cpu_percent: 0,
+      started_at: new Date(Date.now() - 96 * 3600_000).toISOString(),
+      updated_at: new Date(Date.now() - 92 * 3600_000).toISOString(),
+      console: '[old session] server started'
+    },
     {
       server_id: '1',
       owner_id: '00000000-0000-4000-8000-000000000001',
@@ -50,6 +93,7 @@ export function mockServers(): ServerRow[] {
       memory_mb: 3480,
       cpu_percent: 34,
       started_at: new Date(Date.now() - 7_200_000).toISOString(),
+      updated_at: fresh,
       console: [
         '[12:04:41] [Server thread/INFO]: Starting minecraft server version 1.21.4',
         '[12:04:52] [Server thread/INFO]: Preparing level "world"',
@@ -71,6 +115,7 @@ export function mockServers(): ServerRow[] {
       memory_mb: 9120,
       cpu_percent: 78,
       started_at: new Date(Date.now() - 24_000).toISOString(),
+      updated_at: fresh,
       console: ['[S_API] SteamAPI_Init()', 'Setting breakpad minidump AppID = 2394010', 'LogInit: Display: Starting Game.'].join('\n')
     },
     {
@@ -85,6 +130,7 @@ export function mockServers(): ServerRow[] {
       memory_mb: null,
       cpu_percent: null,
       started_at: null,
+      updated_at: fresh,
       console: [
         '[13:10:02] [main/INFO]: Loading 412 mods',
         '[13:10:44] [main/ERROR]: Failed to load mod "ae2wtlib": missing dependency',
@@ -103,6 +149,7 @@ export function mockServers(): ServerRow[] {
       memory_mb: null,
       cpu_percent: null,
       started_at: null,
+      updated_at: fresh,
       console: '[09:12:30] [Server thread/INFO]: Stopping server'
     }
   ]

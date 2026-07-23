@@ -41,7 +41,8 @@ function toRow(raw: Record<string, unknown>): ServerRow {
     memory_mb: (raw.memory_mb as number | null) ?? null,
     cpu_percent: (raw.cpu_percent as number | null) ?? null,
     started_at: (raw.started_at as string | null) ?? null,
-    version: (raw.version as string | null) ?? null
+    version: (raw.version as string | null) ?? null,
+    updated_at: (raw.updated_at as string | null) ?? null
   }
 }
 

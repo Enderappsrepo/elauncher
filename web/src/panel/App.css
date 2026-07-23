@@ -284,6 +284,15 @@ h2 {
   box-shadow: var(--shadow-lift);
 }
 
+/* a host that went quiet: the card recedes rather than lies */
+.card-server.stale {
+  opacity: 0.66;
+}
+
+.card-server.stale:hover {
+  opacity: 0.9;
+}
+
 /* The whole card is the target, but the real buttons inside must still win, so
  * the hit layer sits underneath them rather than over the top. */
 .card-hit {
