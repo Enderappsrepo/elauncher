@@ -4,6 +4,42 @@
   min-height: 100%;
 }
 
+/* staged-build banner: the way back to the classic panel while this one is /next/ */
+.beta-note {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 14px;
+  padding: 9px 9px 9px 13px;
+  border: 1px solid var(--accent-line);
+  border-radius: var(--radius-sm);
+  background: var(--accent-soft);
+  font-size: var(--fs-small);
+}
+
+.beta-note b {
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.beta-note a {
+  flex: none;
+  font-weight: 700;
+  color: var(--accent);
+}
+
+.beta-note a:hover {
+  text-decoration: underline;
+}
+
+.beta-note .iconbtn {
+  margin-left: auto;
+  width: 30px;
+  height: 30px;
+}
+
 /* ---------- app shell: rail (desktop) + bottom nav (phones) ---------- */
 
 .with-rail {

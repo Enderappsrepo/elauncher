@@ -1,6 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react'
 import type { Session } from '@supabase/supabase-js'
-import { Activity, LogOut, ReceiptText, Search, Server, ShieldCheck, ShoppingBag } from 'lucide-react'
+import { Activity, LogOut, ReceiptText, Search, Server, ShieldCheck, ShoppingBag, X } from 'lucide-react'
 import { Toaster } from 'sonner'
 import { supabase } from '@web/lib/supabase'
 import { Button, Console, Kbd, Skeleton, StatusPill, Tabs } from '@web/ui'
@@ -256,6 +256,7 @@ export function App(): React.JSX.Element {
           </header>
 
           <main className="wrap page" id="main">
+            <BetaNotice />
             {phase.kind === 'loading' && <ListSkeleton />}
             {phase.kind === 'signedOut' && <Auth />}
             {signedIn && (
@@ -319,6 +320,34 @@ export function App(): React.JSX.Element {
         <Toaster position="top-center" offset={16} gap={8} />
       </div>
     </MotionRoot>
+  )
+}
+
+/**
+ * Shown only on the staged /next/ build: the way back for someone who followed
+ * the classic panel's "try the new panel" button and wants out. Disappears at
+ * cutover by construction — the cutover build's BASE_URL has no /next/.
+ */
+function BetaNotice(): React.JSX.Element | null {
+  const [hidden, setHidden] = useState(() => localStorage.getItem('elauncher:beta-note') === '1')
+  if (!import.meta.env.BASE_URL.endsWith('/next/') || hidden) return null
+  return (
+    <div className="beta-note rise">
+      <span>
+        You&rsquo;re on the <b>beta</b> panel — same account, same servers.
+      </span>
+      <a href="/elauncher/manage/">Use classic</a>
+      <button
+        className="iconbtn"
+        aria-label="Dismiss beta notice"
+        onClick={() => {
+          localStorage.setItem('elauncher:beta-note', '1')
+          setHidden(true)
+        }}
+      >
+        <X size={14} aria-hidden />
+      </button>
+    </div>
   )
 }
 

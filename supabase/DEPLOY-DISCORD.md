@@ -103,3 +103,44 @@ role up and it heals.
 
 Applicants who block DMs still get their answer from `/status` — the bot
 notes the failed DM in the review channel either way.
+
+## Alternative: host the bot on a VPS (gateway mode)
+
+Discord can deliver interactions two ways: POSTed to a public HTTPS URL
+(everything above), or pushed down a websocket the bot opens itself. A
+bare-IP VPS can't do the first — Discord requires a valid-certificate HTTPS
+URL — so `vps/discord-gateway.ts` provides the second: a small shim that
+connects out to the gateway, runs the *same* `discord-bot/index.ts` as a
+local child, signs each incoming interaction with its own boot-time keypair,
+and relays the child's response back through the interaction callback. Same
+handler, different transport; nothing is forked or rewritten.
+
+What changes against the steps above:
+
+- **Skip step 3's JWT toggle and step 5 entirely.** Leave the app's
+  **Interactions Endpoint URL empty** — with no URL set, Discord delivers
+  over the gateway. (If you already set a URL, clear it, or the websocket
+  never receives interactions.)
+- **Skip step 6** — the shim registers the slash commands itself each boot.
+- **Keep the Supabase function deployed** (step 2/4): the panel's routes
+  (claim redeem, role/channel dropdowns, decision side-effects) still run
+  there, and in this mode its JWT verification can stay **on**.
+
+On the VPS (Ubuntu; needs Deno — `curl -fsSL https://deno.land/install.sh |
+DENO_INSTALL=/usr/local sh`):
+
+```bash
+mkdir -p /opt/elauncher-discord /etc/elauncher
+cp vps/discord-gateway.ts supabase/functions/discord-bot/index.ts /opt/elauncher-discord/
+cp vps/discord-bot.service /etc/systemd/system/
+cp vps/discord-bot.env.example /etc/elauncher/discord-bot.env && chmod 600 /etc/elauncher/discord-bot.env
+# fill DISCORD_BOT_TOKEN, DISCORD_APP_ID, SUPABASE_SERVICE_ROLE_KEY in the env file, then
+systemctl daemon-reload && systemctl enable --now discord-bot
+journalctl -u discord-bot -f   # expect "ready as <botname>" and a command-registration line
+```
+
+`deno run --allow-net --allow-env --allow-run /opt/elauncher-discord/discord-gateway.ts --selftest`
+verifies the shim→function path without touching Discord. A bad token exits
+with code 78 and stays down (systemd's `RestartPreventExitStatus`) instead of
+hammering Discord's login endpoint — fix the env file and `systemctl start`
+again.

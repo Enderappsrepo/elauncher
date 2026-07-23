@@ -1,0 +1,26 @@
+# ELauncher Discord bot — gateway shim + the interactions function as one unit.
+# Install:
+#   cp discord-bot.service /etc/systemd/system/
+#   systemctl daemon-reload && systemctl enable --now discord-bot
+# Logs: journalctl -u discord-bot -f
+
+[Unit]
+Description=ELauncher Discord bot (gateway shim around the interactions function)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+EnvironmentFile=/etc/elauncher/discord-bot.env
+WorkingDirectory=/opt/elauncher-discord
+ExecStart=/usr/local/bin/deno run --quiet --allow-net --allow-env --allow-run=deno /opt/elauncher-discord/discord-gateway.ts
+Restart=always
+RestartSec=15
+# exit 78 means "the config is wrong" (bad/missing token) — restarting would
+# just hammer Discord with bad logins until someone fixes the env file
+RestartPreventExitStatus=78
+# the shim and the spawned function die together
+KillMode=control-group
+
+[Install]
+WantedBy=multi-user.target

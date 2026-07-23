@@ -359,6 +359,22 @@
     .chip.dead { color: var(--red); border-color: rgba(251, 113, 133, 0.35); background: var(--red-soft); }
     .chip.acc { color: var(--accent); border-color: rgba(124, 108, 255, 0.4); background: var(--accent-soft); }
 
+    /* The bridge to the React rewrite at ../next/manage/ — loud enough to be
+       found, quiet enough that this panel still feels current while people
+       migrate at their own pace. */
+    .betabtn {
+      flex: none; display: inline-flex; align-items: center; gap: 6px;
+      padding: 6px 12px; border-radius: 99px;
+      border: 1px solid var(--accent-line); background: var(--accent-soft); color: var(--accent);
+      font-size: 12px; font-weight: 700; text-decoration: none; white-space: nowrap;
+      box-shadow: 0 0 18px rgba(124, 108, 255, 0.25);
+    }
+    .betabtn b { font-size: 9.5px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; opacity: 0.85; }
+    .betabtn:hover { filter: brightness(1.15); }
+    @media (max-width: 560px) { .betabtn span { display: none; } }
+    .beta-alt { display: block; width: 100%; margin-top: 10px; color: var(--faint); font-size: 12.5px; text-align: center; text-decoration: none; }
+    .beta-alt:hover { color: var(--accent); }
+
     .pills { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 13px; }
     .pill {
       display: inline-flex; align-items: center; gap: 6px;
@@ -1266,6 +1282,7 @@
       <img src="../icon.png" alt="" />
       <div class="wordmark">ELauncher <span>Remote</span></div>
       <div class="live poll" id="livePill" title="Connection to your cloud"><span class="dot"></span><span id="liveTxt">sync</span></div>
+      <a class="betabtn" href="../next/manage/" title="Try the redesigned panel — same account, same servers">✦<span>&nbsp;Try the new panel</span>&nbsp;<b>beta</b></a>
       <button class="iconbtn" id="themeBtn" title="Switch theme" aria-label="Switch theme">
         <svg id="themeIcon" viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></svg>
       </button>
@@ -1299,6 +1316,7 @@
         <button id="modeToggle" style="width:100%;margin-top:6px;color:var(--faint);font-size:12.5px">
           New here? Create an account
         </button>
+        <a class="beta-alt" href="../next/manage/">Or try the redesigned <b>beta</b> panel →</a>
       </div>
     </div>
 
