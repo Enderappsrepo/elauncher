@@ -4,11 +4,12 @@ import { isCloudConfigured } from '@shared/cloudConfig'
 import { getAccessToken, getClient } from './cloud'
 import { deviceId } from './device'
 import type { CfAccess } from './mods'
-import { STEAM_GAMES, isSteamGame } from './steamgames'
+import { isSteamGame } from './steamgames'
 import { getShareInfo, startTunnel, stopTunnel } from './hosting'
 import { assignHost, hostPool, listAssignedHosts, updateDuckDns } from './hostNames'
 import { notifyPhones } from './notifications'
 import { getSettings } from './settings'
+import { closeRules, companionPorts, mainPortProtocol, openRules } from './ports'
 import { closePort, openPort, refreshExternalIp } from './upnp'
 import { getMinecraftVersions } from './versions'
 import {
@@ -164,20 +165,9 @@ const exposureAlerts = new Map<string, string>()
  */
 let poolAlerted = false
 
-/**
- * The router/firewall protocol a game's main port needs. Minecraft is TCP,
- * palworld UDP; every SteamCMD game reads its protocol from the one table so a
- * new game (tmodloader is TCP, not UDP like the others) can't be mis-mapped.
- */
-function serverProtocol(game: ServerGame | undefined): 'TCP' | 'UDP' {
-  const g = game ?? 'minecraft'
-  if (g === 'minecraft') return 'TCP'
-  return isSteamGame(g) ? STEAM_GAMES[g].protocol : 'UDP'
-}
-
 async function ensureExposed(server: LocalServer): Promise<string> {
   const game = server.game ?? 'minecraft'
-  const protocol = serverProtocol(game)
+  const protocol = mainPortProtocol(game)
   const existing = getServerPublicAddress(server.id)
   // claim a unique customer-facing hostname while any are free in the pool
   if (assignHost(server.id)) {
@@ -193,6 +183,10 @@ async function ensureExposed(server: LocalServer): Promise<string> {
   if (Date.now() >= upnpRetryAt) {
     try {
       const mapping = await openPort(server.port, protocol, `ELauncher hosted ${server.name}`)
+      // the game's companion ports (query/raw-socket neighbors) ride along —
+      // best-effort, since a router that just mapped the main port takes these,
+      // and any refusal is recorded for the panel rather than failing the order
+      void openRules(companionPorts(game, server.port), server.name)
       const address = getServerPublicAddress(server.id) ?? `${mapping.externalIp}:${server.port}`
       if (address !== existing) {
         if (game === 'minecraft') stopTunnel(server.port) // direct beats the relay
@@ -214,10 +208,11 @@ async function ensureExposed(server: LocalServer): Promise<string> {
   return address
 }
 
-/** Tear down the public path for a suspended server (mapping and/or relay). */
+/** Tear down the public path for a suspended server (mapping, companions, relay). */
 function suspendExposure(server: LocalServer): void {
   stopTunnel(server.port)
-  void closePort(server.port, serverProtocol(server.game))
+  void closePort(server.port, mainPortProtocol(server.game))
+  void closeRules(companionPorts(server.game, server.port))
 }
 
 let dnsCheckAt = 0

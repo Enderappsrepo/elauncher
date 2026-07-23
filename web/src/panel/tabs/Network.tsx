@@ -258,7 +258,12 @@ export function Network({ row, userId, ask }: TabProps): React.JSX.Element {
   }
 
   const live = new Map(view.ports.map((entry) => [keyOf(entry), entry]))
-  const main = view.ports.find((entry) => entry.main)
+  // the game's own block: its port plus per-game neighbors (query ports, ARK's
+  // raw socket) — newer hosts send them all, older ones just the game port
+  const mains = view.ports.filter((entry) => entry.main)
+  // whether this server takes the jar mods the presets used to assume; null
+  // game = a host from before the column, which only ever ran Minecraft
+  const modded = row.game === null || row.game === 'minecraft'
   const used = new Set(draft.map(keyOf))
   // clamped: a host that lowered its ceiling must not put "-1 left" on screen
   const left = Math.max(0, view.maxExtra - draft.length)
@@ -280,8 +285,8 @@ export function Network({ row, userId, ask }: TabProps): React.JSX.Element {
       setAddError('That port is already on the list.')
       return
     }
-    if (main && keyOf(main) === keyOf(rule)) {
-      setAddError("That is this server's own game port, which is already open while it runs.")
+    if (mains.some((entry) => keyOf(entry) === keyOf(rule))) {
+      setAddError("That is one of this server's own game ports, which are already open while it runs.")
       return
     }
     add(rule)
@@ -371,16 +376,24 @@ export function Network({ row, userId, ask }: TabProps): React.JSX.Element {
   return (
     <div className="stack net">
       <section className="surface pad stack">
-        <h2>The game&apos;s own port</h2>
-        {main ? (
-          <PortRow rule={main} live={main} caution={view.cautions[String(main.port)]} />
+        <h2>The game&apos;s own {mains.length > 1 ? 'ports' : 'port'}</h2>
+        {mains.length > 1 && (
+          <p className="dim">
+            This game listens on more than one port — server browsers and joins need the whole set, so
+            ELauncher opens and releases them together with the game port.
+          </p>
+        )}
+        {mains.length > 0 ? (
+          mains.map((entry) => (
+            <PortRow key={keyOf(entry)} rule={entry} live={entry} caution={view.cautions[String(entry.port)]} />
+          ))
         ) : (
           <p className="dim">This host did not report a game port for this server.</p>
         )}
       </section>
 
       <section className="surface pad stack">
-        <h2>Ports your mods need</h2>
+        <h2>{modded ? 'Ports your mods need' : 'Extra ports'}</h2>
         {draft.length === 0 ? (
           <EmptyState
             icon={<Cable size={20} />}
@@ -391,13 +404,17 @@ export function Network({ row, userId, ask }: TabProps): React.JSX.Element {
               </Button>
             }
           >
-            Mods that listen on a port of their own — voice chat, web maps, crossplay — get their hole{' '}
+            {modded
+              ? 'Mods that listen on a port of their own — voice chat, web maps, crossplay — get their hole '
+              : 'Anything that listens beside the game — admin tools, web panels — gets its hole '}
             {view.direct ? 'opened in the firewall' : 'punched through the router'} here while this server runs.
           </EmptyState>
         ) : (
           <>
             <p className="dim">
-              Some mods listen on a port of their own — proximity voice chat, live web maps, Bedrock crossplay.{' '}
+              {modded
+                ? 'Some mods listen on a port of their own — proximity voice chat, live web maps, Bedrock crossplay. '
+                : 'Some things listen on a port beside the game’s own — admin tools, web panels. '}
               {view.direct
                 ? 'This host has a public IP of its own, so there is no router to configure — ELauncher opens each port in the firewall while this server runs.'
                 : 'ELauncher opens these on the router while this server runs and releases them when it stops.'}
@@ -516,7 +533,7 @@ export function Network({ row, userId, ask }: TabProps): React.JSX.Element {
           <p className="dim">
             Players can find and join a listed server straight from Palworld&apos;s in-game list, with no address
             to type. The host announces its public address itself
-            {main ? `, so UDP port ${main.port} has to be reachable` : ''}. Applies on the next restart.
+            {mains.length > 0 ? `, so UDP port ${mains[0].port} has to be reachable` : ''}. Applies on the next restart.
           </p>
           <div className="row port-choice">
             <Button

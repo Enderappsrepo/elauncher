@@ -47,6 +47,17 @@ const TABS = [
   'access'
 ] as const
 type Tab = (typeof TABS)[number]
+
+/**
+ * Only Minecraft servers load the jar mods/plugins the Mods tab manages — a
+ * Modrinth search on a Valheim server is a shelf of things it cannot install.
+ * null means the host predates the game column, and those hosts only ever ran
+ * Minecraft, so the tab stays.
+ */
+const hasModsTab = (game: string | null): boolean => game === null || game === 'minecraft'
+
+const tabsFor = (game: string | null): readonly Tab[] =>
+  hasModsTab(game) ? TABS : TABS.filter((t) => t !== 'mods')
 const TAB_LABELS: Record<Tab, string> = {
   overview: 'Overview',
   console: 'Console',
@@ -657,6 +668,13 @@ function Detail({
   onBack: () => void
 }): React.JSX.Element {
   const [tab, setTab] = useState<Tab>('console')
+  const tabs = tabsFor(row.game)
+  // a host upgrade can start publishing the game mid-session; if that takes the
+  // open tab away (Mods on a game without mods), land on the console rather
+  // than leaving a highlighted tab that no longer exists
+  useEffect(() => {
+    if (!tabs.includes(tab)) setTab('console')
+  }, [tabs, tab])
   // rebuilt only when the server changes, because several tabs treat `ask` as a
   // dependency and a fresh identity each render would loop them
   const ask = useMemo(() => {
@@ -699,7 +717,7 @@ function Detail({
           state, and commands will wait until it returns.
         </p>
       )}
-      <Tabs tabs={TABS} value={tab} onChange={setTab} labels={TAB_LABELS} />
+      <Tabs tabs={tabs} value={tab} onChange={setTab} labels={TAB_LABELS} />
       <div className="tabbody">
         <Suspense fallback={<Skeleton height={320} />}>
         {tab === 'console' && <ConsoleTab row={row} control={control} />}
@@ -715,7 +733,7 @@ function Detail({
         )}
         {tab === 'settings' && <Settings row={row} userId={userId} ask={ask} />}
         {tab === 'players' && <Players row={row} userId={userId} ask={ask} />}
-        {tab === 'mods' && <Mods row={row} userId={userId} ask={ask} />}
+        {tab === 'mods' && hasModsTab(row.game) && <Mods row={row} userId={userId} ask={ask} />}
         {tab === 'files' && <Files row={row} userId={userId} ask={ask} />}
         {tab === 'network' && <Network row={row} userId={userId} ask={ask} />}
         {tab === 'automation' && <Automation row={row} userId={userId} ask={ask} />}

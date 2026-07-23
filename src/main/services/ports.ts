@@ -1,4 +1,5 @@
 import type { ExtraPort, PortPreset } from '@shared/types'
+import { STEAM_GAMES, isSteamGame } from './steamgames'
 import { closePort, getMapping, openPort } from './upnp'
 
 /**
@@ -37,18 +38,91 @@ const BLOCKED = new Map<number, string>([
   [27017, 'MongoDB']
 ])
 
+/** Which protocol a game's own port speaks. Undefined game = a record that predates the column = minecraft. */
+export function mainPortProtocol(game: string | undefined): 'UDP' | 'TCP' {
+  if (game === 'palworld') return 'UDP'
+  if (isSteamGame(game)) return STEAM_GAMES[game].protocol
+  return 'TCP'
+}
+
+/**
+ * The neighbor ports a game needs reachable beyond `port` itself — the reason
+ * STEAM_GAMES allocates servers a portStep apart. A Valheim server with only
+ * 2456 open never shows in Steam's server list; an ARK without its query port
+ * looks online to the panel and unjoinable to everyone else. These open and
+ * close together with the game port, everywhere it does.
+ *
+ * Admin neighbors (RCON, telnet, the REST API) are deliberately absent: they
+ * are localhost channels the launcher itself uses, and exposing them is a
+ * choice a person makes in the panel — with the caution on screen — not one
+ * the launcher makes for them.
+ */
+export function companionPorts(game: string | undefined, port: number): ExtraPort[] {
+  switch (game) {
+    case 'valheim':
+      // 2457-equivalent: Steam's query channel — the server list and most joins
+      return [{ port: port + 1, protocol: 'UDP', label: 'Steam query port' }]
+    case 'sdtd':
+      // the wiki's "26900 TCP + 26900-26902 UDP"; +3 is telnet and stays shut
+      return [
+        { port, protocol: 'TCP', label: 'Server list handshake' },
+        { port: port + 1, protocol: 'UDP', label: 'Steam networking' },
+        { port: port + 2, protocol: 'UDP', label: 'Steam networking (channel 2)' }
+      ]
+    case 'zomboid':
+      return [{ port: port + 1, protocol: 'UDP', label: 'Direct-connection channel' }]
+    case 'ark':
+      return [
+        { port: port + 1, protocol: 'UDP', label: 'Raw UDP socket' },
+        { port: port + 2, protocol: 'UDP', label: 'Steam query — server browser' }
+      ]
+    default:
+      // minecraft, palworld, tmodloader and ASA are one-port games; palworld's
+      // +1 (REST) and the ARKs' +3 (RCON) are admin channels, offered as
+      // presets with their caution instead
+      return []
+  }
+}
+
 /**
  * Legitimate to open, but they hand out admin control rather than gameplay.
  * Shipped to the panel so the caution shows while the port is still a draft
- * row, rather than after it has already been mapped.
+ * row, rather than after it has already been mapped. Keyed by this server's
+ * actual port numbers — a Palworld allocated 8213 has its REST API on 8214.
  */
-export const PORT_CAUTIONS: Record<string, string> = {
-  25575: 'This is the RCON port — anyone who guesses the RCON password gets the full server console. Set a long password before opening it.',
-  8212: 'This is the Palworld REST API port — it takes admin calls. Set a strong AdminPassword before opening it.'
+export function portCautions(game: string | undefined, port: number): Record<string, string> {
+  switch (game) {
+    case 'palworld':
+      return {
+        [port + 1]:
+          'This is the Palworld REST API port — it takes admin calls. Set a strong AdminPassword before opening it.'
+      }
+    case 'ark':
+    case 'arksa':
+      return {
+        [port + 3]:
+          'This is the RCON port — anyone with the admin password gets the full server console. Share it with admins only.'
+      }
+    case 'sdtd':
+      return {
+        [port + 3]:
+          'This is the telnet console port — anyone who guesses the password gets the full server console. It does not need to be open for players.'
+      }
+    case 'zomboid':
+      return {
+        [port + 2]:
+          "This is Zomboid's RCON port. ELauncher already uses it on this machine, and players never need it."
+      }
+    default:
+      return {
+        25575:
+          'This is the RCON port — anyone who guesses the RCON password gets the full server console. Set a long password before opening it.'
+      }
+  }
 }
 
-/** Mods known to need a port of their own, offered as one-tap presets. */
-export const PORT_PRESETS: PortPreset[] = [
+/** Minecraft's mods known to need a port of their own, offered as one-tap presets. */
+const MINECRAFT_PRESETS: PortPreset[] = [
   {
     label: 'Simple Voice Chat',
     port: 24454,
@@ -86,6 +160,52 @@ export const PORT_PRESETS: PortPreset[] = [
     note: 'Lightweight top-down web map, opened in a browser.'
   }
 ]
+
+/**
+ * One-tap suggestions for the panel's Add-a-port list, by game. Minecraft gets
+ * its port-hungry mods; the other games get the optional service they actually
+ * have (an admin API, a web dashboard) — showing a Valheim owner "Dynmap" was
+ * how this list used to read like it belonged to a different game.
+ */
+export function portPresets(game: string | undefined, port: number): PortPreset[] {
+  switch (game) {
+    case 'palworld':
+      return [
+        {
+          label: 'REST API',
+          port: port + 1,
+          protocol: 'TCP',
+          note: 'Palworld’s admin API, for external admin tools. Needs a strong AdminPassword set first.'
+        }
+      ]
+    case 'ark':
+    case 'arksa':
+      return [
+        {
+          label: 'RCON (remote admin tools)',
+          port: port + 3,
+          protocol: 'TCP',
+          note: 'Lets admin tools like Beacon manage this server from elsewhere. Guarded only by the admin password.'
+        }
+      ]
+    case 'sdtd':
+      return [
+        {
+          label: 'Web dashboard',
+          port: 8080,
+          protocol: 'TCP',
+          note: 'The game’s built-in browser dashboard. Turn on WebDashboardEnabled in Settings first.'
+        }
+      ]
+    case 'valheim':
+    case 'zomboid':
+    case 'tmodloader':
+      // their mods ride the game port; nothing here would be honest
+      return []
+    default:
+      return MINECRAFT_PRESETS
+  }
+}
 
 export const portKey = (port: number, protocol: string): string => `${protocol}:${port}`
 

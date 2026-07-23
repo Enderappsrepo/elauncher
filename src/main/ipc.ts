@@ -15,6 +15,7 @@ import * as hosting from './services/hosting'
 import * as hostingOrders from './services/hostingOrders'
 import * as specs from './services/specs'
 import * as upnp from './services/upnp'
+import { closeRules, companionPorts, mainPortProtocol, openRules } from './services/ports'
 import * as server from './services/server'
 import * as serverBrowser from './services/serverBrowser'
 import * as remote from './services/remote'
@@ -263,16 +264,23 @@ export function registerIpc(): void {
   ipcMain.handle('server:tunnelStart', async (_e, port: number) => {
     try {
       const record = server.listLocalServers().find((s) => s.port === port)
+      const protocol = mainPortProtocol(record?.game)
+      // the per-game neighbors (query ports, ARK's raw socket) open with the
+      // game port — a Valheim shared without 2457 is invisible to Steam's list
+      const companions = record ? companionPorts(record.game, record.port) : []
       // UDP games can't ride the TCP bore relay — open the port on the router instead
-      if (record?.game === 'palworld') {
+      if (record && protocol === 'UDP') {
         const mapping = await upnp.openPort(port, 'UDP', `ELauncher ${record.name}`)
+        void openRules(companions, record.name)
         server.announceServerByPort(port)
         const address = server.getServerPublicAddress(record.id) ?? `${mapping.externalIp}:${port}`
         return { ok: true, address, warning: mapping.warning }
       }
-      // minecraft: direct router mapping first (stable address, no relay hop), bore as the fallback
+      // TCP games (minecraft, tmodloader): direct router mapping first (stable
+      // address, no relay hop), bore as the fallback
       try {
         const mapping = await upnp.openPort(port, 'TCP', `ELauncher ${record?.name ?? 'server'}`)
+        if (record) void openRules(companions, record.name)
         server.announceServerByPort(port)
         const address = (record && server.getServerPublicAddress(record.id)) || `${mapping.externalIp}:${port}`
         return { ok: true, address, warning: mapping.warning }
@@ -316,12 +324,14 @@ export function registerIpc(): void {
   )
   ipcMain.handle('server:tunnelStop', async (_e, port: number) => {
     const record = server.listLocalServers().find((s) => s.port === port)
-    if (record?.game === 'palworld') {
+    const protocol = mainPortProtocol(record?.game)
+    if (record) void closeRules(companionPorts(record.game, record.port))
+    if (record && protocol === 'UDP') {
       await upnp.closePort(port, 'UDP')
       server.announceServerByPort(port)
       return
     }
-    // minecraft may be exposed by a router mapping, a tunnel, or both — clear whichever is live
+    // TCP games may be exposed by a router mapping, a tunnel, or both — clear whichever is live
     hosting.stopTunnel(port)
     await upnp.closePort(port, 'TCP')
     server.announceServerByPort(port)

@@ -9,6 +9,7 @@ import AdmZip from 'adm-zip'
 import { fetchJavaRuntimeManifest, installJavaRuntimeTask } from '@xmcl/installer'
 import type {
   CreateServerOptions,
+  ExtraPort,
   LocalServer,
   LocalServerState,
   ModSource,
@@ -86,12 +87,14 @@ import { STEAM_GAME_INFO } from '@shared/games'
 import { closePort, getMapping, isDirectHost } from './upnp'
 import {
   MAX_EXTRA_PORTS,
-  PORT_CAUTIONS,
-  PORT_PRESETS,
   closeRules,
+  companionPorts,
+  mainPortProtocol,
   noteFailure,
   openRules,
+  portCautions,
   portKey,
+  portPresets,
   statusOf,
   validateRules
 } from './ports'
@@ -1131,7 +1134,7 @@ export async function archiveServer(id: string): Promise<void> {
   const record = servers.find((s) => s.id === id)
   if (!record) throw new Error('Server not found')
   await ensureStopped(id)
-  void closePort(record.port, gameOf(record) === 'palworld' ? 'UDP' : 'TCP')
+  closeGamePorts(record)
   void closeRules(record.extraPorts ?? [])
   releaseHost(id)
   mkdirSync(serverArchivesDir, { recursive: true })
@@ -1182,7 +1185,7 @@ export function removeServer(id: string): LocalServer[] {
   if (state !== 'stopped') throw new Error('Stop the server before deleting it.')
   const record = loadServers().find((s) => s.id === id)
   if (record) {
-    void closePort(record.port, gameOf(record) === 'palworld' ? 'UDP' : 'TCP')
+    closeGamePorts(record)
     void closeRules(record.extraPorts ?? [])
   }
   releaseHost(id) // the pool name becomes available for the next hosted server
@@ -1607,10 +1610,35 @@ export function setServerAutomation(id: string, automation: ServerAutomation): L
 
 /** Which protocol a game's own port speaks. */
 function mainProtocol(server: LocalServer): 'UDP' | 'TCP' {
-  const game = gameOf(server)
-  if (game === 'palworld') return 'UDP'
-  if (isSteamGame(game)) return STEAM_GAMES[game as SteamGameId].protocol
-  return 'TCP'
+  return mainPortProtocol(gameOf(server))
+}
+
+/**
+ * The game's whole port block: its own port plus the per-game neighbors
+ * (Valheim's query port, ARK's raw socket and query, Zomboid's second channel).
+ * Share, hosting and the firewall treat this list as one unit — a game whose
+ * neighbors stay shut is online in the panel and missing from every server
+ * browser, which reads as "broken" rather than "misconfigured".
+ */
+function gamePortRules(server: LocalServer): ExtraPort[] {
+  return [
+    { port: server.port, protocol: mainProtocol(server), label: 'Game port' },
+    ...companionPorts(gameOf(server), server.port)
+  ]
+}
+
+/** Release the whole block — main mapping and companions — on stop/archive/delete. */
+function closeGamePorts(server: LocalServer): void {
+  void closePort(server.port, mainProtocol(server))
+  const companions = companionPorts(gameOf(server), server.port)
+  if (companions.length) void closeRules(companions)
+}
+
+/** Firewall pass for the whole block, run at every start (no-op off Linux). */
+function ensureGamePortsFirewall(server: LocalServer): void {
+  for (const rule of gamePortRules(server)) {
+    void ensureFirewallPort(server.id, rule.port, rule.protocol.toLowerCase() as 'tcp' | 'udp')
+  }
 }
 
 /**
@@ -1622,10 +1650,14 @@ function takenPorts(exceptId: string): Map<string, string> {
   const taken = new Map<string, string>()
   for (const other of loadServers()) {
     const own = other.id === exceptId
-    taken.set(
-      portKey(other.port, mainProtocol(other)),
-      own ? 'it is this server\'s own game port' : `"${other.name}" uses it on this machine`
-    )
+    // the whole block, not just the main port — a mod port that shadows a
+    // query/companion port would fight it for the same mapping just the same
+    for (const rule of gamePortRules(other)) {
+      taken.set(
+        portKey(rule.port, rule.protocol),
+        own ? "it is part of this server's own game ports" : `"${other.name}" uses it on this machine`
+      )
+    }
     if (own) continue
     for (const rule of other.extraPorts ?? []) {
       taken.set(portKey(rule.port, rule.protocol), `"${other.name}" uses it for ${rule.label}`)
@@ -1637,7 +1669,7 @@ function takenPorts(exceptId: string): Map<string, string> {
 /** The game port plus every mod port, with live exposure state, for the panel. */
 export function getServerPorts(id: string): ServerPortsView {
   const server = getServer(id)
-  const main = mainProtocol(server)
+  const game = gameOf(server)
   // same precedence publicAddress uses; the per-port mapping backstops it, since
   // a mod port can be open while the game port isn't and we still know its IP
   const host = getAssignedHost(id) ?? getSettings().publicHost
@@ -1648,11 +1680,11 @@ export function getServerPorts(id: string): ServerPortsView {
   }
   return {
     ports: [
-      { port: server.port, protocol: main, label: 'Game port', main: true, ...live(server.port, main) } as PortStatus,
+      ...gamePortRules(server).map((rule) => ({ ...rule, main: true, ...live(rule.port, rule.protocol) }) as PortStatus),
       ...(server.extraPorts ?? []).map((rule) => ({ ...rule, ...live(rule.port, rule.protocol) }) as PortStatus)
     ],
-    presets: PORT_PRESETS,
-    cautions: PORT_CAUTIONS,
+    presets: portPresets(game, server.port),
+    cautions: portCautions(game, server.port),
     direct: isDirectHost(),
     maxExtra: MAX_EXTRA_PORTS
   }
@@ -2163,6 +2195,13 @@ export async function startServer(id: string): Promise<void> {
   enforcePlanLimits(server)
   // mod ports are released at every stop, so re-assert them as it comes back up
   void openExtraPorts(server)
+  // companion ports follow the game port: when this server is already exposed —
+  // a mapping surviving from an earlier share, or a host whose IP is its own —
+  // they open with the start rather than waiting for the next share/reconcile
+  const companions = companionPorts(gameOf(server), server.port)
+  if (companions.length && (isDirectHost() || getMapping(server.port, mainProtocol(server)))) {
+    void openRules(companions, server.name)
+  }
   if (gameOf(server) === 'palworld') return startPalworldServer(server)
   if (isSteamGame(gameOf(server))) return runSteamGameServer(server)
   const dir = serverDir(id)
@@ -2194,7 +2233,7 @@ export async function startServer(id: string): Promise<void> {
     procs.set(id, proc)
     lastStartAt.set(id, Date.now())
     lagEvents.delete(id)
-    void ensureFirewallPort(id, server.port, 'tcp')
+    ensureGamePortsFirewall(server)
 
     const onLine = (line: string): void => {
       pushLog(id, line)
@@ -2293,7 +2332,7 @@ async function runSteamGameServer(server: LocalServer): Promise<void> {
         players.set(id, new Set())
         const wasStopping = states.get(id) === 'stopping'
         pushLog(id, `[ELauncher] Server exited${code != null ? ` (code ${code})` : ''}`)
-        void closePort(server.port, spec.protocol)
+        closeGamePorts(server)
         closeExtraPorts(id)
         stopAutomation(id)
         const crashed = !wasStopping && code !== 0 && code !== null
@@ -2305,7 +2344,7 @@ async function runSteamGameServer(server: LocalServer): Promise<void> {
     procs.set(id, handle.proc)
     steamGameHandles.set(id, handle)
     lastStartAt.set(id, Date.now())
-    void ensureFirewallPort(id, server.port, spec.protocol.toLowerCase() as 'tcp' | 'udp')
+    ensureGamePortsFirewall(server)
   } catch (e) {
     setState(id, 'stopped', e instanceof Error ? e.message : String(e))
     throw e
@@ -2365,7 +2404,7 @@ async function startPalworldServer(server: LocalServer): Promise<void> {
         players.set(id, new Set())
         const wasStopping = states.get(id) === 'stopping'
         pushLog(id, `[ELauncher] Server exited${code != null ? ` (code ${code})` : ''}`)
-        void closePort(server.port, 'UDP')
+        closeGamePorts(server)
         closeExtraPorts(id)
         stopAutomation(id)
         const palCrashed = !wasStopping && code !== 0 && code !== null
@@ -2385,7 +2424,7 @@ async function startPalworldServer(server: LocalServer): Promise<void> {
     procs.set(id, handle.proc)
     palworldHandles.set(id, handle)
     lastStartAt.set(id, Date.now())
-    void ensureFirewallPort(id, server.port, 'udp')
+    ensureGamePortsFirewall(server)
   } catch (e) {
     setState(id, 'stopped', e instanceof Error ? e.message : String(e))
     throw e

@@ -456,7 +456,7 @@ export interface LocalServer {
   loaderVersion?: string
   /** set when the server was created from a modpack or an instance */
   packName?: string
-  /** main game port (TCP for minecraft, UDP for palworld) */
+  /** main game port; protocol and companion neighbors are per-game (services/ports.ts) */
   port: number
   /** max heap in MiB (minecraft only; 0 for games that size themselves) */
   memoryMax: number
