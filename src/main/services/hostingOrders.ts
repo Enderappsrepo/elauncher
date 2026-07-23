@@ -361,6 +361,11 @@ async function provision(order: OrderRow, plan: PlanRow, me: string): Promise<vo
     const message = e instanceof Error ? e.message : String(e)
     await note(`Server is running, but it has no public address yet — ${message}`.slice(0, 300))
   }
+  // the customer's "it's live" email — it reads the address off server_status,
+  // so it goes out after the note either way; a mail failure never fails a build
+  void supabase.functions
+    .invoke('order-mail', { body: { kind: 'ready', orderId: order.id } })
+    .catch(() => {})
   notifyPhones(
     'Hosting',
     `${plan.name} provisioned for order ${order.reference}${address ? ` — ${address}` : ' (no public address yet)'}`,
@@ -447,6 +452,11 @@ async function tick(): Promise<void> {
             .from('hosting_orders')
             .update({ status: 'past_due', note: 'Suspended — payment past due', updated_at: new Date().toISOString() })
             .eq('id', order.id)
+          // the lapse email says the world is kept — the one fact that stops a
+          // paused customer from writing the server off as gone
+          void supabase.functions
+            .invoke('order-mail', { body: { kind: 'past_due', orderId: order.id } })
+            .catch(() => {})
           notifyPhones('Hosting', `Order ${order.reference} is past due — server suspended`, 'hosting')
         } else if (localById.has(order.server_id)) {
           // keep the record's plan caps honest (plan changes, upgrades, old servers

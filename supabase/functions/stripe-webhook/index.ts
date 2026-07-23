@@ -127,6 +127,16 @@ Deno.serve(async (req) => {
         stripe_session_id: obj.id ?? null,
         stripe_subscription_id: obj.subscription ?? null
       })
+      // payment-confirmed email; the activation above already stands either way
+      await fetch(`${SUPABASE_URL}/functions/v1/order-mail`, {
+        method: 'POST',
+        headers: {
+          apikey: SERVICE_KEY,
+          Authorization: `Bearer ${SERVICE_KEY}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ kind: 'paid', orderId: String(order.id) })
+      }).catch(() => {})
       return ok()
     }
 

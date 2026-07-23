@@ -649,6 +649,10 @@ function OrderCard({
         .update({ status: 'active', paid_until: until.toISOString() })
         .eq('id', order.id)
       if (error) throw new Error(error.message)
+      // tell the customer their payment landed — best-effort, never blocks the approval
+      void supabase.functions
+        .invoke('order-mail', { body: { kind: 'paid', orderId: order.id } })
+        .catch(() => {})
     }, `${order.server_name} is active until ${until.toLocaleDateString()} — a host will build it within a minute.`)
   }
 

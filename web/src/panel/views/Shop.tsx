@@ -677,7 +677,12 @@ function Configure({
           config.version = version
         }
       }
-      onPlaced({ ...(await insertOrder(userId, plan, trimmed, config)), serverName: trimmed, plan })
+      const created = await insertOrder(userId, plan, trimmed, config)
+      // the emailed receipt is a courtesy; the order stands whether or not mail is up
+      void supabase.functions
+        .invoke('order-mail', { body: { kind: 'placed', orderId: created.id } })
+        .catch(() => {})
+      onPlaced({ ...created, serverName: trimmed, plan })
     } catch (e) {
       setFailed(readable(msg(e, 'Could not create the order.')))
     } finally {
