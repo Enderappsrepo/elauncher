@@ -1264,7 +1264,7 @@ function GuildConfig({
         review_channel_id: channelId,
         allow_appeals: appeals
       })
-      .eq('guild_id', link.guild_id)
+      .eq('server_id', link.server_id)
     setSaving(false)
     if (error) return void toast.error(error.message)
     toast.success('Discord settings saved')
@@ -1276,7 +1276,7 @@ function GuildConfig({
     const { error } = await supabase
       .from('discord_links')
       .update({ enabled: !link.enabled })
-      .eq('guild_id', link.guild_id)
+      .eq('server_id', link.server_id)
     setBusy(false)
     if (error) return void toast.error(error.message)
     toast.success(link.enabled ? 'Bot paused in that Discord' : 'Bot live again')
@@ -1285,7 +1285,7 @@ function GuildConfig({
 
   async function unlink(): Promise<void> {
     setBusy(true)
-    const { error } = await supabase.from('discord_links').delete().eq('guild_id', link.guild_id)
+    const { error } = await supabase.from('discord_links').delete().eq('server_id', link.server_id)
     setBusy(false)
     if (error) return void toast.error(error.message)
     toast.success('Discord unlinked')

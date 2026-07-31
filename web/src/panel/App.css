@@ -263,15 +263,14 @@ h2 {
 .grid {
   display: grid;
   gap: 12px;
-  grid-template-columns: repeat(auto-fill, minmax(272px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
 }
 
 .card-server {
   position: relative;
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  padding: 16px;
+  overflow: hidden;
   transition:
     transform 0.2s var(--ease-spring),
     border-color 0.2s var(--ease-out),
@@ -309,12 +308,13 @@ h2 {
 }
 
 .card-server .actions,
-.card-server .actions * {
+.card-server .actions *,
+.card-server .copy {
   pointer-events: auto;
 }
 
 .addr {
-  margin-top: -4px;
+  margin: 0;
 }
 
 /* Game identity. The hue comes from the game, the lightness from the theme —
@@ -452,4 +452,449 @@ h2 {
   background: linear-gradient(135deg, var(--accent-soft), var(--bg-hover));
   border: 1px solid var(--border);
   flex: none;
+}
+
+/* ---------- cinematic server card ----------
+ * A game-tinted banner carries identity at a glance; the body below it is the
+ * instrument: a live CPU gauge and the stats that tell you the server's shape.
+ * The hue comes from the game (--hue on the article), so a fleet of eight reads
+ * as eight distinct things, not one list repeated. */
+.card-banner {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 13px 15px;
+  background-image:
+    radial-gradient(130% 200% at 10% -60%, hsl(var(--hue, 250) 82% 62% / 0.3), transparent 58%),
+    linear-gradient(120deg, hsl(var(--hue, 250) 72% 50% / 0.16), transparent 74%),
+    var(--glass);
+  border-bottom: 1px solid var(--border);
+}
+
+:root[data-theme='light'] .card-banner {
+  background-image:
+    radial-gradient(130% 200% at 10% -60%, hsl(var(--hue, 250) 75% 55% / 0.2), transparent 58%),
+    linear-gradient(120deg, hsl(var(--hue, 250) 68% 48% / 0.1), transparent 74%),
+    var(--glass);
+}
+
+/* an unknown game has no hue, so the banner is a plain surface rather than a
+ * default-blue one pretending to be a game */
+.card-server:not([style*='--hue']) .card-banner {
+  background-image: var(--glass);
+}
+
+.card-banner .card-id {
+  flex: 1;
+}
+
+.card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px 15px 15px;
+}
+
+/* live CPU gauge — the one moving thing on a resting card, so a busy box and a
+ * frozen page never look the same */
+.gauge {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.gauge-top {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+}
+
+.gauge-top .gl {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+.gauge-top .gv {
+  font-size: 12.5px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-dim);
+}
+
+.bar {
+  height: 7px;
+  border-radius: 5px;
+  background: var(--track-bg);
+  overflow: hidden;
+}
+
+.fill {
+  height: 100%;
+  border-radius: 5px;
+  background: linear-gradient(90deg, var(--accent), var(--accent-2));
+  transition: width 0.5s var(--ease-out);
+}
+
+/* a pegged CPU is the first sign of a struggling server — colour says so before
+ * the number is read */
+.fill.warn {
+  background: linear-gradient(90deg, var(--yellow), var(--red));
+}
+
+.substats {
+  display: flex;
+  gap: 22px;
+}
+
+.substat {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.substat .k {
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+.substat .v {
+  font-size: 15px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- fleet summary ----------
+ * The account at a glance, above the grid: how many servers, how many live, who
+ * is on them and how much memory that costs — the numbers you open the panel to
+ * check before you drill into any one card. */
+.fleet {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.fstat {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 13px 15px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background-color: var(--bg-card);
+  background-image: var(--glass);
+}
+
+.fic {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  flex: none;
+  border-radius: 11px;
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.fic.live {
+  background: var(--green-soft);
+  color: var(--green);
+}
+
+.fbody {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.fstat .fk {
+  display: block;
+  margin-bottom: 2px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+.fstat .fv {
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+
+.fstat .fv.green {
+  color: var(--green);
+}
+
+@media (max-width: 640px) {
+  .fleet {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+/* ---------- card polish: identity, state, connect, presence ---------- */
+
+/* the game badge picks up a ring in its own hue — a small light source that
+ * ties the monogram to the banner wash behind it */
+.card-banner .gbadge {
+  box-shadow:
+    0 0 0 1px hsl(var(--hue, 250) 70% 62% / 0.4),
+    0 6px 16px hsl(var(--hue, 250) 70% 45% / 0.28);
+}
+
+.card-server:not([style*='--hue']) .card-banner .gbadge {
+  box-shadow: none;
+}
+
+/* game + version, on one line under the name */
+.card-sub {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 2px;
+  min-width: 0;
+}
+
+.card-sub .ver {
+  overflow: hidden;
+  font-size: 11px;
+  color: var(--text-faint);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.card-sub .ver::before {
+  content: '·';
+  margin-right: 8px;
+  color: var(--text-faint);
+}
+
+/* A state-coloured hairline across the top edge: the whole grid's health reads
+ * in one sweep before any single card is. Border tint reinforces it for the two
+ * states that matter most — live and broken. */
+.card-server::after {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto 0;
+  z-index: 2;
+  height: 2px;
+  background: transparent;
+  pointer-events: none;
+}
+
+.card-server.tone-live::after {
+  background: linear-gradient(90deg, var(--green), transparent 68%);
+}
+
+.card-server.tone-busy::after {
+  background: linear-gradient(90deg, var(--yellow), transparent 68%);
+}
+
+.card-server.tone-bad::after {
+  background: linear-gradient(90deg, var(--red), transparent 68%);
+}
+
+.card-server.tone-live {
+  border-color: color-mix(in srgb, var(--green) 22%, var(--border));
+}
+
+.card-server.tone-bad {
+  border-color: color-mix(in srgb, var(--red) 20%, var(--border));
+}
+
+/* The join address is what a card is *for* to the people who play there, so it
+ * gets a real field with a one-tap copy rather than being a line of grey text. */
+.connect {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 6px 6px 11px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xs);
+  background: var(--track-bg);
+}
+
+.connect .addr {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-dim);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.copy {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  flex: none;
+  border-radius: 6px;
+  color: var(--text-faint);
+  transition:
+    color 0.14s var(--ease-out),
+    background-color 0.14s var(--ease-out);
+}
+
+.copy:hover {
+  color: var(--text);
+  background: var(--bg-hover);
+}
+
+/* Who is on right now, as faces rather than a number — the difference between
+ * "3 players" and seeing that it's your friends. */
+.players-stack {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.pavs {
+  display: flex;
+  flex: none;
+}
+
+.pav {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  margin-left: -7px;
+  border-radius: 50%;
+  border: 1.5px solid var(--bg-card);
+  background: linear-gradient(135deg, hsl(var(--hue, 250) 62% 56%), hsl(var(--hue, 250) 62% 42%));
+  color: #fff;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.pav:first-child {
+  margin-left: 0;
+}
+
+.pav.more {
+  background: var(--bg-active);
+  color: var(--text-dim);
+}
+
+.players-names {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 12px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* ---------- fleet filter toolbar ----------
+ * Only shows once there are enough servers to need it (see App.tsx). A segmented
+ * state filter on the left, live text filter on the right. */
+.fleet-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.seg2 {
+  display: inline-flex;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--track-bg);
+}
+
+.seg2 button {
+  min-height: 36px;
+  padding: 0 15px;
+  border-radius: var(--radius-xs);
+  color: var(--text-dim);
+  font-size: var(--fs-small);
+  font-weight: 600;
+  transition:
+    color 0.16s var(--ease-out),
+    background-color 0.16s var(--ease-out);
+}
+
+.seg2 button:hover {
+  color: var(--text);
+}
+
+.seg2 button.on {
+  color: var(--text);
+  background-color: var(--bg-active);
+  background-image: var(--glass-strong);
+  box-shadow: var(--shadow-card);
+}
+
+.tool-search {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 9px;
+  min-width: 180px;
+  max-width: 340px;
+  min-height: 44px;
+  padding: 0 13px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--input-bg);
+  color: var(--text-faint);
+  transition:
+    border-color 0.16s var(--ease-out),
+    background-color 0.16s var(--ease-out),
+    box-shadow 0.16s var(--ease-out);
+}
+
+.tool-search:focus-within {
+  border-color: var(--accent);
+  background: var(--input-bg-focus);
+  box-shadow: 0 0 0 3px var(--focus-ring);
+}
+
+.tool-search input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: none;
+  color: var(--text);
+  font-size: var(--fs-body);
+  outline: none;
+}
+
+.tool-search input::placeholder {
+  color: var(--text-faint);
+}
+
+/* ---------- detail hero ----------
+ * The drill-in view opens on the same game-tinted banner the card wore, so the
+ * transition from list to server reads as one continuous object rather than two
+ * screens. */
+.detail-hero {
+  overflow: hidden;
+  margin-bottom: 14px;
+}
+
+.detail-hero .card-banner {
+  padding: 17px 19px;
+  border-bottom: 0;
+}
+
+.detail-hero h1 {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.detail-addr {
+  padding: 0 19px 16px;
 }

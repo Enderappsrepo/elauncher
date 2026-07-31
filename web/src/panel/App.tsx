@@ -1,6 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react'
 import type { Session } from '@supabase/supabase-js'
-import { Activity, LogOut, ReceiptText, Search, Server, ShieldCheck, ShoppingBag, X } from 'lucide-react'
+import { Activity, Check, Copy, HardDrive, LogOut, ReceiptText, Search, Server, ShieldCheck, ShoppingBag, Users, X } from 'lucide-react'
 import { Toaster } from 'sonner'
 import { supabase } from '@web/lib/supabase'
 import { Button, Console, Kbd, Skeleton, StatusPill, Tabs } from '@web/ui'
@@ -407,7 +407,40 @@ function ServerList({
   control: Control
   onOpen: (id: string) => void
 }): React.JSX.Element {
-  const running = rows.filter((r) => r.state === 'running').length
+  const [q, setQ] = useState('')
+  const [filter, setFilter] = useState<'all' | 'online' | 'offline'>('all')
+  const liveRows = rows.filter((r) => r.state === 'running' && !isStale(r))
+  const running = liveRows.length
+  const playersOnline = liveRows.reduce((n, r) => n + r.players.length, 0)
+  const memGb = liveRows.reduce((n, r) => n + (r.memory_mb ?? 0), 0) / 1024
+  // Health-first: the servers someone needs to see (live, then settling, then
+  // broken) rise to the top; the ones that are off or unreachable sink. Sort is
+  // stable, so within a tier the cloud's own order is kept.
+  const rank = (r: ServerRow): number =>
+    isStale(r)
+      ? 4
+      : r.state === 'running'
+        ? 0
+        : r.state === 'starting' || r.state === 'stopping'
+          ? 1
+          : r.state === 'error'
+            ? 2
+            : 3
+  const sorted = [...rows].sort((a, b) => rank(a) - rank(b))
+  const query = q.trim().toLowerCase()
+  const shown = sorted.filter((r) => {
+    const online = r.state === 'running' && !isStale(r)
+    if (filter === 'online' && !online) return false
+    if (filter === 'offline' && online) return false
+    if (
+      query &&
+      !r.name.toLowerCase().includes(query) &&
+      !(r.game ?? '').toLowerCase().includes(query) &&
+      !(r.address ?? '').toLowerCase().includes(query)
+    )
+      return false
+    return true
+  })
   return (
     <>
       <div className="head rise">
@@ -418,14 +451,85 @@ function ServerList({
           </p>
         </div>
       </div>
+      {rows.length > 0 && (
+        <div className="fleet rise">
+          <div className="fstat">
+            <span className="fic">
+              <Server size={16} aria-hidden />
+            </span>
+            <div className="fbody">
+              <span className="fk">Servers</span>
+              <span className="fv">{rows.length}</span>
+            </div>
+          </div>
+          <div className="fstat">
+            <span className="fic live">
+              <Activity size={16} aria-hidden />
+            </span>
+            <div className="fbody">
+              <span className="fk">Running</span>
+              <span className="fv green">{running}</span>
+            </div>
+          </div>
+          <div className="fstat">
+            <span className="fic">
+              <Users size={16} aria-hidden />
+            </span>
+            <div className="fbody">
+              <span className="fk">Players online</span>
+              <span className="fv">{playersOnline}</span>
+            </div>
+          </div>
+          <div className="fstat">
+            <span className="fic">
+              <HardDrive size={16} aria-hidden />
+            </span>
+            <div className="fbody">
+              <span className="fk">Memory in use</span>
+              <span className="fv">{memGb >= 0.05 ? `${memGb.toFixed(1)} GB` : '—'}</span>
+            </div>
+          </div>
+        </div>
+      )}
+      {rows.length > 3 && (
+        <div className="fleet-tools rise">
+          <div className="seg2" role="group" aria-label="Filter servers by state">
+            {(['all', 'online', 'offline'] as const).map((f) => (
+              <button
+                key={f}
+                className={filter === f ? 'on' : ''}
+                aria-pressed={filter === f}
+                onClick={() => setFilter(f)}
+              >
+                {f === 'all' ? 'All' : f === 'online' ? 'Online' : 'Offline'}
+              </button>
+            ))}
+          </div>
+          <div className="tool-search">
+            <Search size={15} aria-hidden />
+            <input
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              placeholder="Filter by name, game or address…"
+              aria-label="Filter servers"
+            />
+          </div>
+        </div>
+      )}
       {error && (
         <p className="formerr" role="alert">
           {error}
         </p>
       )}
       {!error && rows.length === 0 && <Empty />}
+      {!error && rows.length > 0 && shown.length === 0 && (
+        <section className="surface pad rise stack">
+          <h2>No servers match</h2>
+          <p className="dim">Nothing here fits that filter — clear the search or switch back to All.</p>
+        </section>
+      )}
       <div className="grid stagger">
-        {rows.map((row, i) => (
+        {shown.map((row, i) => (
           <ServerCard
             key={row.server_id}
             row={row}
@@ -457,8 +561,33 @@ function ServerCard({
   // a host that stopped reporting keeps its last written state — which is a
   // claim about the past, not the present, and must not render as live
   const stale = isStale(row)
+  const known = row.game !== null && row.game in GAME_HUE
+  const hue = known ? GAME_HUE[row.game as Game] : null
+  // one state word drives the card's accent line and border tint, so a full grid
+  // is legible at a glance before any single card is read
+  const tone = stale
+    ? 'off'
+    : row.state === 'running'
+      ? 'live'
+      : settling
+        ? 'busy'
+        : row.state === 'error'
+          ? 'bad'
+          : 'off'
   const [busy, setBusy] = useState(false)
+  const [copied, setCopied] = useState(false)
   const [failed, setFailed] = useState('')
+
+  function copyAddr(): void {
+    if (!row.address) return
+    void navigator.clipboard
+      ?.writeText(row.address)
+      .then(() => {
+        setCopied(true)
+        setTimeout(() => setCopied(false), 1400)
+      })
+      .catch(() => {})
+  }
 
   // The host reports the real state within a beat, so there is no optimistic
   // rewrite here — just a disabled control while the command is in flight.
@@ -477,17 +606,20 @@ function ServerCard({
 
   return (
     <article
-      className={`surface card-server${stale ? ' stale' : ''}`}
-      style={{ '--i': index } as React.CSSProperties}
+      className={`surface card-server tone-${tone}${stale ? ' stale' : ''}`}
+      style={{ '--i': index, ...(hue !== null ? { '--hue': hue } : {}) } as React.CSSProperties}
     >
       <button className="card-hit" onClick={onOpen} aria-label={`Open ${row.name}`} />
-      <div className="row">
-        <GameBadge game={row.game} />
+      <div className="card-banner">
+        <GameBadge game={row.game} big />
         <div className="card-id">
           <h2>{row.name}</h2>
-          {/* the game in words, coloured to match the badge — two servers named
-              the same are told apart here, which is the whole point */}
-          <GameTag game={row.game} />
+          {/* the game in words, coloured to match the badge, with the version
+              beside it — two servers of the same game are still told apart */}
+          <div className="card-sub">
+            <GameTag game={row.game} />
+            {row.version && <span className="ver mono">{row.version}</span>}
+          </div>
         </div>
         <span className="spacer" />
         {stale ? (
@@ -499,45 +631,90 @@ function ServerCard({
           <StatusPill state={row.state} />
         )}
       </div>
-      <p className="mono dim addr">
-        {stale
-          ? `last seen ${lastSeen(row)} — its machine is off or signed out`
-          : (row.address ?? 'no address yet')}
-      </p>
-      <div className="metrics">
-        <Metric label="Players" value={live ? String(row.players.length) : '—'} />
-        <Metric label="Memory" value={row.memory_mb ? `${(row.memory_mb / 1024).toFixed(1)} GB` : '—'} />
-        <Metric label="CPU" value={row.cpu_percent !== null ? `${row.cpu_percent}%` : '—'} />
-        <Metric label="Uptime" value={uptime(row.started_at)} />
-      </div>
-      {failed && (
-        <p className="formerr" role="alert">
-          {failed}
-        </p>
-      )}
-      <div className="row actions">
-        <Button
-          size="sm"
-          variant={live && !stale ? 'danger' : 'primary'}
-          disabled={busy || settling || stale}
-          title={stale ? 'Nothing is listening — start the launcher on that machine first' : undefined}
-          onClick={press}
-        >
-          {busy
-            ? 'Sending…'
-            : stale
-              ? 'Host offline'
-              : settling
-                ? row.state === 'starting'
-                  ? 'Starting…'
-                  : 'Stopping…'
-                : live
-                  ? 'Stop'
-                  : 'Start'}
-        </Button>
-        <Button size="sm" variant="ghost" onClick={onOpen}>
-          Console
-        </Button>
+      <div className="card-body">
+        {stale ? (
+          <p className="mono dim addr">last seen {lastSeen(row)} — its machine is off or signed out</p>
+        ) : row.address ? (
+          <div className="connect">
+            <span className="mono addr">{row.address}</span>
+            <button className="copy" onClick={copyAddr} aria-label="Copy address" title="Copy address">
+              {copied ? <Check size={14} aria-hidden /> : <Copy size={14} aria-hidden />}
+            </button>
+          </div>
+        ) : (
+          <p className="mono dim addr">no address yet</p>
+        )}
+        <div className="gauge">
+          <div className="gauge-top">
+            <span className="gl">CPU load</span>
+            <span className="gv">{live && row.cpu_percent !== null ? `${row.cpu_percent}%` : '—'}</span>
+          </div>
+          <div className="bar">
+            <div
+              className={`fill${(row.cpu_percent ?? 0) >= 85 ? ' warn' : ''}`}
+              style={{ width: `${live && row.cpu_percent !== null ? row.cpu_percent : 0}%` }}
+            />
+          </div>
+        </div>
+        <div className="substats">
+          <div className="substat">
+            <span className="k">Players</span>
+            <span className="v">{live ? String(row.players.length) : '—'}</span>
+          </div>
+          <div className="substat">
+            <span className="k">Memory</span>
+            <span className="v">{row.memory_mb ? `${(row.memory_mb / 1024).toFixed(1)} GB` : '—'}</span>
+          </div>
+          <div className="substat">
+            <span className="k">Uptime</span>
+            <span className="v">{uptime(row.started_at)}</span>
+          </div>
+        </div>
+        {live && row.players.length > 0 && (
+          <div className="players-stack" title={row.players.join(', ')}>
+            <div className="pavs">
+              {row.players.slice(0, 5).map((p, i) => (
+                <span key={i} className="pav" style={{ zIndex: 5 - i }}>
+                  {p.slice(0, 1).toUpperCase()}
+                </span>
+              ))}
+              {row.players.length > 5 && <span className="pav more">+{row.players.length - 5}</span>}
+            </div>
+            <span className="players-names dim">
+              {row.players.slice(0, 3).join(', ')}
+              {row.players.length > 3 ? ` +${row.players.length - 3}` : ''}
+            </span>
+          </div>
+        )}
+        {failed && (
+          <p className="formerr" role="alert">
+            {failed}
+          </p>
+        )}
+        <div className="row actions">
+          <Button
+            size="sm"
+            variant={live && !stale ? 'danger' : 'primary'}
+            disabled={busy || settling || stale}
+            title={stale ? 'Nothing is listening — start the launcher on that machine first' : undefined}
+            onClick={press}
+          >
+            {busy
+              ? 'Sending…'
+              : stale
+                ? 'Host offline'
+                : settling
+                  ? row.state === 'starting'
+                    ? 'Starting…'
+                    : 'Stopping…'
+                  : live
+                    ? 'Stop'
+                    : 'Start'}
+          </Button>
+          <Button size="sm" variant="ghost" onClick={onOpen}>
+            Console
+          </Button>
+        </div>
       </div>
     </article>
   )
@@ -669,6 +846,8 @@ function Detail({
 }): React.JSX.Element {
   const [tab, setTab] = useState<Tab>('console')
   const tabs = tabsFor(row.game)
+  const known = row.game !== null && row.game in GAME_HUE
+  const hue = known ? GAME_HUE[row.game as Game] : null
   // a host upgrade can start publishing the game mid-session; if that takes the
   // open tab away (Mods on a game without mods), land on the console rather
   // than leaving a highlighted tab that no longer exists
@@ -694,21 +873,30 @@ function Detail({
           ← Servers
         </Button>
       </div>
-      <div className="row detail-title">
-        <GameBadge game={row.game} big />
-        <div className="card-id">
-          <h1>{row.name}</h1>
-          <GameTag game={row.game} />
+      <div
+        className={`detail-hero surface${isStale(row) ? ' stale' : ''}`}
+        style={hue !== null ? ({ '--hue': hue } as React.CSSProperties) : undefined}
+      >
+        <div className="card-banner">
+          <GameBadge game={row.game} big />
+          <div className="card-id">
+            <h1>{row.name}</h1>
+            <div className="card-sub">
+              <GameTag game={row.game} />
+              {row.version && <span className="ver mono">{row.version}</span>}
+            </div>
+          </div>
+          <span className="spacer" />
+          {isStale(row) ? (
+            <span className="pill stopped" title={`Last report ${lastSeen(row)}`}>
+              <span className="dot" aria-hidden />
+              Unreachable
+            </span>
+          ) : (
+            <StatusPill state={row.state} />
+          )}
         </div>
-        <span className="spacer" />
-        {isStale(row) ? (
-          <span className="pill stopped" title={`Last report ${lastSeen(row)}`}>
-            <span className="dot" aria-hidden />
-            Unreachable
-          </span>
-        ) : (
-          <StatusPill state={row.state} />
-        )}
+        {!isStale(row) && row.address && <p className="mono dim detail-addr">{row.address}</p>}
       </div>
       {isStale(row) && (
         <p className="formnote" style={{ marginBottom: 12 }}>
