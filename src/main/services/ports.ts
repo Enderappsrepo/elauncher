@@ -38,6 +38,12 @@ const BLOCKED = new Map<number, string>([
   [27017, 'MongoDB']
 ])
 
+/** The service a port is reserved for, if it's one ELauncher refuses to map — for
+ *  a caller that wants to say why rather than hand `validateRules` a whole list. */
+export function blockedPortReason(port: number): string | undefined {
+  return BLOCKED.get(port)
+}
+
 /** Which protocol a game's own port speaks. Undefined game = a record that predates the column = minecraft. */
 export function mainPortProtocol(game: string | undefined): 'UDP' | 'TCP' {
   if (game === 'palworld') return 'UDP'

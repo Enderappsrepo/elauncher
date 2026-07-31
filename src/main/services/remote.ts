@@ -41,6 +41,7 @@ import {
   setCommunityServer,
   setServerAutomation,
   setServerLimitsOverride,
+  setServerMainPort,
   setServerPorts,
   setServerProperties,
   regenerateValheimWorld,
@@ -937,6 +938,10 @@ async function runPanelRequest(
       // the blocklist and the cross-server conflict check live in the service,
       // so a hand-crafted request can't punch a hole this path wouldn't
       return await setServerPorts(serverId, params.ports)
+    case 'setMainPort':
+      // same story: the service validates the range, the blocklist and every
+      // other server's ports before it touches server.properties
+      return setServerMainPort(serverId, Number(params.port))
     case 'mods':
       return listServerMods(serverId)
     case 'files':

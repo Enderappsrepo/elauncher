@@ -190,6 +190,13 @@ export function Network({ row, userId, ask }: TabProps): React.JSX.Element {
   const [listingBusy, setListingBusy] = useState(false)
   const [listingError, setListingError] = useState('')
 
+  // Minecraft's game port is a single value, so it can be moved on its own; this
+  // is the inline editor for it, kept apart from the extra-ports draft below
+  const [editingPort, setEditingPort] = useState(false)
+  const [portDraft, setPortDraft] = useState('')
+  const [portBusy, setPortBusy] = useState(false)
+  const [portError, setPortError] = useState('')
+
   const labelRef = useRef<HTMLInputElement>(null)
 
   // makeAsk hands out a fresh closure for every render of the shell, so the load
@@ -261,6 +268,9 @@ export function Network({ row, userId, ask }: TabProps): React.JSX.Element {
   // the game's own block: its port plus per-game neighbors (query ports, ARK's
   // raw socket) — newer hosts send them all, older ones just the game port
   const mains = view.ports.filter((entry) => entry.main)
+  // Minecraft's single game port — the one the editor below moves (undefined if a
+  // host reported no game port at all)
+  const gamePort = mains[0]
   // whether this server takes the jar mods the presets used to assume; null
   // game = a host from before the column, which only ever ran Minecraft
   const modded = row.game === null || row.game === 'minecraft'
@@ -302,6 +312,43 @@ export function Network({ row, userId, ask }: TabProps): React.JSX.Element {
   function focusAdd(): void {
     labelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
     labelRef.current?.focus({ preventScroll: true })
+  }
+
+  function beginEditPort(): void {
+    if (!gamePort) return
+    setPortDraft(String(gamePort.port))
+    setPortError('')
+    setEditingPort(true)
+  }
+
+  /**
+   * Move the game port. The host does the real checks — range, the blocklist,
+   * every other server's ports — so this only catches the obvious before spending
+   * a round trip, and touches `view` alone so an in-progress extra-ports draft
+   * survives the change.
+   */
+  async function saveMainPort(): Promise<void> {
+    if (!gamePort) return
+    const wanted = Number(portDraft)
+    if (!Number.isInteger(wanted) || wanted < 1024 || wanted > 65535) {
+      setPortError('Enter a port between 1024 and 65535 — anything lower belongs to system services.')
+      return
+    }
+    if (wanted === gamePort.port) {
+      setEditingPort(false)
+      return
+    }
+    setPortBusy(true)
+    setPortError('')
+    try {
+      setView(toView(await askRef.current<unknown>('setMainPort', { port: wanted })))
+      setEditingPort(false)
+      toast.success(`Port changed to ${wanted} — restart the server for players to use the new address.`)
+    } catch (e) {
+      setPortError(say(e))
+    } finally {
+      setPortBusy(false)
+    }
   }
 
   /** The truthful version of "saved": while the server runs the save IS the
@@ -390,6 +437,45 @@ export function Network({ row, userId, ask }: TabProps): React.JSX.Element {
         ) : (
           <p className="dim">This host did not report a game port for this server.</p>
         )}
+
+        {/* Minecraft's game port has no query/RCON neighbors, so it can be moved on
+            its own — the one game where the panel offers it. */}
+        {modded && gamePort &&
+          (editingPort ? (
+            <div className="stack">
+              <p className="dim">
+                Players connect on this port. Changing it means everyone reconnects using the new
+                address, and it takes effect the next time the server starts.
+              </p>
+              <div className="row net-portedit">
+                <input
+                  className="input"
+                  type="number"
+                  min="1024"
+                  max="65535"
+                  value={portDraft}
+                  disabled={portBusy}
+                  aria-label="New game port"
+                  onChange={(e) => setPortDraft(e.target.value)}
+                />
+                <Button variant="primary" disabled={portBusy} onClick={() => void saveMainPort()}>
+                  {portBusy ? 'Working…' : 'Save port'}
+                </Button>
+                <Button variant="ghost" disabled={portBusy} onClick={() => setEditingPort(false)}>
+                  Cancel
+                </Button>
+              </div>
+              {portError && (
+                <p className="formerr" role="alert">
+                  {portError}
+                </p>
+              )}
+            </div>
+          ) : (
+            <div className="row">
+              <Button onClick={beginEditPort}>Change port</Button>
+            </div>
+          ))}
       </section>
 
       <section className="surface pad stack">

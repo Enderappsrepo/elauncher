@@ -170,6 +170,17 @@
   flex-wrap: wrap;
 }
 
+/* Inline editor for the Minecraft game port: a narrow number field and its two
+ * actions on one line, wrapping under each other when the card is phone-narrow. */
+.net-portedit {
+  flex-wrap: wrap;
+}
+
+.net-portedit .input {
+  width: 150px;
+  max-width: 100%;
+}
+
 /* The empty state sits inside an already-padded card: keep the ceremony, lose
  * some of the air. */
 .net .empty {

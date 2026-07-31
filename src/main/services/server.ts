@@ -87,6 +87,7 @@ import { STEAM_GAME_INFO } from '@shared/games'
 import { closePort, getMapping, isDirectHost } from './upnp'
 import {
   MAX_EXTRA_PORTS,
+  blockedPortReason,
   closeRules,
   companionPorts,
   mainPortProtocol,
@@ -1707,6 +1708,50 @@ export async function setServerPorts(id: string, raw: unknown): Promise<ServerPo
   const kept = new Set(rules.map((r) => portKey(r.port, r.protocol)))
   await closeRules(previous.filter((r) => !kept.has(portKey(r.port, r.protocol))))
   if ((states.get(id) ?? 'stopped') !== 'stopped') await openExtraPorts(record)
+  return getServerPorts(id)
+}
+
+/**
+ * Move a Minecraft server to a different game port.
+ *
+ * The record's port is the source of truth — the firewall opens it on every start
+ * and the join address is built from it — so this checks the new port is free,
+ * writes it into server.properties, and lets the change bite on the next start,
+ * the same way every other setting in this panel does. Nothing is re-mapped live:
+ * a running server can't rebind its port without restarting anyway, and
+ * ensureGamePortsFirewall opens whatever the record now holds at the next start.
+ *
+ * Minecraft only for now. It is the one game whose port is a single value with no
+ * query/RCON neighbors, so there is nothing to move alongside it; the other games
+ * re-pin a whole port block from the record at launch, and opening that up needs
+ * its own validation of the neighbors — a separate change.
+ */
+export function setServerMainPort(id: string, newPort: number): ServerPortsView {
+  const record = getServer(id)
+  if (gameOf(record) !== 'minecraft') {
+    throw new Error('Changing the port from here is only available for Minecraft servers right now.')
+  }
+  if (!Number.isInteger(newPort) || newPort < 1024 || newPort > 65535) {
+    throw new Error('Enter a port between 1024 and 65535 — anything lower belongs to system services.')
+  }
+  // the port it already has is not a conflict with itself
+  if (newPort === record.port) return getServerPorts(id)
+  const blocked = blockedPortReason(newPort)
+  if (blocked) {
+    throw new Error(`Port ${newPort} is ${blocked}, not a game port — pick one between 1024 and 65535 that nothing else uses.`)
+  }
+  // every port already claimed on this machine, plus this server's own mod ports —
+  // takenPorts omits those (it is built for re-submitting them), but the game port
+  // must not land on one and start fighting it for the same mapping
+  const taken = takenPorts(id)
+  for (const rule of record.extraPorts ?? []) {
+    taken.set(portKey(rule.port, rule.protocol), `this server uses it for ${rule.label}`)
+  }
+  const owner = taken.get(portKey(newPort, mainProtocol(record)))
+  if (owner) throw new Error(`Port ${newPort} is already taken — ${owner}. Pick a different port.`)
+  // writes server.properties and re-syncs record.port from what it wrote, so the
+  // file and the record can never drift apart
+  setServerProperties(id, { 'server-port': String(newPort) })
   return getServerPorts(id)
 }
 
