@@ -66,21 +66,6 @@
   background: var(--bg-hover);
 }
 
-.gh {
-  display: grid;
-  place-items: center;
-  width: 34px;
-  height: 34px;
-  border-radius: var(--radius-xs);
-  color: var(--text-dim);
-  transition: color 0.16s var(--ease-out), background-color 0.16s var(--ease-out);
-}
-
-.gh:hover {
-  color: var(--text);
-  background: var(--bg-hover);
-}
-
 @media (max-width: 720px) {
   .topnav {
     display: none;
@@ -99,8 +84,34 @@ html {
 /* ---------- hero ---------- */
 
 .hero {
+  position: relative;
   padding: clamp(40px, 9vw, 88px) 0 clamp(28px, 5vw, 48px);
   text-align: center;
+}
+
+/* A cinematic aurora blooming behind the hero — the same accent light the app's
+ * workspace uses, so the site opens on the product's own atmosphere. */
+.hero::before {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: clamp(-40px, -3vw, 0px);
+  width: min(1100px, 120vw);
+  height: 620px;
+  transform: translateX(-50%);
+  background:
+    radial-gradient(closest-side, var(--accent-glow), transparent 72%),
+    radial-gradient(closest-side at 32% 42%, rgba(34, 211, 238, 0.16), transparent 70%),
+    radial-gradient(closest-side at 70% 38%, rgba(217, 70, 239, 0.12), transparent 70%);
+  filter: blur(30px);
+  opacity: 0.75;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.hero > * {
+  position: relative;
+  z-index: 1;
 }
 
 /* The one place the type is allowed to get loud. clamp() rather than breakpoints

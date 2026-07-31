@@ -37,7 +37,7 @@ const FEATURES = [
   [Share2, 'Shareable modpacks', "Export any instance as a pack file or publish it to your group's cloud library — friends install and update it with one click."],
   [Zap, 'Performance tuned', 'Optimized JVM flags, automatic memory sizing, and one-click performance mod setups that stop the stutter.'],
   [Shirt, 'Skin manager', "Preview skins in 3D, keep a wardrobe of favorites, grab any player's skin by name, and apply in one click."],
-  [RefreshCw, 'Updates itself', 'The launcher checks GitHub for new versions, downloads them in the background, and installs on restart.'],
+  [RefreshCw, 'Updates itself', 'The launcher checks for new versions, downloads them in the background, and installs on restart.'],
   [FolderInput, 'Bring your setups with you', 'Migrate instances from other launchers — worlds, mods, and settings come along automatically.']
 ] as const
 
@@ -70,15 +70,15 @@ const RENT = [
 ] as const
 
 const FAQ = [
-  ['Is it free?', 'Yes — free and open source under the MIT license. No ads, no accounts required beyond your normal Microsoft login, no telemetry.'],
+  ['Is it free?', 'Completely free — no ads, no subscriptions, and no accounts required beyond your normal Microsoft login. No telemetry.'],
   ['Do I need to own Minecraft?', "Yes. ELauncher signs you in with your real Microsoft account and launches the game you already own — it's a launcher, not a pirated client."],
   ['Is my Microsoft account safe?', "Sign-in happens through Microsoft's official login window (OAuth). ELauncher never sees your password; game tokens are stored locally on your machine only."],
-  ['How do updates work?', "The launcher checks this site's GitHub releases when it starts, downloads new versions in the background, and installs them when you restart. The portable build tells you when a new version is out and links you here instead."],
-  ['What about the "cloud" — whose servers are those?', 'Your own. The modpack cloud is a free Supabase project that one person in your group sets up in about five minutes (instructions in the README). Nobody else’s server is involved.'],
+  ['How do updates work?', 'The launcher checks this site for new versions when it starts, downloads them in the background, and installs them when you restart. The portable build tells you when a new version is out and links you here instead.'],
+  ['What about the "cloud" — whose servers are those?', 'Your own. The modpack cloud is a free Supabase project that one person in your group sets up in about five minutes. Nobody else’s server is involved.'],
   ['How does the server hosting work?', 'The launcher runs a dedicated server on your PC — Minecraft, Palworld, ARK, Valheim, 7 Days to Die, Project Zomboid or tModLoader — and links it to a free cloud relay. From the web panel (or your phone) you get live status, console, full settings, player moderation, and automation. Your PC stays the host; the panel is just the remote control.'],
   ['Can I rent a server instead of hosting one?', 'Yes. The shop inside the panel rents managed servers for every supported game, from $4/month. You pay by PayPal or card link, a human approves it, and the server builds itself on our machines — then it shows up in your panel like any other server.'],
   ['Can I let friends manage a server?', 'Yes — grant any ELauncher account access to a specific server and it shows up in their launcher and phone panel with console and controls, scoped to just that server. Revoke anytime.'],
-  ['Mac or Linux?', 'The desktop app is Windows only right now. The code is open source, so a Mac/Linux build is mostly a packaging task — open an issue if you want it.']
+  ['Mac or Linux?', 'The desktop app is Windows only right now. A Mac or Linux build is on the roadmap — let us know if you want it.']
 ] as const
 
 export function App(): React.JSX.Element {
@@ -103,16 +103,10 @@ export function App(): React.JSX.Element {
               <a href="#faq">FAQ</a>
             </nav>
             <span className="spacer" />
-            <a
-              className="gh"
-              href="https://github.com/Enderappsrepo/elauncher"
-              target="_blank"
-              rel="noopener"
-              aria-label="Source on GitHub"
-            >
-              <GithubMark />
+            <a className="btn ghost sm" href="#download">
+              Download
             </a>
-            <a className="btn ghost sm" href="/elauncher/manage/">
+            <a className="btn primary sm" href="/elauncher/manage/">
               Open panel
             </a>
           </div>
@@ -127,7 +121,7 @@ export function App(): React.JSX.Element {
           >
             <motion.span variants={staggerChild} className="pill running">
               <span className="dot" aria-hidden />
-              Free &amp; open source · Windows 10/11
+              Free forever · Windows 10/11
             </motion.span>
             <motion.h1 variants={staggerChild} className="display">
               Play modded, <em>host anything.</em>
@@ -289,8 +283,7 @@ export function App(): React.JSX.Element {
                 <p className="dim meta">
                   Windows may show a SmartScreen warning on first run — choose{' '}
                   <strong>More info → Run anyway</strong>. The build is unsigned because code-signing
-                  certificates cost more than this project makes; the installer is built publicly by
-                  GitHub Actions from the source in this repository.
+                  certificates are costly for a community project; it installs and updates itself in seconds.
                 </p>
               </div>
             </Reveal>
@@ -307,10 +300,9 @@ export function App(): React.JSX.Element {
 
         <footer className="wrap foot">
           <div className="row">
-            <a href="https://github.com/Enderappsrepo/elauncher">Source on GitHub</a>
-            <a href="https://github.com/Enderappsrepo/elauncher/issues">Report an issue</a>
+            <a href="#download">Download</a>
             <a href="/elauncher/manage/">Web panel</a>
-            <span className="dim">MIT licensed</span>
+            <a href="#faq">FAQ</a>
           </div>
           <p className="dim small">
             ELauncher is a community project, not affiliated with Mojang, Microsoft, Modrinth,
@@ -320,15 +312,6 @@ export function App(): React.JSX.Element {
         </footer>
       </div>
     </MotionRoot>
-  )
-}
-
-/** Lucide dropped brand icons, so the octocat is inlined. */
-function GithubMark(): React.JSX.Element {
-  return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
-      <path d="M12 .5C5.65.5.5 5.65.5 12c0 5.08 3.29 9.39 7.86 10.91.58.11.79-.25.79-.55 0-.27-.01-1.17-.02-2.12-3.2.7-3.88-1.36-3.88-1.36-.52-1.33-1.28-1.68-1.28-1.68-1.04-.71.08-.7.08-.7 1.15.08 1.76 1.19 1.76 1.19 1.03 1.76 2.69 1.25 3.35.96.1-.75.4-1.25.72-1.54-2.55-.29-5.24-1.28-5.24-5.69 0-1.26.45-2.28 1.19-3.09-.12-.29-.52-1.46.11-3.04 0 0 .97-.31 3.17 1.18a11 11 0 0 1 5.77 0c2.2-1.49 3.17-1.18 3.17-1.18.63 1.58.23 2.75.11 3.04.74.81 1.19 1.83 1.19 3.09 0 4.42-2.7 5.39-5.27 5.68.41.36.78 1.06.78 2.14 0 1.54-.01 2.79-.01 3.17 0 .31.21.67.8.55A11.51 11.51 0 0 0 23.5 12C23.5 5.65 18.35.5 12 .5Z" />
-    </svg>
   )
 }
 
