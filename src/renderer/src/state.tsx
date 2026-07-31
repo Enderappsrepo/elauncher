@@ -12,6 +12,8 @@ import type {
 
 interface AppState {
   accounts: AccountsState
+  /** true once the first account fetch has resolved — gates first-run onboarding */
+  accountsLoaded: boolean
   instances: Instance[]
   runStates: Record<string, InstanceRunState>
   progress: Record<string, ProgressEvent>
@@ -35,6 +37,7 @@ const Ctx = createContext<AppState | null>(null)
 
 export function AppStateProvider({ children }: { children: ReactNode }): React.JSX.Element {
   const [accounts, setAccounts] = useState<AccountsState>({ accounts: [], activeUuid: null })
+  const [accountsLoaded, setAccountsLoaded] = useState(false)
   const [instances, setInstances] = useState<Instance[]>([])
   const [runStates, setRunStates] = useState<Record<string, InstanceRunState>>({})
   const [progress, setProgress] = useState<Record<string, ProgressEvent>>({})
@@ -46,6 +49,7 @@ export function AppStateProvider({ children }: { children: ReactNode }): React.J
 
   const refreshAccounts = useCallback(async () => {
     setAccounts(await window.elauncher.auth.getState())
+    setAccountsLoaded(true)
   }, [])
 
   const refreshInstances = useCallback(async () => {
@@ -133,6 +137,7 @@ export function AppStateProvider({ children }: { children: ReactNode }): React.J
   const value = useMemo(
     () => ({
       accounts,
+      accountsLoaded,
       instances,
       runStates,
       progress,
@@ -150,7 +155,7 @@ export function AppStateProvider({ children }: { children: ReactNode }): React.J
       launch,
       kill
     }),
-    [accounts, instances, runStates, progress, packTasks, lastGameEvents, cloudAvailable, cloudUser, cloudUpdates, refreshAccounts, refreshInstances, refreshCloud, login, logout, setActiveAccount, launch, kill]
+    [accounts, accountsLoaded, instances, runStates, progress, packTasks, lastGameEvents, cloudAvailable, cloudUser, cloudUpdates, refreshAccounts, refreshInstances, refreshCloud, login, logout, setActiveAccount, launch, kill]
   )
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>

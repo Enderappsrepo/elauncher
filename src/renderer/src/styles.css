@@ -1154,6 +1154,162 @@ button.icon-btn:hover {
 }
 
 /* ============================================================
+   Onboarding — first-run "sign in with Microsoft" welcome
+   ============================================================ */
+
+.onboard-modal {
+  width: 448px;
+  text-align: center;
+  align-items: stretch;
+  gap: 18px;
+  padding: 32px 28px 24px;
+}
+
+.onboard-hero {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 11px;
+}
+
+.onboard-logo {
+  width: 78px;
+  height: 78px;
+  border-radius: 22px;
+  display: grid;
+  place-items: center;
+  background: linear-gradient(135deg, var(--accent-soft), transparent 70%), var(--bg-card);
+  border: 1px solid var(--border-strong);
+  box-shadow: 0 12px 44px var(--accent-glow), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  margin-bottom: 3px;
+}
+
+.onboard-logo img {
+  width: 54px;
+  height: 54px;
+  border-radius: 15px;
+}
+
+.onboard-modal h2 {
+  font-size: 22px;
+  font-weight: 820;
+  letter-spacing: -0.025em;
+}
+
+.onboard-modal h2 .brand-accent {
+  background: linear-gradient(90deg, var(--accent-hover), var(--accent-2));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.onboard-hero .muted {
+  font-size: 13.5px;
+  line-height: 1.6;
+  max-width: 36ch;
+}
+
+.onboard-features {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  text-align: left;
+  background: var(--track-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 8px;
+}
+
+.onboard-features li {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  padding: 9px 8px;
+  border-radius: var(--radius-sm);
+}
+
+.onboard-features .of-ic {
+  width: 36px;
+  height: 36px;
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  border-radius: 11px;
+  background: var(--accent-soft);
+  color: var(--accent-hover);
+}
+
+.onboard-features .of-title {
+  font-weight: 650;
+  font-size: 13.5px;
+  color: var(--text);
+}
+
+.onboard-features .of-desc {
+  font-size: 12px;
+  color: var(--text-faint);
+  line-height: 1.45;
+}
+
+.onboard-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+
+/* Microsoft sign-in: a bold accent lockup carrying the four-square brand
+   mark in a white chip so its colors stay legible over the gradient. */
+.ms-signin {
+  width: 100%;
+  padding: 13px 18px;
+  font-size: 14.5px;
+  font-weight: 700;
+  gap: 11px;
+  color: #fff;
+  background: linear-gradient(135deg, var(--accent), var(--accent-2));
+  box-shadow: 0 2px 20px var(--accent-glow), inset 0 1px 0 rgba(255, 255, 255, 0.22);
+}
+
+.ms-signin:hover:not(:disabled) {
+  filter: brightness(1.08);
+  transform: translateY(-1px);
+  background: linear-gradient(135deg, var(--accent), var(--accent-2));
+  box-shadow: 0 6px 30px var(--accent-glow), inset 0 1px 0 rgba(255, 255, 255, 0.22);
+}
+
+.ms-chip {
+  display: inline-flex;
+  padding: 3px;
+  border-radius: 5px;
+  background: #fff;
+}
+
+.ms-mark {
+  display: block;
+}
+
+.onboard-skip {
+  width: 100%;
+}
+
+.onboard-foot {
+  font-size: 11.5px;
+  color: var(--text-faint);
+  line-height: 1.55;
+  margin-top: -3px;
+}
+
+.onboard-foot a {
+  color: var(--accent-hover);
+  text-decoration: none;
+}
+
+.onboard-foot a:hover {
+  text-decoration: underline;
+}
+
+/* ============================================================
    Fields
    ============================================================ */
 

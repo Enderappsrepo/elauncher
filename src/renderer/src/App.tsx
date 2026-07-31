@@ -11,6 +11,7 @@ import ImportPackModal from './components/ImportPackModal'
 import Select from './components/Select'
 import CloudAuthModal from './components/CloudAuthModal'
 import MigrateModal from './components/MigrateModal'
+import WelcomeModal from './components/WelcomeModal'
 import HomePage from './pages/HomePage'
 import InstancesPage from './pages/InstancesPage'
 import InstancePage from './pages/InstancePage'
@@ -201,14 +202,31 @@ function CloudAccountSection(): React.JSX.Element | null {
   )
 }
 
+/** Persisted flag: the first-run welcome has been seen (signed in or skipped). */
+const ONBOARDED_KEY = 'elauncher.onboarded'
+
 export default function App(): React.JSX.Element {
-  const { refreshInstances, cloudAvailable, cloudUser, cloudUpdates } = useAppState()
+  const { refreshInstances, accounts, accountsLoaded, cloudAvailable, cloudUser, cloudUpdates } = useAppState()
   const appVersion = useAppVersion()
   const toast = useToast()
   const navigate = useNavigate()
   const [showImport, setShowImport] = useState(false)
   const [showMigrate, setShowMigrate] = useState(false)
+  const [showWelcome, setShowWelcome] = useState(false)
   const updateCount = Object.keys(cloudUpdates).length
+
+  // First launch with no Microsoft account: greet the user and point them at
+  // the one thing that unlocks everything else — signing in.
+  useEffect(() => {
+    if (accountsLoaded && accounts.accounts.length === 0 && localStorage.getItem(ONBOARDED_KEY) !== '1') {
+      setShowWelcome(true)
+    }
+  }, [accountsLoaded, accounts.accounts.length])
+
+  const dismissWelcome = (): void => {
+    localStorage.setItem(ONBOARDED_KEY, '1')
+    setShowWelcome(false)
+  }
 
   const onImported = async (id: string, name: string): Promise<void> => {
     setShowImport(false)
@@ -302,6 +320,7 @@ export default function App(): React.JSX.Element {
       </div>
       {showImport && <ImportPackModal onClose={() => setShowImport(false)} onImported={(id, name) => void onImported(id, name)} />}
       {showMigrate && <MigrateModal onClose={() => setShowMigrate(false)} onImported={(id) => void onMigrated(id)} />}
+      {showWelcome && <WelcomeModal onClose={dismissWelcome} />}
     </div>
   )
 }
