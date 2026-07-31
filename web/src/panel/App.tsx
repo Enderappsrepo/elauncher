@@ -25,6 +25,7 @@ const Mods = lazy(() => import('./tabs/Mods').then((m) => ({ default: m.Mods }))
 const Network = lazy(() => import('./tabs/Network').then((m) => ({ default: m.Network })))
 const Players = lazy(() => import('./tabs/Players').then((m) => ({ default: m.Players })))
 const Settings = lazy(() => import('./tabs/Settings').then((m) => ({ default: m.Settings })))
+const Version = lazy(() => import('./tabs/Version').then((m) => ({ default: m.Version })))
 const Admin = lazy(() => import('./views/Admin').then((m) => ({ default: m.Admin })))
 const Billing = lazy(() => import('./views/Billing').then((m) => ({ default: m.Billing })))
 const Health = lazy(() => import('./views/Health').then((m) => ({ default: m.Health })))
@@ -40,6 +41,7 @@ const TABS = [
   'console',
   'settings',
   'players',
+  'version',
   'mods',
   'files',
   'network',
@@ -56,13 +58,17 @@ type Tab = (typeof TABS)[number]
  */
 const hasModsTab = (game: string | null): boolean => game === null || game === 'minecraft'
 
+/** Tabs that only make sense for Minecraft — mods to install, and a loader to swap. */
+const MC_ONLY_TABS: readonly Tab[] = ['version', 'mods']
+
 const tabsFor = (game: string | null): readonly Tab[] =>
-  hasModsTab(game) ? TABS : TABS.filter((t) => t !== 'mods')
+  hasModsTab(game) ? TABS : TABS.filter((t) => !MC_ONLY_TABS.includes(t))
 const TAB_LABELS: Record<Tab, string> = {
   overview: 'Overview',
   console: 'Console',
   settings: 'Settings',
   players: 'Players',
+  version: 'Version',
   mods: 'Mods',
   files: 'Files',
   network: 'Network',
@@ -920,6 +926,7 @@ function Detail({
           </div>
         )}
         {tab === 'settings' && <Settings row={row} userId={userId} ask={ask} />}
+        {tab === 'version' && hasModsTab(row.game) && <Version row={row} userId={userId} ask={ask} />}
         {tab === 'players' && <Players row={row} userId={userId} ask={ask} />}
         {tab === 'mods' && hasModsTab(row.game) && <Mods row={row} userId={userId} ask={ask} />}
         {tab === 'files' && <Files row={row} userId={userId} ask={ask} />}

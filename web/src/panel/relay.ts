@@ -52,7 +52,7 @@ export type RequestAction =
   | 'players' | 'roster' | 'rosterEdit' | 'moderate'
   | 'getProps' | 'setProps'
   | 'ports' | 'setPorts' | 'setMainPort' | 'setCommunity'
-  | 'logs' | 'setAutomation' | 'rebuild'
+  | 'logs' | 'setAutomation' | 'rebuild' | 'loaderVersions' | 'swap'
   | 'shares' | 'share' | 'unshare'
 
 const REQUEST_TIMEOUT_MS = 22_000
@@ -69,6 +69,10 @@ const REQUEST_TIMEOUT_MS = 22_000
 const SLOW_ACTIONS: Partial<Record<RequestAction, number>> = {
   installMod: 40_000,
   rebuild: 120_000,
+  // swap runs the loader installer just like rebuild, so it needs the same room;
+  // loaderVersions hits a maven endpoint that can be slow but is not "minutes" slow
+  swap: 120_000,
+  loaderVersions: 30_000,
   uploadChunk: 60_000,
   downloadChunk: 60_000,
   writeFile: 40_000,

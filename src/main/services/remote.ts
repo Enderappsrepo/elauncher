@@ -47,11 +47,13 @@ import {
   regenerateValheimWorld,
   startServer,
   stopServer,
+  swapServerLoader,
   uploadServerFileChunk,
   valheimWorldReady,
   writeServerFile
 } from './server'
 import type { PlayerFileKind } from './server'
+import { getLoaderVersions } from './versions'
 import type { PalworldModerationAction, RemoteCommandAction, ServerAutomation } from '@shared/types'
 
 /**
@@ -883,6 +885,9 @@ async function runPanelRequest(
         game: record.game ?? 'minecraft',
         kind: record.kind,
         minecraftVersion: record.minecraftVersion,
+        // the exact loader build (e.g. neoforge 21.1.235), so the Version tab can
+        // show where the server is and preselect it in the build dropdown
+        loaderVersion: record.loaderVersion ?? null,
         port: record.port,
         memoryMax: record.memoryMax,
         communityServer: Boolean(record.communityServer),
@@ -989,6 +994,23 @@ async function runPanelRequest(
     case 'rebuild': {
       const kind = String(params.loader ?? 'paper') as 'vanilla' | 'paper' | 'fabric' | 'neoforge' | 'forge'
       await rebuildServer(serverId, kind, String(params.version ?? ''))
+      await startServer(serverId).catch(() => {})
+      return { ok: true }
+    }
+    case 'loaderVersions': {
+      // the specific loader builds for one Minecraft version (e.g. every NeoForge
+      // 21.1.x), fetched host-side so the maven endpoints' missing CORS headers
+      // never matter. Only the modded kinds are separately versioned.
+      const loader = String(params.loader ?? '')
+      if (loader !== 'fabric' && loader !== 'neoforge' && loader !== 'forge') return []
+      return getLoaderVersions(loader, String(params.mc ?? params.version ?? ''))
+    }
+    case 'swap': {
+      // non-destructive sibling of rebuild: keeps the world, mods and configs and
+      // only replaces the loader binaries. loaderVersion pins the exact build.
+      const kind = String(params.loader ?? 'paper') as 'vanilla' | 'paper' | 'fabric' | 'neoforge' | 'forge'
+      const loaderVersion = params.loaderVersion ? String(params.loaderVersion) : undefined
+      await swapServerLoader(serverId, kind, String(params.version ?? ''), loaderVersion)
       await startServer(serverId).catch(() => {})
       return { ok: true }
     }

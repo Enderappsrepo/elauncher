@@ -1,0 +1,8 @@
+/* The Version tab leans on the global primitives (.surface, .field, .formnote)
+ * for everything except one thing: the warning tint. It is the same idea as
+ * Automation's .auto-warn — a yellow note that says "your mods may not survive
+ * this" — kept local here so the tab pulls in no other tab's stylesheet. */
+.ver-warn {
+  border-color: color-mix(in srgb, var(--yellow) 34%, transparent);
+  background: var(--yellow-soft);
+}
