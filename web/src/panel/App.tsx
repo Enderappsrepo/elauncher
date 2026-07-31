@@ -24,6 +24,7 @@ const Files = lazy(() => import('./tabs/Files').then((m) => ({ default: m.Files 
 const Mods = lazy(() => import('./tabs/Mods').then((m) => ({ default: m.Mods })))
 const Network = lazy(() => import('./tabs/Network').then((m) => ({ default: m.Network })))
 const Players = lazy(() => import('./tabs/Players').then((m) => ({ default: m.Players })))
+const Resources = lazy(() => import('./tabs/Resources').then((m) => ({ default: m.Resources })))
 const Settings = lazy(() => import('./tabs/Settings').then((m) => ({ default: m.Settings })))
 const Version = lazy(() => import('./tabs/Version').then((m) => ({ default: m.Version })))
 const Admin = lazy(() => import('./views/Admin').then((m) => ({ default: m.Admin })))
@@ -46,7 +47,8 @@ const TABS = [
   'files',
   'network',
   'automation',
-  'access'
+  'access',
+  'resources'
 ] as const
 type Tab = (typeof TABS)[number]
 
@@ -61,8 +63,18 @@ const hasModsTab = (game: string | null): boolean => game === null || game === '
 /** Tabs that only make sense for Minecraft — mods to install, and a loader to swap. */
 const MC_ONLY_TABS: readonly Tab[] = ['version', 'mods']
 
-const tabsFor = (game: string | null): readonly Tab[] =>
-  hasModsTab(game) ? TABS : TABS.filter((t) => !MC_ONLY_TABS.includes(t))
+/**
+ * Tabs the host only lets an operator drive. Resources changes a server's RAM and
+ * CPU allowance above its plan, which the host gates behind is_admin — so it is
+ * hidden from everyone else rather than offered as a control that would only ever
+ * return "Only the host owner or an admin can do that."
+ */
+const ADMIN_ONLY_TABS: readonly Tab[] = ['resources']
+
+const tabsFor = (game: string | null, isAdmin: boolean): readonly Tab[] => {
+  const base = hasModsTab(game) ? TABS : TABS.filter((t) => !MC_ONLY_TABS.includes(t))
+  return isAdmin ? base : base.filter((t) => !ADMIN_ONLY_TABS.includes(t))
+}
 const TAB_LABELS: Record<Tab, string> = {
   overview: 'Overview',
   console: 'Console',
@@ -73,7 +85,8 @@ const TAB_LABELS: Record<Tab, string> = {
   files: 'Files',
   network: 'Network',
   automation: 'Automation',
-  access: 'Access'
+  access: 'Access',
+  resources: 'Resources'
 }
 
 /**
@@ -295,6 +308,7 @@ export function App(): React.JSX.Element {
                       row={open}
                       userId={userId ?? ''}
                       preview={Boolean(mock)}
+                      isAdmin={isAdmin}
                       control={control}
                       onBack={() => setOpenId(null)}
                     />
@@ -841,17 +855,19 @@ function Detail({
   row,
   userId,
   preview,
+  isAdmin,
   control,
   onBack
 }: {
   row: ServerRow
   userId: string
   preview: boolean
+  isAdmin: boolean
   control: Control
   onBack: () => void
 }): React.JSX.Element {
   const [tab, setTab] = useState<Tab>('console')
-  const tabs = tabsFor(row.game)
+  const tabs = tabsFor(row.game, isAdmin)
   const known = row.game !== null && row.game in GAME_HUE
   const hue = known ? GAME_HUE[row.game as Game] : null
   // a host upgrade can start publishing the game mid-session; if that takes the
@@ -933,6 +949,7 @@ function Detail({
         {tab === 'network' && <Network row={row} userId={userId} ask={ask} />}
         {tab === 'automation' && <Automation row={row} userId={userId} ask={ask} />}
         {tab === 'access' && <Access row={row} userId={userId} ask={ask} />}
+        {tab === 'resources' && isAdmin && <Resources row={row} userId={userId} ask={ask} />}
         </Suspense>
       </div>
     </div>

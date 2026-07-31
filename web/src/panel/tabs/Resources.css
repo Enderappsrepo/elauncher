@@ -1,0 +1,144 @@
+/* Resources tab.
+ *
+ * Same posture as the Automation tab: the component layer (.surface, .field,
+ * .input, .formnote, .pill) does almost everything, and what is left is the
+ * thumb-sized stepper, the two-way segmented control, and the sticky save dock —
+ * kept local, and deliberately shaped to match Automation so the two admin
+ * screens read as one family.
+ */
+
+.res-grow {
+  flex: 1;
+  min-width: 0;
+}
+
+/* A note whose colour is the message: it qualifies the control it sits under. */
+.respane .res-warn {
+  border-color: color-mix(in srgb, var(--yellow) 34%, transparent);
+  background: var(--yellow-soft);
+}
+
+.respane .formnote {
+  margin-top: -2px;
+}
+
+/* Plan baseline: two read-only facts side by side, the number an override is
+ * measured against. */
+.res-plan {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.res-planitem {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-card);
+}
+
+.res-plank {
+  color: var(--text-faint);
+  font-size: var(--fs-small);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.res-planv {
+  font-size: var(--fs-body);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Matches the <label> ui.css gives a .field, for the segmented row whose control
+ * is a pair of buttons with nothing a <label for> can point at. */
+.res-label {
+  color: var(--text-dim);
+  font-size: var(--fs-small);
+  font-weight: 600;
+}
+
+/* Two choices, both visible — a select would hide one behind a tap. */
+.res-seg {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.res-seg .btn {
+  padding: 0 8px;
+}
+
+/* Stepper: thumb-sized ends, a real input in the middle. */
+.res-step {
+  display: grid;
+  grid-template-columns: 52px 1fr 52px;
+  gap: 8px;
+}
+
+.res-step .btn {
+  padding: 0;
+}
+
+.res-stepval {
+  position: relative;
+  min-width: 0;
+}
+
+.res-stepval .input {
+  text-align: center;
+  padding-right: 46px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Spinners on a number the buttons already step would be two controls fighting
+ * over one field. */
+.res-stepval .input::-webkit-outer-spin-button,
+.res-stepval .input::-webkit-inner-spin-button {
+  appearance: none;
+  margin: 0;
+}
+
+.res-stepunit {
+  position: absolute;
+  top: 50%;
+  right: 13px;
+  transform: translateY(-50%);
+  color: var(--text-faint);
+  font-size: var(--fs-small);
+  pointer-events: none;
+}
+
+/* Sticky action dock, twin of the Settings and Automation ones: present only
+ * while there are edits to keep or a failure to read, and sat where a thumb
+ * already is. Motion drives its entrance and exit; this is only where it sticks. */
+.res-dock {
+  position: sticky;
+  bottom: 10px;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  background: var(--glass-bg);
+  backdrop-filter: blur(16px) saturate(1.3);
+  box-shadow: var(--shadow-lift);
+}
+
+/* On a phone the shell's bottomnav floats over the same edge; the dock rides
+ * just above it rather than underneath it. */
+@media (max-width: 899px) {
+  .res-dock {
+    bottom: calc(72px + env(safe-area-inset-bottom));
+  }
+}
+
+.res-dockmsg {
+  color: var(--text-dim);
+  font-size: var(--fs-small);
+}

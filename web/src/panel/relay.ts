@@ -51,6 +51,7 @@ export type RequestAction =
   | 'mods' | 'installMod' | 'removeMod'
   | 'players' | 'roster' | 'rosterEdit' | 'moderate'
   | 'getProps' | 'setProps'
+  | 'setLimits'
   | 'ports' | 'setPorts' | 'setMainPort' | 'setCommunity'
   | 'logs' | 'setAutomation' | 'rebuild' | 'loaderVersions' | 'swap'
   | 'shares' | 'share' | 'unshare'
