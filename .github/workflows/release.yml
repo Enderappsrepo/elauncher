@@ -21,6 +21,12 @@ jobs:
   release:
     strategy:
       fail-fast: false
+      # Publish the platforms SEQUENTIALLY. When both jobs publish at once,
+      # electron-builder's "find-or-create release" races and each job creates its
+      # OWN GitHub release for the same tag, splitting the assets across two duplicate
+      # releases. Sequential means the first job creates the release and the second
+      # uploads onto it. Costs ~2x wall-clock; correctness wins for releases.
+      max-parallel: 1
       matrix:
         include:
           - os: windows-latest
