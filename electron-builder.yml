@@ -27,6 +27,28 @@ nsis:
   shortcutName: ELauncher
 portable:
   artifactName: ${productName}-Portable-${version}.${ext}
+mac:
+  icon: build/icon.png
+  category: public.app-category.games
+  # We ship without an Apple Developer certificate. Ad-hoc sign anyway (identity '-',
+  # NOT null): Apple Silicon refuses to launch unsigned binaries, and a null identity
+  # skips signing entirely. Turn the hardened runtime off so the ad-hoc signature isn't
+  # rejected for library validation against Electron's Team-ID-signed frameworks.
+  identity: '-'
+  hardenedRuntime: false
+  gatekeeperAssess: false
+  target:
+    - target: dmg
+      arch:
+        - arm64
+        - x64
+    # zip keeps latest-mac.yml well-formed so the in-app update check still fires
+    - target: zip
+      arch:
+        - arm64
+        - x64
+dmg:
+  artifactName: ${productName}-${version}-${arch}.${ext}
 electronDownload:
   cache: .electron-cache
 npmRebuild: false

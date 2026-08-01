@@ -62,8 +62,8 @@ export function UpdateCard(): React.JSX.Element | null {
     )
   }
 
-  // portable exe can't replace itself — hand the user the download instead
-  if (status.state === 'available' && status.portable) {
+  // portable exe and unsigned mac builds can't replace themselves — hand over the download
+  if (status.state === 'available' && (status.portable || status.manual)) {
     return (
       <div className="update-card">
         <div className="update-head">

@@ -22,7 +22,9 @@
     "web:build": "vite build --config vite.web.config.ts",
     "sync:tokens": "node scripts/sync-tokens.mjs",
     "dist": "electron-vite build && electron-builder --win",
+    "dist:mac": "electron-vite build && electron-builder --mac",
     "release": "electron-vite build && electron-builder --win --publish always",
+    "release:mac": "electron-vite build && electron-builder --mac --publish always",
     "version": "node scripts/sync-tokens.mjs && git add docs/"
   },
   "devDependencies": {

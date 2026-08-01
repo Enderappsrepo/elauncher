@@ -10,10 +10,19 @@ const CHECK_INTERVAL_MS = 4 * 60 * 60 * 1000 // re-check every 4 hours while the
 /** The portable exe runs from wherever the user dropped it — it can't be swapped in place. */
 const isPortable = (): boolean => Boolean(process.env.PORTABLE_EXECUTABLE_DIR)
 
+/**
+ * Our macOS builds ship without an Apple Developer certificate, so Squirrel.Mac
+ * refuses to apply an update it can't validate. On mac we therefore only *detect*
+ * a newer version and send the user to the download page — the same manual
+ * fallback the portable Windows build already uses.
+ */
+const isManualUpdate = (): boolean => process.platform === 'darwin'
+
 let status: UpdaterStatus = {
   state: app.isPackaged ? 'idle' : 'dev',
   currentVersion: app.getVersion(),
-  portable: isPortable()
+  portable: isPortable(),
+  manual: isManualUpdate()
 }
 
 function setStatus(patch: Partial<UpdaterStatus>): void {
@@ -62,8 +71,11 @@ export function openLatestRelease(): void {
 export function initUpdater(): void {
   if (!app.isPackaged) return
 
-  autoUpdater.autoDownload = !isPortable()
-  autoUpdater.autoInstallOnAppQuit = !isPortable()
+  // Only self-installing builds should pull the update down. Portable Windows and
+  // unsigned mac builds leave it off, so the flow parks at "available" and links out.
+  const selfInstalls = !isPortable() && !isManualUpdate()
+  autoUpdater.autoDownload = selfInstalls
+  autoUpdater.autoInstallOnAppQuit = selfInstalls
 
   autoUpdater.on('checking-for-update', () => setStatus({ state: 'checking', error: undefined }))
   autoUpdater.on('update-not-available', () => setStatus({ state: 'uptodate' }))

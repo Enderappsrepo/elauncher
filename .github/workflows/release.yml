@@ -1,8 +1,11 @@
-# Builds the Windows installer and publishes it (plus the latest.yml update feed)
-# to a GitHub Release whenever a version tag is pushed:
+# Builds the installers and publishes them (plus the latest.yml / latest-mac.yml
+# update feeds) to a GitHub Release whenever a version tag is pushed:
 #
 #   npm version patch   # bumps package.json + creates the tag
 #   git push --follow-tags
+#
+# Windows and macOS build on their own native runners and upload to the same
+# release (keyed by the tag). The mac build is unsigned/ad-hoc — see electron-builder.yml.
 name: Release
 
 on:
@@ -16,7 +19,15 @@ permissions:
 
 jobs:
   release:
-    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            args: --win
+          - os: macos-latest
+            args: --mac
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
 
@@ -32,6 +43,24 @@ jobs:
         run: npm run build
 
       - name: Package and publish
-        run: npx electron-builder --win --publish always
+        run: npx electron-builder ${{ matrix.args }} --publish always
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # No Mac on hand to click-test the build, so at least prove the ad-hoc
+      # signature is valid — an unsigned/broken signature is the one failure
+      # that stops the app launching on Apple Silicon. Informational only.
+      - name: Verify macOS signature
+        if: matrix.os == 'macos-latest'
+        continue-on-error: true
+        run: |
+          apps=$(find release -maxdepth 2 -name '*.app' -type d)
+          if [ -z "$apps" ]; then echo "no .app bundle found under release/"; exit 0; fi
+          for app in $apps; do
+            echo "== $app =="
+            if codesign --verify --deep --strict --verbose=2 "$app"; then
+              echo "codesign: OK — ad-hoc signature valid, will launch on Apple Silicon"
+            else
+              echo "codesign: FAILED — this build would NOT launch on Apple Silicon"
+            fi
+          done

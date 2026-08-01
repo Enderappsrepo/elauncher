@@ -73,12 +73,12 @@ const FAQ = [
   ['Is it free?', 'Completely free — no ads, no subscriptions, and no accounts required beyond your normal Microsoft login. No telemetry.'],
   ['Do I need to own Minecraft?', "Yes. ELauncher signs you in with your real Microsoft account and launches the game you already own — it's a launcher, not a pirated client."],
   ['Is my Microsoft account safe?', "Sign-in happens through Microsoft's official login window (OAuth). ELauncher never sees your password; game tokens are stored locally on your machine only."],
-  ['How do updates work?', 'The launcher checks this site for new versions when it starts, downloads them in the background, and installs them when you restart. The portable build tells you when a new version is out and links you here instead.'],
+  ['How do updates work?', 'The launcher checks for new versions when it starts, downloads them in the background, and installs them when you restart. The portable and macOS builds instead tell you when a new version is out and link you here to grab it.'],
   ['What about the "cloud" — whose servers are those?', 'Your own. The modpack cloud is a free Supabase project that one person in your group sets up in about five minutes. Nobody else’s server is involved.'],
   ['How does the server hosting work?', 'The launcher runs a dedicated server on your PC — Minecraft, Palworld, ARK, Valheim, 7 Days to Die, Project Zomboid or tModLoader — and links it to a free cloud relay. From the web panel (or your phone) you get live status, console, full settings, player moderation, and automation. Your PC stays the host; the panel is just the remote control.'],
   ['Can I rent a server instead of hosting one?', 'Yes. The shop inside the panel rents managed servers for every supported game, from $4/month. You pay by PayPal or card link, a human approves it, and the server builds itself on our machines — then it shows up in your panel like any other server.'],
   ['Can I let friends manage a server?', 'Yes — grant any ELauncher account access to a specific server and it shows up in their launcher and phone panel with console and controls, scoped to just that server. Revoke anytime.'],
-  ['Mac or Linux?', 'The desktop app is Windows only right now. A Mac or Linux build is on the roadmap — let us know if you want it.']
+  ['Mac or Linux?', 'Windows and macOS are both available — the Mac build comes for Apple Silicon and Intel. Because it is unsigned, the first launch needs a quick trip through System Settings → Privacy & Security → Open Anyway, after which it runs like any other app. Linux is still on the roadmap.']
 ] as const
 
 export function App(): React.JSX.Element {
@@ -121,7 +121,7 @@ export function App(): React.JSX.Element {
           >
             <motion.span variants={staggerChild} className="pill running">
               <span className="dot" aria-hidden />
-              Free forever · Windows 10/11
+              Free forever · Windows &amp; macOS
             </motion.span>
             <motion.h1 variants={staggerChild} className="display">
               Play modded, <em>host anything.</em>
@@ -136,6 +136,10 @@ export function App(): React.JSX.Element {
               <a className="btn primary" href={release.setupUrl}>
                 <ArrowDownToLine size={17} aria-hidden />
                 Download for Windows
+              </a>
+              <a className="btn ghost" href={release.macUrl}>
+                <ArrowDownToLine size={17} aria-hidden />
+                Download for Mac
               </a>
               <a className="btn ghost" href={release.portableUrl}>
                 Portable version
@@ -276,14 +280,21 @@ export function App(): React.JSX.Element {
                     <ArrowDownToLine size={17} aria-hidden />
                     Download for Windows
                   </a>
+                  <a className="btn ghost" href={release.macUrl}>
+                    <ArrowDownToLine size={17} aria-hidden />
+                    Download for Mac
+                  </a>
                   <a className="btn ghost" href={release.portableUrl}>
                     Portable .exe
                   </a>
                 </div>
                 <p className="dim meta">
-                  Windows may show a SmartScreen warning on first run — choose{' '}
-                  <strong>More info → Run anyway</strong>. The build is unsigned because code-signing
-                  certificates are costly for a community project; it installs and updates itself in seconds.
+                  <strong>Windows</strong> may show a SmartScreen warning on first run — choose{' '}
+                  <strong>More info → Run anyway</strong>. <strong>Mac</strong> download is for Apple
+                  Silicon; <a href={release.macIntelUrl}>Intel Macs are here</a>. macOS blocks it the
+                  first time — open <strong>System Settings → Privacy &amp; Security → Open Anyway</strong>.
+                  Both builds are unsigned because code-signing certificates are costly for a community
+                  project.
                 </p>
               </div>
             </Reveal>

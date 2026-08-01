@@ -881,4 +881,6 @@ export interface UpdaterStatus {
   error?: string
   /** portable builds can't self-install; the UI offers the download page instead */
   portable?: boolean
+  /** unsigned macOS builds can't self-install either — same download-page fallback */
+  manual?: boolean
 }

@@ -17,6 +17,10 @@ export interface Release {
   size: string | null
   setupUrl: string
   portableUrl: string
+  /** Apple Silicon .dmg (the common case) */
+  macUrl: string
+  /** Intel .dmg */
+  macIntelUrl: string
 }
 
 interface Asset {
@@ -30,7 +34,9 @@ export function useRelease(): Release {
     version: null,
     size: null,
     setupUrl: RELEASES,
-    portableUrl: RELEASES
+    portableUrl: RELEASES,
+    macUrl: RELEASES,
+    macIntelUrl: RELEASES
   })
 
   useEffect(() => {
@@ -43,12 +49,16 @@ export function useRelease(): Release {
         const assets = rel.assets ?? []
         const setup = assets.find((a) => /Setup.*\.exe$/i.test(a.name))
         const portable = assets.find((a) => /Portable.*\.exe$/i.test(a.name))
+        const macArm = assets.find((a) => /-arm64\.dmg$/i.test(a.name))
+        const macIntel = assets.find((a) => /-x64\.dmg$/i.test(a.name))
         if (!alive) return
         setRelease({
           version: rel.tag_name ?? null,
           size: setup ? `${(setup.size / 1048576).toFixed(0)} MB` : null,
           setupUrl: setup?.browser_download_url ?? RELEASES,
-          portableUrl: portable?.browser_download_url ?? RELEASES
+          portableUrl: portable?.browser_download_url ?? RELEASES,
+          macUrl: macArm?.browser_download_url ?? RELEASES,
+          macIntelUrl: macIntel?.browser_download_url ?? RELEASES
         })
       } catch {
         // keep the fallback links
