@@ -438,14 +438,14 @@ export function Network({ row, userId, ask }: TabProps): React.JSX.Element {
           <p className="dim">This host did not report a game port for this server.</p>
         )}
 
-        {/* Minecraft's game port has no query/RCON neighbors, so it can be moved on
-            its own — the one game where the panel offers it. */}
-        {modded && gamePort &&
+        {/* Minecraft uses one port; BeamMP moves TCP and UDP on the same number. */}
+        {(modded || row.game === 'beammp') && gamePort &&
           (editingPort ? (
             <div className="stack">
               <p className="dim">
                 Players connect on this port. Changing it means everyone reconnects using the new
                 address, and it takes effect the next time the server starts.
+                {row.game === 'beammp' && ' Stop the BeamMP server before changing it; both TCP and UDP move together.'}
               </p>
               <div className="row net-portedit">
                 <input

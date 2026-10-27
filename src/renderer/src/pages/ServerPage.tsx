@@ -47,7 +47,9 @@ import AutomationCard from '../components/server/AutomationCard'
 import TimelineCard from '../components/server/TimelineCard'
 import PalworldSettingsTab from '../components/server/PalworldSettingsTab'
 import SteamSettingsTab from '../components/server/SteamSettingsTab'
+import BeamMPSettingsTab from '../components/server/BeamMPSettingsTab'
 import { STEAM_GAME_IDS, STEAM_GAME_INFO, isSteamGameId } from '@shared/games'
+import { BEAMMP_LABEL, BEAMMP_DEFAULT_MAP, BEAMMP_DEFAULT_PLAYERS, BEAMMP_DEFAULT_CARS } from '@shared/beammp'
 import PalworldPlayersTab from '../components/server/PalworldPlayersTab'
 import FilesTab from '../components/server/FilesTab'
 import PlayersTab from '../components/server/PlayersTab'
@@ -125,12 +127,14 @@ const KIND_OPTIONS: { value: ServerKind; label: string }[] = [
 const GAME_OPTIONS: { value: ServerGame; label: string }[] = [
   { value: 'minecraft', label: 'Minecraft' },
   { value: 'palworld', label: 'Palworld' },
+  { value: 'beammp', label: BEAMMP_LABEL },
   ...STEAM_GAME_IDS.map((id) => ({ value: id as ServerGame, label: STEAM_GAME_INFO[id].label }))
 ]
 
 const defaultServerName = (game: ServerGame): string =>
   game === 'minecraft' ? 'My Server'
   : game === 'palworld' ? 'My Palworld Server'
+  : game === 'beammp' ? 'My BeamMP Server'
   : `My ${STEAM_GAME_INFO[game].label} Server`
 
 /** Create-server dialog: fresh pick, from a modpack, or mirroring an instance. */
@@ -146,6 +150,10 @@ function CreateServerModal({
   const [game, setGame] = useState<ServerGame>('minecraft')
   const [gamePassword, setGamePassword] = useState('')
   const [gameMaxPlayers, setGameMaxPlayers] = useState(16)
+  const [beamPlayers, setBeamPlayers] = useState(BEAMMP_DEFAULT_PLAYERS)
+  const [beamCars, setBeamCars] = useState(BEAMMP_DEFAULT_CARS)
+  const [beamMap, setBeamMap] = useState(BEAMMP_DEFAULT_MAP)
+  const [beamAuthKey, setBeamAuthKey] = useState('')
   const [palCommunity, setPalCommunity] = useState(false)
   const [mode, setModeRaw] = useState<CreateMode>('fresh')
   const [versions, setVersions] = useState<MinecraftVersionInfo[]>([])
@@ -218,7 +226,9 @@ function CreateServerModal({
   }
 
   const source: ServerSource | null =
-    game === 'palworld'
+    game === 'beammp'
+      ? { type: 'beammp', maxPlayers: beamPlayers, maxCars: beamCars, map: beamMap, authKey: beamAuthKey.trim() || undefined }
+      : game === 'palworld'
       ? { type: 'palworld', serverPassword: gamePassword || undefined, maxPlayers: gameMaxPlayers, communityServer: palCommunity }
       : isSteamGameId(game)
         ? { type: 'steamgame', game, serverPassword: gamePassword || undefined, maxPlayers: gameMaxPlayers }
@@ -298,6 +308,30 @@ function CreateServerModal({
             onChange={(e) => setName(e.target.value)}
           />
         </div>
+
+        {game === 'beammp' && (
+          <>
+            <div className="props-grid">
+              <div className="field"><label>Max players</label>
+                <input type="number" min={1} max={128} step={1} value={beamPlayers}
+                  onChange={(event) => setBeamPlayers(Math.min(128, Math.max(1, Math.floor(Number(event.target.value) || BEAMMP_DEFAULT_PLAYERS))))} />
+              </div>
+              <div className="field"><label>Cars per player</label>
+                <input type="number" min={1} max={20} step={1} value={beamCars}
+                  onChange={(event) => setBeamCars(Math.min(20, Math.max(1, Math.floor(Number(event.target.value) || BEAMMP_DEFAULT_CARS))))} />
+              </div>
+            </div>
+            <div className="field"><label>Map path</label>
+              <input value={beamMap} placeholder={BEAMMP_DEFAULT_MAP} onChange={(event) => setBeamMap(event.target.value)} />
+            </div>
+            <div className="field"><label>BeamMP authentication key</label>
+              <input type="password" autoComplete="new-password" value={beamAuthKey} placeholder="Required before starting; you can add it later"
+                onChange={(event) => setBeamAuthKey(event.target.value)} />
+              <div className="hint">Get your server&apos;s key from <a href="https://keymaster.beammp.com/" target="_blank" rel="noreferrer">BeamMP Keymaster</a>.
+                {' '}Use a separate key for each public server. Players connect with BeamNG.drive and BeamMP.</div>
+            </div>
+          </>
+        )}
 
         {game === 'palworld' && (
           <>
@@ -519,7 +553,7 @@ function CreateServerModal({
             </div>
           </div>
         )}
-        <label className="checkbox-row">
+        {game !== 'beammp' && <label className="checkbox-row">
           <input type="checkbox" checked={eula} onChange={(e) => setEula(e.target.checked)} />
           <span>
             {game === 'palworld' ? (
@@ -545,7 +579,7 @@ function CreateServerModal({
               </>
             )}
           </span>
-        </label>
+        </label>}
         {task && (
           <div>
             <div className="row small muted" style={{ justifyContent: 'space-between', marginBottom: 6 }}>
@@ -564,7 +598,7 @@ function CreateServerModal({
           <button className="ghost" disabled={busy} onClick={onClose}>
             Cancel
           </button>
-          <button className="primary" disabled={busy || !eula || !source} onClick={() => void create()}>
+          <button className="primary" disabled={busy || (game !== 'beammp' && !eula) || !source} onClick={() => void create()}>
             <IconPlus size={14} /> {busy ? 'Creating…' : 'Create server'}
           </button>
         </div>
@@ -577,11 +611,13 @@ function CreateServerModal({
 function Console({
   serverId,
   running,
-  palworld
+  palworld,
+  beammp
 }: {
   serverId: string
   running: boolean
   palworld?: boolean
+  beammp?: boolean
 }): React.JSX.Element {
   const toast = useToast()
   const [lines, setLines] = useState<string[]>([])
@@ -643,7 +679,9 @@ function Console({
         <input
           placeholder={
             running
-              ? palworld
+              ? beammp
+                ? 'BeamMP server command…'
+                : palworld
                 ? 'say hi · players · save · kick <steam id>…'
                 : 'whitelist add Steve · op Steve · say hi…'
               : 'Start the server to send commands'
@@ -1032,11 +1070,13 @@ function ShareCard({ server, status }: { server: LocalServer; status: Status }):
 
   const running = status.state === 'running'
   const palworld = server.game === 'palworld'
+  const beammp = server.game === 'beammp'
+  const directGame = palworld || beammp
   const [share, setShare] = useState<{ publicIp: string | null; tailscaleIp: string | null } | null>(null)
 
   // alternative share paths for UDP games: manual port-forward (WAN IP) and Tailscale
   useEffect(() => {
-    if (!palworld || !running) return
+    if (!directGame || !running) return
     let alive = true
     window.elauncher.server
       .shareInfo()
@@ -1047,7 +1087,7 @@ function ShareCard({ server, status }: { server: LocalServer; status: Status }):
     return () => {
       alive = false
     }
-  }, [palworld, running])
+  }, [directGame, running])
 
   const startTunnel = async (): Promise<void> => {
     setTunneling(true)
@@ -1055,16 +1095,16 @@ function ShareCard({ server, status }: { server: LocalServer; status: Status }):
       const res = await window.elauncher.server.tunnelStart(server.port)
       if (res.ok && res.address) {
         if (res.warning) toast.error(res.warning)
-        else if (palworld) toast.success('Port opened — share the address with friends')
+        else if (directGame) toast.success('Ports opened — share the address with friends')
         else toast.success('Public address is live — share it or publish below')
-      } else toast.error(res.error ?? (palworld ? 'Could not open the port on your router' : 'Could not get a public address'))
+      } else toast.error(res.error ?? (directGame ? 'Could not open the required ports on your router' : 'Could not get a public address'))
     } finally {
       setTunneling(false)
     }
   }
 
   const publish = async (): Promise<void> => {
-    if (!status.tunnelAddress) return
+    if (!status.tunnelAddress || beammp) return
     setPublishing(true)
     try {
       const res = await window.elauncher.cloud.sessions.publish({
@@ -1113,13 +1153,15 @@ function ShareCard({ server, status }: { server: LocalServer; status: Status }):
               </button>
             </div>
             <div className="hint">
-              {palworld
+              {beammp
+                ? 'Open BeamMP and connect to this IP and port. Friends on your Wi-Fi use your PC’s local IP instead of localhost.'
+                : palworld
                 ? 'In Palworld: Join Multiplayer → Direct Connect. Friends on your Wi-Fi use your PC’s local IP instead of localhost.'
                 : 'Friends on your Wi-Fi use your PC’s local IP instead of localhost.'}
             </div>
           </div>
           <div className="field">
-            <label>{palworld ? 'Anywhere (opens the port on your router)' : 'Anywhere (public address)'}</label>
+            <label>{directGame ? 'Anywhere (opens the required ports on your router)' : 'Anywhere (public address)'}</label>
             {status.tunnelAddress ? (
               <div className="join-addr">
                 <IconGlobe size={14} /> {status.tunnelAddress}
@@ -1130,19 +1172,23 @@ function ShareCard({ server, status }: { server: LocalServer; status: Status }):
             ) : (
               <button className="ghost" style={{ alignSelf: 'flex-start' }} disabled={tunneling} onClick={() => void startTunnel()}>
                 <IconGlobe size={14} />{' '}
-                {tunneling ? (palworld ? 'Opening…' : 'Starting…') : palworld ? 'Open port & get address' : 'Get public address'}
+                {tunneling ? (directGame ? 'Opening…' : 'Starting…') : directGame ? 'Open ports & get address' : 'Get public address'}
               </button>
             )}
             {!status.tunnelAddress && (
               <div className="hint">
-                {palworld
+                {beammp
+                  ? `BeamMP requires TCP and UDP port ${server.port}. Uses UPnP; if unavailable, forward both protocols to this PC manually.`
+                  : palworld
                   ? `Uses UPnP — if your router has it disabled, forward UDP port ${server.port} to this PC manually.`
                   : 'Opens the port on your router (UPnP) for a direct address, or falls back to the free bore.pub relay.'}
               </div>
             )}
             {status.tunnelAddress && (
               <div className="row" style={{ marginTop: 8 }}>
-                {palworld ? (
+                {beammp ? (
+                  <span className="hint">Friends use this IP and port in the BeamMP launcher.</span>
+                ) : palworld ? (
                   <span className="hint">Friends join via Join Multiplayer → Direct Connect in Palworld.</span>
                 ) : cloudUser ? (
                   published ? (
@@ -1158,12 +1204,12 @@ function ShareCard({ server, status }: { server: LocalServer; status: Status }):
                   <span className="hint">Sign in to your ELauncher account to publish this to the Play Together board.</span>
                 )}
                 <button className="ghost small" onClick={() => void window.elauncher.server.tunnelStop(server.port)}>
-                  {palworld ? 'Close port' : 'Stop sharing'}
+                  {beammp ? 'Close ports' : palworld ? 'Close port' : 'Stop sharing'}
                 </button>
               </div>
             )}
           </div>
-          {palworld && !status.tunnelAddress && share?.publicIp && (
+          {directGame && !status.tunnelAddress && share?.publicIp && (
             <div className="field">
               <label>Manual port forward</label>
               <div className="join-addr">
@@ -1178,12 +1224,12 @@ function ShareCard({ server, status }: { server: LocalServer; status: Status }):
                 </button>
               </div>
               <div className="hint">
-                Your live public address — works once UDP {server.port} is forwarded to this PC on your router.
+                Your live public address — works once {beammp ? 'TCP and UDP' : 'UDP'} {server.port} is forwarded to this PC on your router.
                 {server.communityServer ? ' Community listing announces this address automatically.' : ''}
               </div>
             </div>
           )}
-          {palworld && share?.tailscaleIp && (
+          {directGame && share?.tailscaleIp && (
             <div className="field">
               <label>Tailscale (no router setup)</label>
               <div className="join-addr">
@@ -1421,7 +1467,8 @@ export default function ServerPage(): React.JSX.Element {
                   <span className="srail-info">
                     <span className="srail-name">{s.name}</span>
                     <span className="srail-meta">
-                      {s.game === 'palworld' ? 'Palworld'
+                      {s.game === 'beammp' ? BEAMMP_LABEL
+                      : s.game === 'palworld' ? 'Palworld'
                       : isSteamGameId(s.game) ? STEAM_GAME_INFO[s.game].label
                       : `${s.kind} · ${s.minecraftVersion}`}
                     </span>
@@ -1477,7 +1524,13 @@ export default function ServerPage(): React.JSX.Element {
                       <StateChip state={selStatus.state} />
                     </div>
                     <div className="row" style={{ gap: 6, marginTop: 8, flexWrap: 'wrap' }}>
-                      {selected.game === 'palworld' ? (
+                      {selected.game === 'beammp' ? (
+                        <>
+                          <span className="chip on-banner">{BEAMMP_LABEL}</span>
+                          {selStatus.version && <span className="chip on-banner">{selStatus.version}</span>}
+                          <span className="chip on-banner">TCP / UDP port {selected.port}</span>
+                        </>
+                      ) : selected.game === 'palworld' ? (
                         <>
                           <span className="chip on-banner">Palworld</span>
                           {selStatus.version && <span className="chip on-banner">{selStatus.version}</span>}
@@ -1600,7 +1653,10 @@ export default function ServerPage(): React.JSX.Element {
               </div>
 
               <div className="tabs server-tabs">
-                {SERVER_TABS.filter((t) => selected.game !== 'palworld' || t.id !== 'mods').map((t) => (
+                {SERVER_TABS.filter((t) =>
+                  selected.game === 'beammp' ? t.id !== 'mods' && t.id !== 'players'
+                  : selected.game !== 'palworld' || t.id !== 'mods'
+                ).map((t) => (
                   <button key={t.id} className={tab === t.id ? 'active' : ''} onClick={() => setTab(t.id)}>
                     {t.icon} {t.id === 'mods' && selected.kind === 'paper' ? 'Plugins' : t.label}
                   </button>
@@ -1652,7 +1708,7 @@ export default function ServerPage(): React.JSX.Element {
                         </div>
                       </div>
                     ) : (
-                      selected.game !== 'palworld' && (
+                      selected.game !== 'palworld' && selected.game !== 'beammp' && (
                         <div className="stat-tile">
                           <div className="stat-icon">
                             <IconGauge size={18} />
@@ -1676,13 +1732,13 @@ export default function ServerPage(): React.JSX.Element {
                       </div>
                     )}
                   </div>
-                  <Console serverId={selected.id} running={selRunning} palworld={selected.game === 'palworld'} />
+                  <Console serverId={selected.id} running={selRunning} palworld={selected.game === 'palworld'} beammp={selected.game === 'beammp'} />
                   <ShareCard server={selected} status={selStatus} />
                 </>
               )}
-              {tab === 'mods' && <ServerModsCard server={selected} running={selRunning} />}
+              {tab === 'mods' && selected.game !== 'beammp' && <ServerModsCard server={selected} running={selRunning} />}
               {tab === 'files' && <FilesTab server={selected} />}
-              {tab === 'players' &&
+              {tab === 'players' && selected.game !== 'beammp' &&
                 (selected.game === 'palworld' ? (
                   <PalworldPlayersTab server={selected} running={selStatus.state === 'running'} />
                 ) : (
@@ -1690,7 +1746,9 @@ export default function ServerPage(): React.JSX.Element {
                 ))}
               {tab === 'settings' && (
                 <>
-                  {selected.game === 'palworld' ? (
+                  {selected.game === 'beammp' ? (
+                    <BeamMPSettingsTab key={selected.id} server={selected} />
+                  ) : selected.game === 'palworld' ? (
                     <PalworldSettingsTab server={selected} />
                   ) : isSteamGameId(selected.game) ? (
                     <SteamSettingsTab server={selected} />

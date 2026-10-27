@@ -9,7 +9,7 @@ import { getShareInfo, startTunnel, stopTunnel } from './hosting'
 import { assignHost, hostPool, listAssignedHosts, updateDuckDns } from './hostNames'
 import { notifyPhones } from './notifications'
 import { getSettings } from './settings'
-import { closeRules, companionPorts, mainPortProtocol, openRules } from './ports'
+import { closeRules, companionPorts, mainPortProtocol, openRules, statusOf } from './ports'
 import { closePort, openPort, refreshExternalIp } from './upnp'
 import { getMinecraftVersions } from './versions'
 import {
@@ -17,6 +17,8 @@ import {
   createServer,
   deleteServer,
   getServerPublicAddress,
+  getServerProperties,
+  getServerStates,
   listLocalServers,
   setServerAutomation,
   setServerLimits,
@@ -96,14 +98,20 @@ function missingFunction(message: string | undefined): boolean {
 }
 
 /** Take or renew the right to build this order. False = another host holds it. */
-async function claimOrder(orderId: string): Promise<boolean> {
-  if (!claimAvailable) return true
-  const { data, error } = await getClient().rpc('hosting_claim', {
+async function claimOrder(orderId: string, game: ServerGame): Promise<boolean> {
+  if (!claimAvailable && game !== 'beammp') return true
+  const { data, error } = await getClient().rpc(game === 'beammp' ? 'hosting_claim_beammp' : 'hosting_claim', {
     order_id: orderId,
     node: deviceId(),
     lease_seconds: LEASE_SECONDS
   })
   if (error) {
+    // Older hosts treat an unknown game as Minecraft. BeamMP uses a separate
+    // claim RPC so the migration fences those hosts out of its orders.
+    if (game === 'beammp') {
+      if (missingFunction(error.message)) throw new Error('Run the BeamMP hosting database migration before approving BeamMP orders.')
+      return false
+    }
     if (!missingFunction(error.message)) return false // transient — the next tick retries
     // an un-migrated cloud keeps trading instead of silently refusing to
     // provision: that's the old behaviour exactly, and it only bites on a
@@ -123,8 +131,8 @@ async function claimOrder(orderId: string): Promise<boolean> {
 }
 
 /** Keep the lease warm while a long build runs, so no other host takes over. */
-function holdClaim(orderId: string): () => void {
-  const timer = setInterval(() => void claimOrder(orderId), RENEW_MS)
+function holdClaim(orderId: string, game: ServerGame): () => void {
+  const timer = setInterval(() => void claimOrder(orderId, game).catch(() => {}), RENEW_MS)
   return () => clearInterval(timer)
 }
 
@@ -134,9 +142,9 @@ function holdClaim(orderId: string): () => void {
  * duplicate; null = the cloud was unreachable, so ownership is unknown and the
  * caller must leave the server alone for a later tick to adopt.
  */
-async function finishClaim(orderId: string, serverId: string): Promise<boolean | null> {
+async function finishClaim(orderId: string, serverId: string, game: ServerGame): Promise<boolean | null> {
   const supabase = getClient()
-  if (!claimAvailable) {
+  if (!claimAvailable && game !== 'beammp') {
     const { error } = await supabase
       .from('hosting_orders')
       .update({ server_id: serverId, note: 'Starting your server…', updated_at: new Date().toISOString() })
@@ -186,7 +194,13 @@ async function ensureExposed(server: LocalServer): Promise<string> {
       // the game's companion ports (query/raw-socket neighbors) ride along —
       // best-effort, since a router that just mapped the main port takes these,
       // and any refusal is recorded for the panel rather than failing the order
-      void openRules(companionPorts(game, server.port), server.name)
+      if (game === 'beammp') {
+        await openRules(companionPorts(game, server.port), server.name)
+        const tcp = statusOf(server.port, 'TCP')
+        if (!tcp.open) throw new Error(`BeamMP also needs TCP ${server.port}: ${tcp.error ?? 'the TCP port is not mapped'}`)
+      } else {
+        void openRules(companionPorts(game, server.port), server.name)
+      }
       const address = getServerPublicAddress(server.id) ?? `${mapping.externalIp}:${server.port}`
       if (address !== existing) {
         if (game === 'minecraft') stopTunnel(server.port) // direct beats the relay
@@ -198,7 +212,7 @@ async function ensureExposed(server: LocalServer): Promise<string> {
       lastUpnpError = e instanceof Error ? e.message : String(e)
       if (game !== 'minecraft') throw e // UDP can't ride the TCP relay — no fallback
     }
-  } else if (existing) {
+  } else if (existing && game !== 'beammp') {
     return existing
   } else if (game !== 'minecraft') {
     throw new Error(lastUpnpError)
@@ -298,6 +312,8 @@ async function provision(order: OrderRow, plan: PlanRow, me: string): Promise<vo
     await note(plan.game === 'minecraft' ? 'Setting up your server…' : 'Setting up your server — downloading the game (this can take a few minutes)…')
     if (plan.game === 'palworld') {
       server = await createServer({ name, acceptEula: true, orderId: order.id, source: { type: 'palworld', maxPlayers: plan.max_players } })
+    } else if (plan.game === 'beammp') {
+      server = await createServer({ name, acceptEula: true, orderId: order.id, source: { type: 'beammp', maxPlayers: plan.max_players } })
     } else if (isSteamGame(plan.game)) {
       server = await createServer({ name, acceptEula: true, orderId: order.id, source: { type: 'steamgame', game: plan.game, maxPlayers: plan.max_players } })
     } else {
@@ -319,7 +335,7 @@ async function provision(order: OrderRow, plan: PlanRow, me: string): Promise<vo
   // a network partition), and by then the host that took over is building the
   // real one. Arming and sharing come after, so a losing build is never handed
   // to the customer and never wakes itself up on the next launcher start.
-  const kept = await finishClaim(order.id, server.id)
+  const kept = await finishClaim(order.id, server.id, plan.game)
   if (kept === false) {
     await deleteServer(server.id).catch(() => {
       // the record is gone from the order either way; leftover files are visible in the panel
@@ -335,7 +351,7 @@ async function provision(order: OrderRow, plan: PlanRow, me: string): Promise<vo
   setServerAutomation(server.id, {
     restartMode: 'off',
     restartOnCrash: true,
-    autoStart: true,
+    autoStart: plan.game !== 'beammp', // enabled after the customer's first successful authenticated start
     backupIntervalHours: 12,
     backupKeep: 5
   })
@@ -345,9 +361,20 @@ async function provision(order: OrderRow, plan: PlanRow, me: string): Promise<vo
       { owner_id: me, server_id: server.id, server_name: server.name, grantee_id: order.user_id },
       { onConflict: 'server_id,grantee_id' }
     )
-  await startServer(server.id).catch(() => {
+  if (plan.game === 'beammp' && getServerProperties(server.id).AuthKeyConfigured !== 'true') {
+    await note('Installed — add a unique BeamMP authentication key in Settings, then press Start.')
+    notifyPhones('Hosting', `BeamMP installed for ${order.reference}; awaiting its authentication key.`, 'hosting')
+    return
+  }
+  let startError: string | null = null
+  await startServer(server.id).catch((error) => {
+    startError = error instanceof Error ? error.message : String(error)
     // surfaced through the server's own state events
   })
+  if (plan.game === 'beammp' && getServerStates()[server.id]?.state !== 'running') {
+    await note(startError ? `BeamMP could not start — ${startError}` : 'BeamMP is starting — watch the Console for its status.')
+    return
+  }
   let address: string | null = null
   try {
     address = await ensureExposed(server)
@@ -421,10 +448,10 @@ async function tick(): Promise<void> {
           // one host builds each order — the rest leave it alone rather than
           // racing it into a second copy (announcing comes after winning, so
           // only the host actually doing the work says so)
-          if (!(await claimOrder(order.id))) continue
+          if (!(await claimOrder(order.id, plan.game))) continue
           provisioning.add(order.id)
           notifyPhones('Hosting', `Provisioning ${plan.name} for order ${order.reference}…`, 'hosting')
-          const release = holdClaim(order.id)
+          const release = holdClaim(order.id, plan.game)
           try {
             await provision(order, plan, me)
           } finally {
@@ -470,16 +497,30 @@ async function tick(): Promise<void> {
               { owner_id: me, server_id: order.server_id, server_name: order.server_name, grantee_id: order.user_id },
               { onConflict: 'server_id,grantee_id' }
             )
+          if (record.game === 'beammp') {
+            const configured = getServerProperties(record.id).AuthKeyConfigured === 'true'
+            const state = getServerStates()[record.id]?.state ?? 'stopped'
+            if (!configured || state !== 'running') {
+              const note = !configured
+                ? 'Installed — add a unique BeamMP authentication key in Settings, then press Start.'
+                : state === 'starting' ? 'BeamMP is starting — watch the Console for its status.' : 'BeamMP is stopped — press Start in the dashboard when ready.'
+              if (order.note !== note) await supabase.from('hosting_orders').update({ note, updated_at: new Date().toISOString() }).eq('id', order.id)
+              continue
+            }
+          }
           // keep the public path alive (launcher restarts, crash restarts, lease expiry,
           // reactivations) and the customer-visible address current
           try {
             const address = await ensureExposed(localById.get(order.server_id)!)
             exposureAlerts.delete(order.id)
             if (!order.note.includes(address)) {
-              await supabase
+              const { error } = await supabase
                 .from('hosting_orders')
                 .update({ note: `Ready — join at ${address}`, updated_at: new Date().toISOString() })
                 .eq('id', order.id)
+              if (!error && record.game === 'beammp' && !order.note.startsWith('Ready —')) {
+                void supabase.functions.invoke('order-mail', { body: { kind: 'ready', orderId: order.id } }).catch(() => {})
+              }
             }
           } catch (e) {
             const message = e instanceof Error ? e.message : String(e)

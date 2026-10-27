@@ -427,7 +427,7 @@ export type ServerKind = 'vanilla' | 'paper' | 'fabric' | 'neoforge' | 'forge'
  */
 export type SteamServerGame = 'valheim' | 'sdtd' | 'zomboid' | 'tmodloader' | 'ark' | 'arksa'
 
-export type ServerGame = 'minecraft' | 'palworld' | SteamServerGame
+export type ServerGame = 'minecraft' | 'palworld' | 'beammp' | SteamServerGame
 
 /** `sleeping` = stopped to free its memory, with a listener holding the port. */
 export type LocalServerState = 'stopped' | 'starting' | 'running' | 'stopping' | 'sleeping'
@@ -586,6 +586,8 @@ export type ServerSource =
   | { type: 'fresh'; kind: ServerKind; minecraftVersion: string }
   /** Palworld dedicated server, installed via SteamCMD */
   | { type: 'palworld'; serverPassword?: string; maxPlayers?: number; communityServer?: boolean }
+  /** BeamNG.drive multiplayer, installed from the official BeamMP release. */
+  | { type: 'beammp'; authKey?: string; maxPlayers?: number; maxCars?: number; map?: string }
   /** Any other SteamCMD dedicated server from the generic registry (valheim, 7 days to die, …) */
   | { type: 'steamgame'; game: SteamServerGame; serverPassword?: string; maxPlayers?: number }
   /** picks a local pack export via a file dialog — .mrpack (Modrinth) or .zip (CurseForge) */
