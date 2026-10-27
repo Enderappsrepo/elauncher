@@ -20,7 +20,7 @@ import './Settings.css'
  * round trip per keystroke to change nothing anyone can see yet.
  */
 
-type Game = 'minecraft' | 'palworld' | 'valheim' | 'sdtd' | 'zomboid' | 'tmodloader' | 'ark' | 'arksa' | 'unknown'
+type Game = 'minecraft' | 'palworld' | 'valheim' | 'sdtd' | 'zomboid' | 'tmodloader' | 'ark' | 'arksa' | 'beammp' | 'unknown'
 
 /**
  * Which game this is, read out of the keys themselves.
@@ -32,6 +32,7 @@ type Game = 'minecraft' | 'palworld' | 'valheim' | 'sdtd' | 'zomboid' | 'tmodloa
  */
 function detectGame(props: Record<string, string>): Game {
   const has = (key: string): boolean => key in props
+  if (has('AuthKeyConfigured') || has('MaxCars')) return 'beammp'
   if (has('PalCaptureRate') || has('ServerPlayerMaxNum')) return 'palworld'
   if (has('ModifierCombat') || (has('world') && has('Crossplay'))) return 'valheim'
   if (has('ServerMaxPlayerCount') || has('DayNightLength')) return 'sdtd'
@@ -47,6 +48,7 @@ function detectGame(props: Record<string, string>): Game {
 const GAME_LABEL: Record<Game, string> = {
   minecraft: 'Minecraft',
   palworld: 'Palworld',
+  beammp: 'BeamNG.drive (BeamMP)',
   valheim: 'Valheim',
   sdtd: '7 Days to Die',
   zomboid: 'Project Zomboid',
@@ -72,6 +74,12 @@ const ACRONYMS: [RegExp, string][] = [
 
 /** Keys whose auto-generated label reads badly. */
 const KEY_LABELS: Record<string, string> = {
+  MaxCars: 'Cars per player',
+  Private: 'Hide from the public server list',
+  AllowGuests: 'Allow guest accounts',
+  LogChat: 'Log player chat',
+  Debug: 'Debug logging',
+  InformationPacket: 'Answer server information requests',
   Crossplay: 'Crossplay (Xbox / Game Pass players)',
   SaveIntervalSeconds: 'Save the world every (seconds)',
   BackupCount: 'Backups to keep',
@@ -101,6 +109,10 @@ function labelFor(key: string): string {
 }
 
 const HINTS: Record<string, string> = {
+  MaxCars: 'Maximum vehicles each player can spawn (1–20).',
+  Private: 'A private BeamMP server does not appear in the public list. An authentication key is still required.',
+  AllowGuests: 'Allow players to join with a guest account.',
+  InformationPacket: 'Allow the BeamMP launcher to request server information.',
   // valheim — launch flags, so blank/off everywhere means "leave it to the game"
   Crossplay:
     'Runs the server on the PlayFab network so Xbox and Game Pass players can join, not just Steam. Steam players still join normally.',
@@ -297,6 +309,16 @@ const ARK_MAPS: Record<'ark' | 'arksa', Option[]> = {
 type Essential = [key: string, label?: string]
 
 const ESSENTIALS: Record<Game, Essential[]> = {
+  beammp: [
+    ['Name', 'Server name'],
+    ['Description', 'Description'],
+    ['Map', 'Map path'],
+    ['MaxPlayers', 'Max players'],
+    ['MaxCars', 'Cars per player'],
+    ['AuthKey', 'BeamMP authentication key'],
+    ['Private', 'Hide from the public server list'],
+    ['AllowGuests', 'Allow guest accounts']
+  ],
   palworld: [
     ['ServerName', 'Server name'],
     ['ServerDescription', 'Description'],
@@ -399,6 +421,9 @@ const GROUPS: Partial<Record<Game, Group[]>> = {
 
 /** Settings whose value is prose or a long string, so they get the full width. */
 const WIDE_KEYS = new Set([
+  'Name',
+  'Description',
+  'AuthKey',
   'ServerName',
   'ServerDescription',
   'motd',
@@ -430,7 +455,7 @@ function trimNum(value: string): string {
 function toProps(raw: unknown): Record<string, string> {
   const out: Record<string, string> = {}
   for (const [key, value] of Object.entries((raw ?? {}) as Record<string, unknown>)) {
-    out[key] = value === null || value === undefined ? '' : String(value)
+    out[key] = key === 'AuthKey' || value === null || value === undefined ? '' : String(value)
   }
   return out
 }
@@ -540,7 +565,9 @@ function Control({
         id={id}
         className="input"
         type="number"
-        step="any"
+        step={game === 'beammp' ? '1' : 'any'}
+        min={game === 'beammp' && (propKey === 'MaxPlayers' || propKey === 'MaxCars') ? 1 : undefined}
+        max={game === 'beammp' ? propKey === 'MaxPlayers' ? 128 : propKey === 'MaxCars' ? 20 : undefined : undefined}
         value={pristine ? trimNum(value) : value}
         onChange={(e) => onChange(e.target.value)}
       />
@@ -563,6 +590,7 @@ function SettingRow({
   original,
   pristine,
   dirty,
+  secretConfigured = false,
   onChange
 }: {
   game: Game
@@ -573,6 +601,7 @@ function SettingRow({
   pristine: boolean
   /** differs from what the host has — marked so a save is never a mystery diff */
   dirty: boolean
+  secretConfigured?: boolean
   onChange: (value: string) => void
 }): React.JSX.Element {
   const hint = HINTS[propKey]
@@ -580,6 +609,29 @@ function SettingRow({
   // a set of buttons has nothing a <label for> can point at, so the row labels
   // the group instead of naming a control that cannot be focused
   const group = game === 'palworld' && propKey === 'CrossplayPlatforms'
+
+  if (game === 'beammp' && (propKey === 'Port' || propKey === 'ResourceFolder')) {
+    return (
+      <div className="field">
+        <label htmlFor={id}>{label}</label>
+        <input id={id} className="input" value={value} disabled />
+        <p className="set-hint">{propKey === 'Port' ? 'Change the port in the Network tab.' : 'Managed by ELauncher; use the Files tab to add resources.'}</p>
+      </div>
+    )
+  }
+
+  if (game === 'beammp' && propKey === 'AuthKey') {
+    return (
+      <div className="field">
+        <label htmlFor={id}>{label}{dirty && <Dot />}</label>
+        <input id={id} className="input" type="password" autoComplete="new-password" value={value}
+          placeholder={secretConfigured ? 'Key configured — leave blank to keep it' : 'Required before the server can start'}
+          onChange={(event) => onChange(event.target.value)} />
+        <p className="set-hint">Get your key from <a href="https://keymaster.beammp.com/" target="_blank" rel="noreferrer">BeamMP Keymaster</a>.
+          {' '}Use a separate key for each public server. Blank keeps the current key.</p>
+      </div>
+    )
+  }
 
   if (isBool(original)) {
     return (
@@ -644,6 +696,8 @@ export function Settings({ row, userId, ask }: TabProps): React.JSX.Element {
   // is keyed on the server it is about rather than on the function's identity —
   // otherwise a parent that rebuilds `ask` inline would refetch forever
   const askRef = useRef(ask)
+  const serverRef = useRef(row.server_id)
+  serverRef.current = row.server_id
   useEffect(() => {
     askRef.current = ask
   })
@@ -654,6 +708,7 @@ export function Settings({ row, userId, ask }: TabProps): React.JSX.Element {
     setLoadError('')
     setEdits({})
     setSaveError('')
+    setSaving(false)
     void askRef.current<Record<string, string>>('getProps').then(
       (raw) => {
         if (alive) setProps(toProps(raw))
@@ -675,7 +730,7 @@ export function Settings({ row, userId, ask }: TabProps): React.JSX.Element {
     const groups = GROUPS[game] ?? []
     const buckets = groups.map((group) => ({ title: group[0], icon: group[1], note: group[3], keys: [] as string[] }))
     buckets.push({ title: 'Other', icon: '⚙️', note: undefined, keys: [] })
-    for (const key of Object.keys(props).filter((key) => !claimed.has(key)).sort()) {
+    for (const key of Object.keys(props).filter((key) => !claimed.has(key) && key !== 'AuthKeyConfigured').sort()) {
       const at = groups.findIndex((group) => group[2].test(key))
       buckets[at === -1 ? buckets.length - 1 : at].keys.push(key)
     }
@@ -721,7 +776,8 @@ export function Settings({ row, userId, ask }: TabProps): React.JSX.Element {
 
   // a key typed back to exactly what the host has is not a change — the dot,
   // the count and the save all agree on that
-  const isDirty = (key: string): boolean => key in edits && edits[key] !== (props[key] ?? '')
+  const isDirty = (key: string): boolean => key in edits &&
+    (game === 'beammp' && key === 'AuthKey' ? edits[key].trim() !== '' : edits[key] !== (props[key] ?? ''))
   const dirtyKeys = Object.keys(edits).filter(isDirty)
   const dirtyCount = dirtyKeys.length
 
@@ -730,6 +786,8 @@ export function Settings({ row, userId, ask }: TabProps): React.JSX.Element {
     !needle || `${key} ${labelFor(key)} ${HINTS[key] ?? ''}`.toLowerCase().includes(needle)
 
   async function save(): Promise<void> {
+    const serverId = row.server_id
+    const request = ask
     // only real differences go over the wire, so a field someone touched and
     // put back is never written
     const updates: Record<string, string> = {}
@@ -737,11 +795,14 @@ export function Settings({ row, userId, ask }: TabProps): React.JSX.Element {
     setSaving(true)
     setSaveError('')
     try {
-      const answer = await askRef.current<Record<string, string>>('setProps', { updates })
+      const answer = await request<Record<string, string>>('setProps', { updates })
+      if (serverRef.current !== serverId) return
       // the host replies with the file as it now reads, so a value it clamped or
       // normalised replaces what was typed instead of sitting there looking taken
       const written = toProps(answer)
-      setProps((prev) => (Object.keys(written).length > 0 ? written : { ...(prev ?? {}), ...updates }))
+      setProps((prev) => (Object.keys(written).length > 0 ? written : toProps({
+        ...(prev ?? {}), ...updates, ...(updates.AuthKey ? { AuthKeyConfigured: 'true' } : {})
+      })))
       setEdits({})
       toast.success(
         row.state === 'running'
@@ -749,9 +810,9 @@ export function Settings({ row, userId, ask }: TabProps): React.JSX.Element {
           : 'Settings saved — they apply the next time this server starts.'
       )
     } catch (e) {
-      setSaveError(say(e))
+      if (serverRef.current === serverId) setSaveError(say(e))
     } finally {
-      setSaving(false)
+      if (serverRef.current === serverId) setSaving(false)
     }
   }
 
@@ -790,6 +851,7 @@ export function Settings({ row, userId, ask }: TabProps): React.JSX.Element {
                     original={props[key] ?? ''}
                     pristine={!(key in edits)}
                     dirty={isDirty(key)}
+                    secretConfigured={props.AuthKeyConfigured === 'true'}
                     onChange={change(key)}
                   />
                 </div>

@@ -34,6 +34,14 @@ hosts prepare the ZIP on the host before transferring it.
 Build only the live hosting dashboard with `npm run web:build:dashboard`. This
 updates `docs/manage/` and its assets while preserving the landing page and guides.
 
+## BeamNG.drive servers
+
+BeamMP hosting supports native Ubuntu/Debian and Windows servers, with maps,
+player/car limits, mods, console controls and customer hosting plans. See
+[the BeamMP hosting guide](docs/HOSTING-BEAMMP.md) for VPS dependencies, database
+migration, credentials and rollout. Each server needs its own BeamMP AuthKey;
+the platform stores it outside downloadable server files.
+
 ## Cloud setup (accounts + modpack library)
 
 The cloud features (ELauncher accounts, admin-published modpacks, one-click install/update) are powered by a free [Supabase](https://supabase.com) project. One person (you) sets this up once; friends just sign up inside the app.

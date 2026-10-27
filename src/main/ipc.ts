@@ -15,7 +15,7 @@ import * as hosting from './services/hosting'
 import * as hostingOrders from './services/hostingOrders'
 import * as specs from './services/specs'
 import * as upnp from './services/upnp'
-import { closeRules, companionPorts, mainPortProtocol, openRules } from './services/ports'
+import { closeRules, companionPorts, mainPortProtocol, openRules, statusOf } from './services/ports'
 import * as server from './services/server'
 import * as serverBrowser from './services/serverBrowser'
 import * as remote from './services/remote'
@@ -271,7 +271,13 @@ export function registerIpc(): void {
       // UDP games can't ride the TCP bore relay — open the port on the router instead
       if (record && protocol === 'UDP') {
         const mapping = await upnp.openPort(port, 'UDP', `ELauncher ${record.name}`)
-        void openRules(companions, record.name)
+        if (record.game === 'beammp') {
+          await openRules(companions, record.name)
+          const tcp = statusOf(port, 'TCP')
+          if (!tcp.open) throw new Error(`BeamMP also needs TCP ${port}: ${tcp.error ?? 'the TCP port is not mapped'}`)
+        } else {
+          void openRules(companions, record.name)
+        }
         server.announceServerByPort(port)
         const address = server.getServerPublicAddress(record.id) ?? `${mapping.externalIp}:${port}`
         return { ok: true, address, warning: mapping.warning }

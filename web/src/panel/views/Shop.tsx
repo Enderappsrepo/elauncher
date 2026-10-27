@@ -56,6 +56,7 @@ const SOURCE_LABELS: Record<Source, string> = { modrinth: 'Modrinth', curseforge
 const GAME_BLURB: Record<Game, string> = {
   minecraft: 'Vanilla, Paper plugins, or a full modpack.',
   palworld: 'Survival and creature collecting with friends.',
+  beammp: 'BeamNG.drive multiplayer with BeamMP. Add your own server key in Settings after setup.',
   valheim: 'Co-op Viking survival and building.',
   sdtd: 'Open-world zombie survival.',
   zomboid: 'Isometric zombie survival — brutal, slow-burn, co-op.',
@@ -726,6 +727,12 @@ function Configure({
             onChange={(e) => setName(e.target.value)}
           />
         </div>
+
+        {plan.game === 'beammp' && (
+          <p className="formnote">After setup, add your BeamMP authentication key in the server&apos;s Settings before starting it.
+            {' '}Get your key from <a href="https://keymaster.beammp.com/" target="_blank" rel="noreferrer">BeamMP Keymaster</a>.
+            {' '}Use a separate key for each public server. Players need BeamNG.drive and the BeamMP launcher.</p>
+        )}
 
         {mc && (
           <>

@@ -72,6 +72,7 @@ const LANE_TITLE: Record<OrderStatus, string> = {
 const GAME_LABEL: Record<string, string> = {
   minecraft: 'Minecraft',
   palworld: 'Palworld',
+  beammp: 'BeamNG.drive (BeamMP)',
   valheim: 'Valheim',
   sdtd: '7 Days to Die',
   zomboid: 'Project Zomboid',
@@ -855,6 +856,37 @@ function Shop({
 }): React.JSX.Element {
   const [busy, setBusy] = useState('')
   const [failed, setFailed] = useState('')
+  const [newPlan, setNewPlan] = useState(false)
+  const [draft, setDraft] = useState({ game: 'beammp', name: '', players: '', memory: '', cpu: '', price: '', currency: 'USD' })
+  const field = (key: keyof typeof draft, value: string): void => setDraft((old) => ({ ...old, [key]: value }))
+
+  async function createPlan(event: React.FormEvent): Promise<void> {
+    event.preventDefault()
+    if (busy) return
+    const players = Number(draft.players)
+    const memory = Number(draft.memory)
+    const cpu = draft.cpu.trim() ? Number(draft.cpu) : null
+    const price = Number(draft.price)
+    const currency = draft.currency.trim().toUpperCase()
+    if (!draft.name.trim() || !(draft.game in GAME_LABEL) || !Number.isSafeInteger(players) || players < 1 ||
+        (draft.game === 'beammp' && players > 128) || !Number.isSafeInteger(memory) || memory < 1 ||
+        (cpu !== null && (!Number.isSafeInteger(cpu) || cpu < 1)) || !draft.price.trim() ||
+        !Number.isFinite(price) || price <= 0 || price >= 1_000_000 || !/^[A-Z]{3}$/.test(currency)) {
+      setFailed('Enter a plan name, positive whole-number resource limits, a positive monthly price and a three-letter currency.')
+      return
+    }
+    await run('new-plan', async () => {
+      const id = `plan-${draft.game}-${crypto.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`}`
+      const { error } = await supabase.from('hosting_plans').insert({
+        id, name: draft.name.trim(), game: draft.game, max_players: players, memory_mb: memory,
+        cpu_cores: cpu, price_monthly: price, currency, active: false,
+        sort: Math.max(0, ...plans.map((plan) => plan.sort)) + 1
+      })
+      if (error) throw new Error(error.message)
+      setNewPlan(false)
+      setDraft({ game: 'beammp', name: '', players: '', memory: '', cpu: '', price: '', currency: 'USD' })
+    }, 'Plan created and hidden. List it when its host is ready.')
+  }
 
   async function run(key: string, what: () => Promise<void>, done: string): Promise<void> {
     setBusy(key)
@@ -931,10 +963,47 @@ function Shop({
         </p>
       </section>
 
+      <section className="surface pad stack rise">
+        <div className="row">
+          <h2>New hosting plan</h2>
+          <span className="spacer" />
+          <Button disabled={busy === 'new-plan'} onClick={() => setNewPlan(!newPlan)}>{newPlan ? 'Cancel' : 'New plan'}</Button>
+        </div>
+        {newPlan && (
+          <form className="stack" onSubmit={(event) => void createPlan(event)}>
+            <div className="field"><label htmlFor="plan-game">Game</label>
+              <select id="plan-game" className="input" value={draft.game} onChange={(event) => field('game', event.target.value)}>
+                {Object.entries(GAME_LABEL).map(([game, label]) => <option key={game} value={game}>{label}</option>)}
+              </select>
+            </div>
+            <div className="field"><label htmlFor="plan-name">Plan name</label>
+              <input id="plan-name" className="input" required value={draft.name} onChange={(event) => field('name', event.target.value)} />
+            </div>
+            <div className="grid">
+              {([
+                ['players', 'Player slots'], ['memory', 'RAM (MB)'], ['cpu', 'CPU cores (optional)'], ['price', 'Monthly price']
+              ] as const).map(([key, label]) => (
+                <div className="field" key={key}><label htmlFor={`plan-${key}`}>{label}</label>
+                  <input id={`plan-${key}`} className="input" type="number" required={key !== 'cpu'}
+                    min={key === 'price' ? 0.01 : 1} step={key === 'price' ? '0.01' : '1'}
+                    max={key === 'players' && draft.game === 'beammp' ? 128 : key === 'price' ? 999999.99 : undefined}
+                    value={draft[key]} onChange={(event) => field(key, event.target.value)} />
+                </div>
+              ))}
+            </div>
+            <div className="field"><label htmlFor="plan-currency">Currency</label>
+              <input id="plan-currency" className="input" required maxLength={3} pattern="[A-Za-z]{3}" value={draft.currency}
+                onChange={(event) => field('currency', event.target.value.toUpperCase())} />
+            </div>
+            <p className="dim">New plans start hidden. Choose your own price, then list the plan when the host is ready.</p>
+            <Button type="submit" variant="primary" disabled={busy === 'new-plan'}>{busy === 'new-plan' ? 'Saving…' : 'Create hidden plan'}</Button>
+          </form>
+        )}
+      </section>
+
       {plans.length === 0 ? (
         <EmptyState icon={<ShoppingBag size={20} />} title="No plans">
-          There is nothing to sell yet. Plans are rows in hosting_plans — the latest schema.sql
-          seeds a starter lineup.
+          Create a plan above, then list it when you are ready to accept orders.
         </EmptyState>
       ) : (
         <section className="surface pad stack rise">

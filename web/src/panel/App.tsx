@@ -72,7 +72,8 @@ const MC_ONLY_TABS: readonly Tab[] = ['version', 'mods']
 const ADMIN_ONLY_TABS: readonly Tab[] = ['resources']
 
 const tabsFor = (game: string | null, isAdmin: boolean): readonly Tab[] => {
-  const base = hasModsTab(game) ? TABS : TABS.filter((t) => !MC_ONLY_TABS.includes(t))
+  const base = (hasModsTab(game) ? TABS : TABS.filter((t) => !MC_ONLY_TABS.includes(t)))
+    .filter((t) => game !== 'beammp' || t !== 'players')
   return isAdmin ? base : base.filter((t) => !ADMIN_ONLY_TABS.includes(t))
 }
 const TAB_LABELS: Record<Tab, string> = {
@@ -943,7 +944,7 @@ function Detail({
         )}
         {tab === 'settings' && <Settings row={row} userId={userId} ask={ask} />}
         {tab === 'version' && hasModsTab(row.game) && <Version row={row} userId={userId} ask={ask} />}
-        {tab === 'players' && <Players row={row} userId={userId} ask={ask} />}
+        {tab === 'players' && row.game !== 'beammp' && <Players row={row} userId={userId} ask={ask} />}
         {tab === 'mods' && hasModsTab(row.game) && <Mods row={row} userId={userId} ask={ask} />}
         {tab === 'files' && <Files row={row} userId={userId} ask={ask} />}
         {tab === 'network' && <Network row={row} userId={userId} ask={ask} />}

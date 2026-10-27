@@ -7,11 +7,12 @@
 
 /** Games a server can be. Published by the host; older clouds send nothing. */
 export type Game =
-  | 'minecraft' | 'palworld' | 'valheim' | 'sdtd' | 'zomboid' | 'tmodloader' | 'ark' | 'arksa'
+  | 'minecraft' | 'palworld' | 'valheim' | 'sdtd' | 'zomboid' | 'tmodloader' | 'ark' | 'arksa' | 'beammp'
 
 export const GAME_LABEL: Record<Game, string> = {
   minecraft: 'Minecraft',
   palworld: 'Palworld',
+  beammp: 'BeamNG.drive (BeamMP)',
   valheim: 'Valheim',
   sdtd: '7 Days to Die',
   zomboid: 'Project Zomboid',
@@ -28,6 +29,7 @@ export const GAME_LABEL: Record<Game, string> = {
 export const GAME_HUE: Record<Game, number> = {
   minecraft: 140,
   palworld: 202,
+  beammp: 38,
   valheim: 28,
   sdtd: 8,
   zomboid: 96,
@@ -48,6 +50,7 @@ export function gameLabel(game: string | null): string {
 export const GAME_LINEUP: ReadonlyArray<{ id: Game; label: string; blurb: string }> = [
   { id: 'minecraft', label: 'Minecraft', blurb: 'Vanilla, Paper, Fabric, Forge & NeoForge' },
   { id: 'palworld', label: 'Palworld', blurb: 'Dedicated server with live REST controls' },
+  { id: 'beammp', label: 'BeamNG.drive (BeamMP)', blurb: 'Multiplayer driving with your own maps and vehicles' },
   { id: 'ark', label: 'ARK: Survival Evolved', blurb: 'Full RCON moderation built in' },
   { id: 'arksa', label: 'ARK: Survival Ascended', blurb: 'The new ARK, hosted the same way' },
   { id: 'valheim', label: 'Valheim', blurb: 'Your world, up before the next raid' },

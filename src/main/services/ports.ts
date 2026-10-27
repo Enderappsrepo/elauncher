@@ -46,7 +46,7 @@ export function blockedPortReason(port: number): string | undefined {
 
 /** Which protocol a game's own port speaks. Undefined game = a record that predates the column = minecraft. */
 export function mainPortProtocol(game: string | undefined): 'UDP' | 'TCP' {
-  if (game === 'palworld') return 'UDP'
+  if (game === 'palworld' || game === 'beammp') return 'UDP'
   if (isSteamGame(game)) return STEAM_GAMES[game].protocol
   return 'TCP'
 }
@@ -65,6 +65,9 @@ export function mainPortProtocol(game: string | undefined): 'UDP' | 'TCP' {
  */
 export function companionPorts(game: string | undefined, port: number): ExtraPort[] {
   switch (game) {
+    case 'beammp':
+      // The same port carries real-time UDP traffic and TCP resource transfers.
+      return [{ port, protocol: 'TCP', label: 'BeamMP resources and handshake' }]
     case 'valheim':
       // 2457-equivalent: Steam's query channel — the server list and most joins
       return [{ port: port + 1, protocol: 'UDP', label: 'Steam query port' }]
@@ -206,6 +209,7 @@ export function portPresets(game: string | undefined, port: number): PortPreset[
     case 'valheim':
     case 'zomboid':
     case 'tmodloader':
+    case 'beammp':
       // their mods ride the game port; nothing here would be honest
       return []
     default:

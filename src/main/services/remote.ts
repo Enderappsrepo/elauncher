@@ -539,9 +539,17 @@ async function hostTick(): Promise<void> {
       } catch (e) {
         error = e instanceof Error ? e.message : String(e)
       }
+      const settled: Record<string, unknown> = { done: true, response: response ?? null, error }
+      const updates = req.params.updates
+      if (req.action === 'setProps' && updates && typeof updates === 'object' && 'AuthKey' in updates) {
+        // The relay needs the new key for delivery, not for request history.
+        const publicUpdates = { ...(updates as Record<string, unknown>) }
+        delete publicUpdates.AuthKey
+        settled.params = { ...req.params, updates: publicUpdates }
+      }
       await supabase
         .from('server_requests')
-        .update({ done: true, response: response ?? null, error })
+        .update(settled)
         .eq('id', req.id)
     }
 
@@ -862,7 +870,10 @@ function guardCustomerLimits(serverId: string, action: string, params: Record<st
 }
 
 /** Config files whose contents carry plan-capped settings, so the Settings tab owns them. */
-const GUARDED_SETTINGS_FILES = ['palworldsettings.ini', 'server.properties', 'serverconfig.xml', 'elauncher-valheim.json']
+const GUARDED_SETTINGS_FILES = [
+  'palworldsettings.ini', 'server.properties', 'serverconfig.xml', 'elauncher-valheim.json',
+  'elauncher-beammp.json', 'elauncher-beammp-install.json', 'serverconfig.toml', 'beammp-server', 'beammp-server.exe'
+]
 
 function guardSettingsFile(path: unknown): void {
   const target = String(path ?? '').replace(/\\/g, '/').toLowerCase()

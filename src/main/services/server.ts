@@ -30,7 +30,8 @@ import type {
   ServerTimeline,
   TimelineEventKind
 } from '@shared/types'
-import { archivedServersFile, instanceDir, javaDir, serverArchivesDir, serverDir, serversFile } from '../paths'
+import { archivedServersFile, beammpSecretFile, instanceDir, javaDir, serverArchivesDir, serverDir, serversFile } from '../paths'
+import { BEAMMP_BASE_PORT, BEAMMP_LABEL } from '@shared/beammp'
 import { readJson, writeJson } from '../store'
 import { killProcessTree } from './proctree'
 import { startSleeper, type SleeperHandle } from './sleeper'
@@ -60,6 +61,7 @@ import { searchSkin } from './skins'
 import { broadcast } from './game'
 import { headlessLog, LOG_CONSOLE } from './headless'
 import { FolderDownloads } from './folderDownloads'
+import { BEAMMP_SETTINGS_FILE, getBeammpSettings, installBeammp, setBeammpSettings, startBeammp, updateBeammpName, type BeammpHandle } from './beammp'
 import { getShareInfo, getTunnelAddress, onTunnelClosed, stopTunnel } from './hosting'
 import {
   PALWORLD_BASE_PORT,
@@ -146,6 +148,7 @@ function gameOf(server: LocalServer): ServerGame {
  * raw external IP. Tunnel addresses are always the relay's real host.
  */
 function publicAddress(server: LocalServer): string | null {
+  if (gameOf(server) === 'beammp' && (!statusOf(server.port, 'UDP').open || !statusOf(server.port, 'TCP').open)) return null
   const mapping = getMapping(server.port, gameOf(server) === 'minecraft' ? 'TCP' : 'UDP')
   if (mapping) {
     const host = getAssignedHost(server.id) ?? getSettings().publicHost ?? mapping.externalIp
@@ -429,13 +432,13 @@ function claimedPorts(server: LocalServer): number[] {
 
 /** First free port for a game, avoiding every port claimed by existing servers. */
 function nextFreePort(servers: LocalServer[], game: ServerGame = 'minecraft'): number {
-  const used = new Set<number>(servers.flatMap(claimedPorts))
+  const used = new Set<number>(servers.flatMap((server) => [...claimedPorts(server), ...(server.extraPorts ?? []).map((rule) => rule.port)]))
   const [base, step] =
     game === 'palworld'
       ? [PALWORLD_BASE_PORT, PALWORLD_PORT_STEP]
       : isSteamGame(game)
         ? [STEAM_GAMES[game].basePort, STEAM_GAMES[game].portStep]
-        : [BASE_PORT, 1]
+        : game === 'beammp' ? [BEAMMP_BASE_PORT, 1] : [BASE_PORT, 1]
   let port = base
   while (Array.from({ length: step }, (_, i) => port + i).some((p) => used.has(p))) port += step
   return port
@@ -865,6 +868,7 @@ const LOADER_KINDS = new Set(['fabric', 'neoforge', 'forge'])
 export async function createServer(opts: CreateServerOptions, cfAccess?: CfAccess): Promise<LocalServer | null> {
   if (opts.source.type === 'palworld') return createPalworldServer(opts, opts.source)
   if (opts.source.type === 'steamgame') return createSteamGameServer(opts, opts.source)
+  if (opts.source.type === 'beammp') return createBeammpServer(opts, opts.source)
   if (!opts.acceptEula) {
     throw new Error('You must accept the Minecraft EULA to run a server.')
   }
@@ -950,7 +954,7 @@ export async function rebuildServer(
   const servers = loadServers()
   const record = servers.find((s) => s.id === id)
   if (!record) throw new Error('Server not found')
-  if (gameOf(record) === 'palworld') throw new Error('Palworld servers cannot change loader.')
+  if (gameOf(record) !== 'minecraft') throw new Error('Only Minecraft servers have a loader to rebuild.')
 
   if ((states.get(id) ?? 'stopped') !== 'stopped') {
     stopServer(id)
@@ -1173,6 +1177,41 @@ async function createSteamGameServer(
   }
 }
 
+/** BeamMP ships its own dedicated server; no Steam game download is needed. */
+async function createBeammpServer(
+  opts: CreateServerOptions,
+  source: Extract<ServerSource, { type: 'beammp' }>
+): Promise<LocalServer> {
+  const servers = loadServers()
+  const name = opts.name.trim() || 'My BeamMP Server'
+  const server: LocalServer = {
+    id: randomUUID(), name, game: 'beammp', kind: 'vanilla', minecraftVersion: '',
+    port: nextFreePort(servers, 'beammp'), memoryMax: 0, javaComponent: '',
+    eulaAccepted: true, orderId: opts.orderId, createdAt: Date.now()
+  }
+  const dir = serverDir(server.id)
+  mkdirSync(dir, { recursive: true })
+  try {
+    // Validate all requested settings before downloading the server binary.
+    setBeammpSettings(dir, beammpSecretFile(server.id), {
+      Name: name, Port: String(server.port),
+      ...(source.maxPlayers !== undefined ? { MaxPlayers: String(source.maxPlayers) } : {}),
+      ...(source.maxCars !== undefined ? { MaxCars: String(source.maxCars) } : {}),
+      ...(source.map !== undefined ? { Map: source.map } : {}),
+      ...(source.authKey ? { AuthKey: source.authKey } : {})
+    })
+    await installBeammp(dir, name, server.port, (phase) => emitTask(phase, -1))
+    saveServers([...servers, server])
+    emitTask('BeamMP server created', 1, true)
+    return server
+  } catch (error) {
+    rmSync(dir, { recursive: true, force: true })
+    rmSync(beammpSecretFile(server.id), { force: true })
+    emitTask('Failed', 1, true)
+    throw error
+  }
+}
+
 async function ensureStopped(id: string): Promise<void> {
   if ((states.get(id) ?? 'stopped') !== 'stopped') {
     stopServer(id)
@@ -1190,6 +1229,7 @@ export async function deleteServer(id: string): Promise<LocalServer[]> {
   const archived = loadArchivedServers()
   if (archived.some((a) => a.id === id)) {
     rmSync(archiveDirOf(id), { recursive: true, force: true })
+    rmSync(beammpSecretFile(id), { force: true })
     writeJson(
       archivedServersFile,
       archived.filter((a) => a.id !== id)
@@ -1288,6 +1328,7 @@ export function removeServer(id: string): LocalServer[] {
   }
   releaseHost(id) // the pool name becomes available for the next hosted server
   rmSync(serverDir(id), { recursive: true, force: true })
+  rmSync(beammpSecretFile(id), { force: true })
   const remaining = loadServers().filter((s) => s.id !== id)
   saveServers(remaining)
   logs.delete(id)
@@ -1350,6 +1391,7 @@ const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout
 function saveCommandFor(server: LocalServer): string {
   const game = gameOf(server)
   if (game === 'palworld') return 'save'
+  if (game === 'beammp') return '' // Resources/plugins are files; BeamMP has no world-save command.
   if (game === 'sdtd') return 'saveworld'
   if (game === 'valheim') return '' // no console — valheim autosaves on its own schedule
   if (game === 'zomboid') return 'save' // over RCON
@@ -1449,6 +1491,7 @@ function backupSources(server: LocalServer): string[] {
   const dir = serverDir(server.id)
   const rel: string[] = []
   if (gameOf(server) === 'palworld') rel.push(join('Pal', 'Saved', 'SaveGames'))
+  else if (gameOf(server) === 'beammp') rel.push('Resources', BEAMMP_SETTINGS_FILE)
   else if (gameOf(server) === 'valheim') rel.push('save')
   else if (gameOf(server) === 'sdtd') rel.push('UserData')
   // zomboid's cachedir holds the saves and the .ini both; tModLoader keeps worlds of its own
@@ -1825,8 +1868,12 @@ export async function setServerPorts(id: string, raw: unknown): Promise<ServerPo
  */
 export function setServerMainPort(id: string, newPort: number): ServerPortsView {
   const record = getServer(id)
-  if (gameOf(record) !== 'minecraft') {
-    throw new Error('Changing the port from here is only available for Minecraft servers right now.')
+  const game = gameOf(record)
+  if (game !== 'minecraft' && game !== 'beammp') {
+    throw new Error('Changing the port from here is available for Minecraft and BeamMP servers.')
+  }
+  if (game === 'beammp' && (states.get(id) ?? 'stopped') !== 'stopped') {
+    throw new Error('Stop the BeamMP server before changing its TCP/UDP port.')
   }
   if (!Number.isInteger(newPort) || newPort < 1024 || newPort > 65535) {
     throw new Error('Enter a port between 1024 and 65535 — anything lower belongs to system services.')
@@ -1844,8 +1891,16 @@ export function setServerMainPort(id: string, newPort: number): ServerPortsView 
   for (const rule of record.extraPorts ?? []) {
     taken.set(portKey(rule.port, rule.protocol), `this server uses it for ${rule.label}`)
   }
-  const owner = taken.get(portKey(newPort, mainProtocol(record)))
-  if (owner) throw new Error(`Port ${newPort} is already taken — ${owner}. Pick a different port.`)
+  for (const protocol of game === 'beammp' ? ['TCP', 'UDP'] as const : [mainProtocol(record)]) {
+    const owner = taken.get(portKey(newPort, protocol))
+    if (owner) throw new Error(`${protocol} port ${newPort} is already taken — ${owner}. Pick a different port.`)
+  }
+  if (game === 'beammp') {
+    setBeammpSettings(serverDir(id), beammpSecretFile(id), { Port: String(newPort) })
+    closeGamePorts(record)
+    saveServers(loadServers().map((server) => server.id === id ? { ...server, port: newPort } : server))
+    return getServerPorts(id)
+  }
   // writes server.properties and re-syncs record.port from what it wrote, so the
   // file and the record can never drift apart
   setServerProperties(id, { 'server-port': String(newPort) })
@@ -2265,6 +2320,7 @@ export function playerCapKey(game: ServerGame): string | null {
   if (game === 'sdtd') return 'ServerMaxPlayerCount'
   if (game === 'valheim') return null // valheim is hard-capped at 10 by the game itself
   if (game === 'zomboid') return 'MaxPlayers'
+  if (game === 'beammp') return 'MaxPlayers'
   if (game === 'tmodloader') return 'maxplayers'
   // ASE reads this from the ini; ASA ignores it there and takes the cap from
   // -WinLiveMaxPlayers, which startSteamGame builds from this same key
@@ -2345,7 +2401,7 @@ export async function startServer(id: string): Promise<void> {
     void openRules(companions, server.name)
   }
   if (gameOf(server) === 'palworld') return startPalworldServer(server)
-  if (isSteamGame(gameOf(server))) return runSteamGameServer(server)
+  if (isSteamGame(gameOf(server)) || gameOf(server) === 'beammp') return runDedicatedGameServer(server)
   const dir = serverDir(id)
   // vanilla/paper/fabric run a jar; modern forge/neoforge run via the installer's @args file
   const hasJar = existsSync(join(dir, 'server.jar'))
@@ -2439,24 +2495,27 @@ export async function startServer(id: string): Promise<void> {
 // ---------- run: palworld ----------
 
 const palworldHandles = new Map<string, PalworldHandle>()
-const steamGameHandles = new Map<string, SteamGameHandle>()
+const steamGameHandles = new Map<string, SteamGameHandle | BeammpHandle>()
 
 /** Start a registry Steam game with the shared lifecycle plumbing. */
-async function runSteamGameServer(server: LocalServer): Promise<void> {
+async function runDedicatedGameServer(server: LocalServer): Promise<void> {
   const id = server.id
-  const game = gameOf(server) as SteamGameId
-  const spec = STEAM_GAMES[game]
-  const info = STEAM_GAME_INFO[game]
+  const game = gameOf(server) as SteamGameId | 'beammp'
+  const protocol = mainPortProtocol(game)
+  const info = game === 'beammp' ? { label: BEAMMP_LABEL } : STEAM_GAME_INFO[game]
   const dir = serverDir(id)
   logs.set(id, [])
   players.set(id, new Set())
   setState(id, 'starting')
-  pushLog(id, `[ELauncher] Starting ${info.label} server on ${spec.protocol} port ${server.port} — first boot can take a few minutes`)
+  pushLog(id, `[ELauncher] Starting ${info.label} server on ${protocol} port ${server.port}${game === 'beammp' ? ' and TCP on the same port' : ' — first boot can take a few minutes'}`)
   try {
-    const handle = startSteamGame(game, dir, server.port, planCoreList(server), {
+    const callbacks: Parameters<typeof startSteamGame>[4] = {
       onLog: (line) => pushLog(id, line),
       onReady: () => {
         setState(id, 'running')
+        if (game === 'beammp' && server.orderId) {
+          setServerAutomation(id, { ...getServerAutomation(id), autoStart: true })
+        }
         startAutomation(id)
         notifyPhones(server.name, `${info.label} server is online`, `${id}:state`)
       },
@@ -2482,7 +2541,10 @@ async function runSteamGameServer(server: LocalServer): Promise<void> {
         if (crashed) handleCrashRestart(id)
         setState(id, 'stopped', crashed ? `The server crashed (exit code ${code}). Check the console.` : undefined)
       }
-    })
+    }
+    const handle = game === 'beammp'
+      ? startBeammp(dir, server.port, beammpSecretFile(id), planCoreList(server), callbacks)
+      : startSteamGame(game, dir, server.port, planCoreList(server), callbacks)
     procs.set(id, handle.proc)
     steamGameHandles.set(id, handle)
     lastStartAt.set(id, Date.now())
@@ -2642,11 +2704,13 @@ export function sendServerCommand(id: string, command: string): void {
   const cmd = command.trim()
   if (!cmd) return
   const record = getServer(id)
-  if (isSteamGame(gameOf(record))) {
+  if (isSteamGame(gameOf(record)) || gameOf(record) === 'beammp') {
     const handle = steamGameHandles.get(id)
     if (!handle || (states.get(id) ?? 'stopped') !== 'running') throw new Error('The server is not running.')
-    if (!handle.command) throw new Error(`${STEAM_GAME_INFO[gameOf(record) as SteamGameId].label} has no admin console — manage it through Settings.`)
-    pushLog(id, `> ${cmd}`)
+    if (!handle.command) throw new Error(`${gameOf(record) === 'beammp' ? BEAMMP_LABEL : STEAM_GAME_INFO[gameOf(record) as SteamGameId].label} has no admin console — manage it through Settings.`)
+    // BeamMP's provider redacts runtime keys in output. Do not independently
+    // echo raw console text that might contain a credential pasted by an admin.
+    if (gameOf(record) !== 'beammp') pushLog(id, `> ${cmd}`)
     handle.command(cmd)
     return
   }
@@ -2731,6 +2795,7 @@ export async function regenerateValheimWorld(
 
 export function getServerProperties(id: string): Record<string, string> {
   const record = getServer(id)
+  if (gameOf(record) === 'beammp') return getBeammpSettings(serverDir(id), beammpSecretFile(id))
   if (isSteamGame(gameOf(record))) return getSteamGameSettings(gameOf(record) as SteamGameId, serverDir(id))
   if (gameOf(record) === 'palworld') return getPalworldSettings(serverDir(id))
   const file = join(serverDir(id), 'server.properties')
@@ -2748,6 +2813,14 @@ export function getServerProperties(id: string): Record<string, string> {
 /** Merge-write properties, preserving comments and unknown keys (mirrors gameOptions.setGameOptions). */
 export function setServerProperties(id: string, updates: Record<string, string>): Record<string, string> {
   const palworldRecord = getServer(id)
+  if (gameOf(palworldRecord) === 'beammp') {
+    // The Network tab owns port allocation and conflict checks. The record is
+    // authoritative at launch, so settings cannot bypass those checks.
+    if ('Port' in updates && Number(updates.Port) !== palworldRecord.port) {
+      throw new Error('Change the BeamMP port in the Network tab.')
+    }
+    return setBeammpSettings(serverDir(id), beammpSecretFile(id), updates)
+  }
   if (isSteamGame(gameOf(palworldRecord))) {
     return setSteamGameSettings(gameOf(palworldRecord) as SteamGameId, serverDir(id), updates)
   }
@@ -2815,6 +2888,9 @@ export function updateServerSettings(id: string, name: string, memoryMax: number
           if (!entries['ServerName'] || entries['ServerName'] === oldName) {
             setPalworldSettings(serverDir(id), { ServerName: newName })
           }
+        } else if (gameOf(record) === 'beammp') {
+          const props = getBeammpSettings(serverDir(id), beammpSecretFile(id))
+          if (props.Name === oldName) updateBeammpName(serverDir(id), newName)
         } else {
           const props = getServerProperties(id)
           if (props['motd'] === oldName) setServerProperties(id, { motd: newName })

@@ -15,6 +15,12 @@ export const skinsDir = join(dataRoot, 'skins')
 export const serversDir = join(dataRoot, 'servers')
 /** Archived servers (e.g. lapsed subscriptions) — out of the active pool, kept restorable. */
 export const serverArchivesDir = join(dataRoot, 'server-archives')
+/** Server credentials stay outside folders exposed by Files, ZIP downloads and SFTP. */
+export const serverSecretsDir = join(dataRoot, 'server-secrets')
+
+export function beammpSecretFile(id: string): string {
+  return join(serverSecretsDir, `${id}.beammp.key`)
+}
 
 export const instancesFile = join(dataRoot, 'instances.json')
 export const serversFile = join(dataRoot, 'servers.json')
