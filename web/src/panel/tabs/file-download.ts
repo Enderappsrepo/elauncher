@@ -23,6 +23,7 @@ interface DownloadChunk {
 }
 
 export type DownloadProgress = (received: number, total: number) => void
+export type DownloadPhase = 'preparing' | 'live'
 
 /** Empty chunks and early EOF are failures, not successful partial backups. */
 async function readChunks(
@@ -87,11 +88,19 @@ export async function fetchFolderBlob(
   ask: DownloadRequest,
   path: string,
   onPrepared?: (archive: PreparedFolderDownload) => void,
-  progress?: DownloadProgress
+  progress?: DownloadProgress,
+  onPhase?: (phase: DownloadPhase) => void
 ): Promise<{ blob: Blob; name: string }> {
   let downloadId: string | undefined
   try {
-    const archive = await ask<PreparedFolderDownload>('prepareFolderDownload', { path })
+    let archive: PreparedFolderDownload
+    try {
+      archive = await ask<PreparedFolderDownload>('prepareFolderDownload', { path })
+    } catch (error) {
+      if (!(error instanceof Error) || !/^unknown request: prepareFolderDownload$/i.test(error.message)) throw error
+      const { fetchBrowserFolderBlob } = await import('./browser-folder-zip')
+      return await fetchBrowserFolderBlob(ask, path, onPrepared, progress, onPhase)
+    }
     if (typeof archive?.downloadId === 'string' && archive.downloadId) {
       downloadId = archive.downloadId
     }

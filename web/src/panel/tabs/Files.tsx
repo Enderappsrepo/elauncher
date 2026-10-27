@@ -403,7 +403,8 @@ export function Files({ row, userId, ask }: TabProps): React.JSX.Element {
                 )
               )
             },
-            progress
+            progress,
+            (state) => setTransfers((list) => list.map((t) => (t.id === id ? { ...t, state } : t)))
           )
         : { blob: await fetchFileBlob(request, rel, progress), name }
       const { blob } = result

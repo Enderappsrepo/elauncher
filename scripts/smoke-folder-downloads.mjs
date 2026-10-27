@@ -67,11 +67,12 @@ try {
     '--outDir', compiled, '--module', 'commonjs', '--target', 'es2022',
     '--types', 'node', '--esModuleInterop', '--strict', '--skipLibCheck'
   ], { cwd: ROOT, stdio: 'inherit' })
-  // This helper's only import is a type from the panel relay. Erasing that type
-  // avoids importing Supabase or browser configuration into these runtime tests.
+  // Erase relay types without importing Supabase/browser configuration. Compile
+  // the lazily loaded compatibility helper as well as its real entry point.
   const helperPath = join(ROOT, 'web/src/panel/tabs/file-download.ts')
+  const compatibilityPath = join(ROOT, 'web/src/panel/tabs/browser-folder-zip.ts')
   execFileSync(process.execPath, [
-    join(ROOT, 'node_modules/typescript/bin/tsc'), helperPath, '--ignoreConfig',
+    join(ROOT, 'node_modules/typescript/bin/tsc'), helperPath, compatibilityPath, '--ignoreConfig',
     '--outDir', compiled, '--module', 'commonjs', '--target', 'es2022',
     '--noCheck', '--noResolve'
   ], { cwd: ROOT, stdio: 'inherit' })
@@ -290,6 +291,154 @@ try {
         return responses[index++]
       }, 'world.bin'))
     }
+  })
+
+  // An older deployed host knows only the original listing/chunk APIs. These
+  // fixtures deliberately use the wire shape, rather than browser ZIP internals.
+  const entry = (name, isDir = false, sizeBytes = 0) => ({ name, isDir, sizeBytes, modifiedAt: 1234 })
+  const oldListings = new Map([
+    ['save', [entry('nested', true), entry('café.txt', false, 13), entry('empty.dat')]],
+    ['save/nested', [entry('empty', true), entry('world.bin', false, binary.length)]],
+    ['save/nested/empty', []]
+  ])
+  const oldFiles = new Map([
+    ['save/café.txt', Buffer.from('world backup\n')],
+    ['save/empty.dat', Buffer.alloc(0)],
+    ['save/nested/world.bin', binary]
+  ])
+  function oldHost(listings = oldListings, files = oldFiles) {
+    const calls = []
+    const ask = async (action, params = {}) => {
+      calls.push({ action, params })
+      if (action === 'prepareFolderDownload') throw new Error('unknown request: prepareFolderDownload')
+      if (action === 'files') return listings.get(params.path)
+      if (action === 'downloadChunk') {
+        assert.ok(files.has(params.path), `requested an expected file: ${params.path}`)
+        const contents = files.get(params.path)
+        const end = Math.min(params.offset + params.length, contents.length)
+        return { data: contents.subarray(params.offset, end).toString('base64'), size: contents.length, eof: end === contents.length }
+      }
+      throw new Error(`Older hosts do not support ${action}`)
+    }
+    return { ask, calls }
+  }
+
+  test('older hosts produce a complete browser ZIP with nested binary files and empty folders', async () => {
+    const host = oldHost()
+    const progress = []
+    const result = await fetchFolderBlob(host.ask, 'save', undefined, (done, total) => progress.push([done, total]))
+    assert.equal(result.name, 'save.zip')
+    assert.equal(result.blob.type, 'application/zip')
+    const entries = unzip(Buffer.from(await result.blob.arrayBuffer()))
+    assert.deepEqual([...entries.keys()].sort(), [
+      'save/', 'save/café.txt', 'save/empty.dat', 'save/nested/', 'save/nested/empty/', 'save/nested/world.bin'
+    ])
+    assert.deepEqual(entries.get('save/nested/world.bin'), binary)
+    assert.equal(entries.get('save/café.txt').toString(), 'world backup\n')
+    assert.equal(entries.get('save/empty.dat').length, 0)
+    assert.ok(progress.length >= 4, 'compatibility download spans multiple relay chunks')
+    assert.ok(host.calls.some(({ action }) => action === 'files'))
+    assert.equal(host.calls.filter(({ action }) => action === 'prepareFolderDownload').length, 1)
+    assert.equal(host.calls.some(({ action }) => action === 'releaseArchive'), false, 'old host has no temporary archive to release')
+  })
+
+  test('denied, offline, timeout and unrelated host errors never activate ZIP fallback', async () => {
+    for (const message of [
+      'access was revoked', 'Only the host owner or an admin can do that.',
+      'No answer from the machine hosting this server — is the launcher running?',
+      'Request timed out', 'Disk is full', 'unknown request: files',
+      'unknown request: prepareFolderDownload.', 'proxy error: unknown request: prepareFolderDownload'
+    ]) {
+      const calls = []
+      await assert.rejects(fetchFolderBlob(async (action) => {
+        calls.push(action)
+        throw new Error(message)
+      }, 'save'), (error) => error.message === message)
+      assert.deepEqual(calls, ['prepareFolderDownload'], message)
+    }
+  })
+
+  test('browser ZIP refuses missing listings, invalid entries, unsafe names and duplicates', async () => {
+    const badListings = [
+      undefined, null, {}, 'missing', [null], [{}],
+      [entry('')], [entry('.')], [entry('..')], [entry('../loot')],
+      [entry('nested/loot')], [entry('nested\\loot')], [entry('/absolute')],
+      [entry('C:escape')], [entry('bad\0name')],
+      [entry('same'), entry('same')],
+      [{ ...entry('save.dat'), isDir: 'false' }],
+      [{ ...entry('save.dat'), sizeBytes: -1 }],
+      [{ ...entry('save.dat'), sizeBytes: 0.5 }],
+      [{ ...entry('save.dat'), sizeBytes: NaN }],
+      [{ ...entry('save.dat'), isSymlink: true }],
+      [{ ...entry('save.dat'), isSymbolicLink: true }]
+    ]
+    for (const listing of badListings) {
+      const host = oldHost(new Map([['save', listing]]))
+      let result
+      await assert.rejects(async () => { result = await fetchFolderBlob(host.ask, 'save') })
+      assert.equal(result, undefined, 'invalid listing must never yield a partial ZIP')
+      assert.equal(host.calls.some(({ action }) => action === 'downloadChunk'), false, 'unsafe listing is refused before file reads')
+    }
+    const missingNested = oldHost(new Map([['save', [entry('nested', true)]]]))
+    await assert.rejects(fetchFolderBlob(missingNested.ask, 'save'))
+    assert.equal(missingNested.calls.some(({ action }) => action === 'downloadChunk'), false)
+  })
+
+  test('browser ZIP refuses a selected path outside the server folder before listing it', async () => {
+    for (const path of ['../victim', 'save/../../victim', '..\\victim', '/root', 'C:/Windows', 'save\0hidden']) {
+      const host = oldHost()
+      await assert.rejects(fetchFolderBlob(host.ask, path))
+      assert.equal(host.calls.some(({ action }) => action === 'files'), false)
+    }
+  })
+
+  test('browser ZIP enforces entry and source-size bounds across nested folders', async () => {
+    for (const listings of [
+      new Map([
+        ['save', [entry('left', true), entry('right', true)]],
+        ['save/left', Array.from({ length: 10_000 }, (_, index) => entry(`file-${index}`))],
+        ['save/right', Array.from({ length: 10_000 }, (_, index) => entry(`file-${index}`))]
+      ]),
+      new Map([
+        ['save', [entry('left', true), entry('right', true)]],
+        ['save/left', [entry('part.dat', false, 60 * 1024 * 1024)]],
+        ['save/right', [entry('part.dat', false, 60 * 1024 * 1024)]]
+      ])
+    ]) {
+      const host = oldHost(listings)
+      await assert.rejects(fetchFolderBlob(host.ask, 'save'), /limit|20.?000|100|large|many|cap/i)
+      assert.equal(host.calls.some(({ action }) => action === 'downloadChunk'), false, 'aggregate bounds apply before reading file contents')
+    }
+  })
+
+  test('browser ZIP rejects changed or interrupted source files without returning partial backups', async () => {
+    for (const failure of ['changed-size', 'early-eof', 'read-error', 'listing-error']) {
+      const host = oldHost()
+      let result
+      await assert.rejects(async () => {
+        result = await fetchFolderBlob(async (action, params) => {
+          if (action === 'files' && failure === 'listing-error') throw new Error('listing failed')
+          const response = await host.ask(action, params)
+          if (action === 'downloadChunk' && failure === 'read-error') throw new Error('file vanished')
+          if (action === 'downloadChunk' && failure === 'early-eof') return { ...response, data: '', eof: true }
+          if (action === 'downloadChunk' && failure === 'changed-size') {
+            return { data: 'AA==', size: 1, eof: true }
+          }
+          return response
+        }, 'save')
+      })
+      assert.equal(result, undefined, `${failure} cannot yield a partial ZIP`)
+      assert.equal(host.calls.some(({ action }) => action === 'releaseArchive'), false)
+    }
+  })
+
+  test('browser ZIP preserves filenames which coincide with JavaScript object properties', async () => {
+    const files = new Map([['save/__proto__', Buffer.from('prototype name')], ['save/constructor', Buffer.from('constructor name')]])
+    const listings = new Map([['save', [...files].map(([path, bytes]) => entry(path.slice(5), false, bytes.length))]])
+    const result = await fetchFolderBlob(oldHost(listings, files).ask, 'save')
+    const entries = unzip(Buffer.from(await result.blob.arrayBuffer()))
+    assert.equal(entries.get('save/__proto__').toString(), 'prototype name')
+    assert.equal(entries.get('save/constructor').toString(), 'constructor name')
   })
 
   for (const { name, run } of tests) {

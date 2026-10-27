@@ -23,11 +23,16 @@ empty subfolders; selected regular files keep their usual downloads.
 
 Stop the game server before exporting a world so its files stay consistent.
 Folder exports allow up to 100 MB of source files and a 100 MB ZIP, matching
-the panel's existing transfer limit. Use SFTP for larger folders. Symbolic
-links are refused. ZIPs are temporary, leave the original folder untouched,
-and are deleted after the transfer or expired after six hours without use.
+the panel's existing transfer limit. Use SFTP for larger folders. Downloads
+leave the original folder untouched. Updated hosts refuse symbolic links and
+remove temporary host ZIPs after transfer or six hours without use.
 
-Both the hosting launcher and the web panel need this version of the feature.
+The dashboard also works with older hosting launchers by downloading the folder
+through their existing file APIs and creating the ZIP in the browser. Updated
+hosts prepare the ZIP on the host before transferring it.
+
+Build only the live hosting dashboard with `npm run web:build:dashboard`. This
+updates `docs/manage/` and its assets while preserving the landing page and guides.
 
 ## Cloud setup (accounts + modpack library)
 
