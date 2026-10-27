@@ -59,6 +59,7 @@ import { getLoaderVersions } from './versions'
 import { searchSkin } from './skins'
 import { broadcast } from './game'
 import { headlessLog, LOG_CONSOLE } from './headless'
+import { FolderDownloads } from './folderDownloads'
 import { getShareInfo, getTunnelAddress, onTunnelClosed, stopTunnel } from './hosting'
 import {
   PALWORLD_BASE_PORT,
@@ -3174,6 +3175,20 @@ export async function exportServerPack(id: string): Promise<{ ok: boolean; error
 }
 
 // ---------- file manager (strictly scoped to the server folder) ----------
+
+const folderDownloads = new FolderDownloads()
+
+export function prepareServerFolderDownload(id: string, requesterId: string, rel: string) {
+  return folderDownloads.prepare(id, requesterId, serverDir(id), rel)
+}
+
+export function readServerArchiveChunk(id: string, requesterId: string, downloadId: string, offset: number, length: number) {
+  return folderDownloads.read(id, requesterId, downloadId, offset, length)
+}
+
+export function releaseServerArchive(id: string, requesterId: string, downloadId: string) {
+  return folderDownloads.release(id, requesterId, downloadId)
+}
 
 const TEXT_EXTENSIONS = new Set([
   'txt', 'json', 'json5', 'properties', 'toml', 'yml', 'yaml', 'cfg', 'conf', 'log', 'mcmeta', 'snbt', 'md', 'csv', 'tsv', 'bat', 'sh'

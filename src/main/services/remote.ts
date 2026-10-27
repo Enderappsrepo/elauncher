@@ -32,11 +32,14 @@ import {
   restoreServerBackup,
   palworldModerate,
   playerCapKey,
+  prepareServerFolderDownload,
+  readServerArchiveChunk,
   readServerFile,
   readServerFileChunk,
   readServerRoster,
   rebuildServer,
   removeServerMod,
+  releaseServerArchive,
   sendServerCommand,
   setCommunityServer,
   setServerAutomation,
@@ -532,7 +535,7 @@ async function hostTick(): Promise<void> {
         if (archivedHere && !PRIVILEGED_ACTIONS.has(req.action)) {
           throw new Error('This server is archived — restore it first.')
         }
-        response = await runPanelRequest(req.server_id, req.action, req.params, privileged, canShare)
+        response = await runPanelRequest(req.server_id, req.action, req.params, req.requester_id, privileged, canShare)
       } catch (e) {
         error = e instanceof Error ? e.message : String(e)
       }
@@ -873,6 +876,7 @@ async function runPanelRequest(
   serverId: string,
   action: string,
   params: Record<string, unknown>,
+  requesterId: string,
   privileged = true,
   canShare = privileged
 ): Promise<unknown> {
@@ -982,6 +986,14 @@ async function runPanelRequest(
         Number(params.offset ?? 0),
         Number(params.length ?? 0)
       )
+    case 'prepareFolderDownload':
+      return prepareServerFolderDownload(serverId, requesterId, String(params.path ?? ''))
+    case 'downloadArchiveChunk':
+      return readServerArchiveChunk(
+        serverId, requesterId, String(params.downloadId ?? ''), Number(params.offset), Number(params.length)
+      )
+    case 'releaseArchive':
+      return releaseServerArchive(serverId, requesterId, String(params.downloadId ?? ''))
     case 'installMod':
       await installServerMod(
         serverId,

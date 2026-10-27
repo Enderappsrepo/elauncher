@@ -26,6 +26,7 @@ import { Button, EmptyState, Kbd, Skeleton, Spinner } from '@web/ui'
 import { AnimatePresence, Collapse, EASE_OUT, EASE_SPRING, motion } from '@web/ui/motion'
 import type { RequestAction } from '../relay'
 import type { TabProps } from './types'
+import { fetchFileBlob, fetchFolderBlob } from './file-download'
 import './Files.css'
 
 /**
@@ -40,8 +41,8 @@ import './Files.css'
 /**
  * Transfer sizing. Bytes travel base64'd inside the relay's jsonb column and it
  * settles one request per poll, so throughput is chunk size times parallelism
- * per round trip. The host refuses a slice over 512 KB and sendRequest gives up
- * after 22 seconds — between them, that is what holds this at 256 KB.
+ * per round trip. The host refuses a slice over 512 KB; 256 KB leaves room for
+ * the base64 overhead and gives each transfer a visible progress update.
  */
 const CHUNK = 256 * 1024
 const PARALLEL = 3
@@ -126,7 +127,7 @@ interface Transfer {
   way: 'up' | 'down'
   sent: number
   total: number
-  state: 'live' | 'done' | 'bad'
+  state: 'preparing' | 'live' | 'done' | 'bad'
   error?: string
 }
 
@@ -305,9 +306,9 @@ export function Files({ row, userId, ask }: TabProps): React.JSX.Element {
 
   // ---------- transfers ----------
 
-  function startTransfer(name: string, way: 'up' | 'down', total: number): string {
+  function startTransfer(name: string, way: 'up' | 'down', total: number, preparing = false): string {
     const id = `x${nextId.current++}`
-    setTransfers((list) => [...list, { id, name, way, sent: 0, total, state: 'live' }])
+    setTransfers((list) => [...list, { id, name, way, sent: 0, total, state: preparing ? 'preparing' : 'live' }])
     return id
   }
 
@@ -378,38 +379,39 @@ export function Files({ row, userId, ask }: TabProps): React.JSX.Element {
     if (pathRef.current === dest) await load(dest, true)
   }
 
-  async function fetchBlob(rel: string, id?: string): Promise<Blob> {
-    const parts: BlobPart[] = []
-    let offset = 0
-    for (;;) {
-      const res = await call<{ data?: string; size?: number; eof?: boolean }>('downloadChunk', {
-        path: rel,
-        offset,
-        length: CHUNK
-      })
-      const bytes = Uint8Array.from(atob(res?.data ?? ''), (c) => c.charCodeAt(0))
-      parts.push(bytes)
-      offset += bytes.length
-      if (id) {
-        const at = offset
-        const size = res?.size ?? 0
-        setTransfers((list) => list.map((t) => (t.id === id ? { ...t, sent: at, total: size } : t)))
-      }
-      // a zero-length slice ends the read as surely as eof does, and without it
-      // a truncated answer would loop forever
-      if (res?.eof || bytes.length === 0) break
+  async function download(
+    rel: string,
+    name: string,
+    isDir = false,
+    request: TabProps['ask'] = ask
+  ): Promise<void> {
+    // Hold this server-bound closure for preparation, every chunk and cleanup.
+    // call()/askRef follows the selected server and can change during an await.
+    const id = startTransfer(isDir ? `${name}.zip` : name, 'down', 0, isDir)
+    const progress = (received: number, total: number): void => {
+      setTransfers((list) => list.map((t) => (t.id === id ? { ...t, sent: received, total } : t)))
     }
-    return new Blob(parts)
-  }
-
-  async function download(rel: string, name: string): Promise<void> {
-    const id = startTransfer(name, 'down', 0)
     try {
-      const blob = await fetchBlob(rel, id)
+      const result = isDir
+        ? await fetchFolderBlob(
+            request,
+            rel,
+            (archive) => {
+              setTransfers((list) =>
+                list.map((t) =>
+                  t.id === id ? { ...t, name: archive.name, total: archive.size, state: 'live' } : t
+                )
+              )
+            },
+            progress,
+            (state) => setTransfers((list) => list.map((t) => (t.id === id ? { ...t, state } : t)))
+          )
+        : { blob: await fetchFileBlob(request, rel, progress), name }
+      const { blob } = result
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
-      a.download = name
+      a.download = result.name
       a.click()
       // the anchor never enters the document, so nothing but this keeps the blob
       // alive long enough for the browser to start writing it out
@@ -421,12 +423,13 @@ export function Files({ row, userId, ask }: TabProps): React.JSX.Element {
   }
 
   async function downloadSelected(): Promise<void> {
-    const picked = [...selected]
-    const files = picked.filter((n) => !entries?.find((e) => e.name === n)?.isDir)
-    if (files.length < picked.length) {
-      setNotice({ text: 'Folders cannot be downloaded — zip them on the host first.', bad: true })
-    }
-    for (const name of files) await download(relOf(name), name)
+    const request = ask
+    const picked = [...selected].map((name) => ({
+      name,
+      rel: relOf(name),
+      isDir: entries?.find((e) => e.name === name)?.isDir ?? false
+    }))
+    for (const entry of picked) await download(entry.rel, entry.name, entry.isDir, request)
   }
 
   // ---------- create, rename, delete ----------
@@ -558,7 +561,7 @@ export function Files({ row, userId, ask }: TabProps): React.JSX.Element {
     setBusy('open')
     setOpening(entry.name)
     try {
-      const blob = await fetchBlob(relOf(entry.name))
+      const blob = await fetchFileBlob(ask, relOf(entry.name))
       setNotice(null)
       setView({ kind: 'image', rel: relOf(entry.name), name: entry.name, url: URL.createObjectURL(blob) })
     } catch (e) {
@@ -860,6 +863,11 @@ export function Files({ row, userId, ask }: TabProps): React.JSX.Element {
             </Button>
           </div>
 
+          <p className="dim">
+            Use a folder’s Download ZIP action to save it, including subfolders. Stop the server first
+            for a consistent world backup. Limit: 100 MB of source files per ZIP.
+          </p>
+
           <div className="fm-tools">
             <input
               className="input fm-find"
@@ -1013,11 +1021,9 @@ export function Files({ row, userId, ask }: TabProps): React.JSX.Element {
                                 <Eye size={16} aria-hidden /> Preview
                               </Button>
                             )}
-                            {!entry.isDir && (
-                              <Button onClick={() => void download(relOf(entry.name), entry.name)}>
-                                <Download size={16} aria-hidden /> Download
-                              </Button>
-                            )}
+                            <Button onClick={() => void download(relOf(entry.name), entry.name, entry.isDir)}>
+                              <Download size={16} aria-hidden /> {entry.isDir ? 'Download ZIP' : 'Download'}
+                            </Button>
                             <Button
                               disabled={working}
                               onClick={() => askFor({ kind: 'rename', from: entry.name }, entry.name)}
@@ -1112,7 +1118,7 @@ export function Files({ row, userId, ask }: TabProps): React.JSX.Element {
                   </span>
                 )}
                 <span className="fm-xpct">
-                  {t.state === 'bad' ? 'Failed' : t.state === 'done' ? 'Done' : `${pct}%`}
+                  {t.state === 'bad' ? 'Failed' : t.state === 'done' ? 'Done' : t.state === 'preparing' ? 'Zipping…' : `${pct}%`}
                 </span>
                 {t.state === 'bad' && (
                   <Button

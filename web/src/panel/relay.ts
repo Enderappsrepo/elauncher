@@ -48,6 +48,7 @@ export type RequestAction =
   | 'info'
   | 'files' | 'readFile' | 'writeFile' | 'deleteFile' | 'deleteFiles' | 'mkdir' | 'movePath'
   | 'downloadChunk' | 'uploadChunk'
+  | 'prepareFolderDownload' | 'downloadArchiveChunk' | 'releaseArchive'
   | 'mods' | 'installMod' | 'removeMod'
   | 'players' | 'roster' | 'rosterEdit' | 'moderate'
   | 'getProps' | 'setProps'
@@ -76,6 +77,8 @@ const SLOW_ACTIONS: Partial<Record<RequestAction, number>> = {
   loaderVersions: 30_000,
   uploadChunk: 60_000,
   downloadChunk: 60_000,
+  prepareFolderDownload: 120_000,
+  downloadArchiveChunk: 60_000,
   writeFile: 40_000,
   // a world folder is tens of thousands of small files, and the host deletes
   // them before it answers
