@@ -15,6 +15,7 @@
     "dev": "electron-vite dev --watch",
     "build": "electron-vite build",
     "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json && tsc --noEmit -p tsconfig.pages.json",
+    "test:folder-downloads": "node scripts/smoke-folder-downloads.mjs",
     "start": "electron-vite preview",
     "icon": "node scripts/make-ico.mjs",
     "docs": "node scripts/serve-docs.mjs",
