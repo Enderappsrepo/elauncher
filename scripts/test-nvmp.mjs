@@ -272,10 +272,10 @@ test('network policy opens both protocols on one allocation and no Minecraft pre
   assert.deepEqual(ports.portPresets('nvmp', 27016), [])
 })
 
-function provisionerFixture({ prepared = true, state = 'starting', existing = true, setupPhase = 'ready' } = {}) {
+function provisionerFixture({ prepared = true, state = 'starting', existing = true, setupPhase = 'ready', planGame = 'nvmp', serverGame = planGame } = {}) {
   const order = { id: 'order-1', user_id: 'buyer', plan_id: 'nvmp-plan', server_name: 'My server', server_id: existing ? 'server-1' : null, note: '', status: 'active', paid_until: null }
-  const plan = { id: 'nvmp-plan', name: 'NVMP', game: 'nvmp', max_players: 10, memory_mb: 4096 }
-  const server = { id: 'server-1', name: 'Test', game: 'nvmp', port: 27015, limits: { memoryMb: 4096, maxPlayers: 10 } }
+  const plan = { id: 'nvmp-plan', name: 'NVMP', game: planGame, max_players: 10, memory_mb: 4096 }
+  const server = { id: 'server-1', name: 'Test', game: serverGame, orderId: 'order-1', port: 27015, limits: { memoryMb: 4096, maxPlayers: 10 } }
   const calls = { claim: 0, open: [], companion: [], mail: [], created: [], shared: [], automation: [] }
   const client = {
     auth: { getSession: async () => ({ data: { session: { user: { id: 'admin' } } } }) },
@@ -332,6 +332,34 @@ test('paid NV:MP orders share a stopped customer-upload instance without startin
   assert.match(f.order.note, /Waiting for your game files/)
   assert.equal(f.calls.mail.length, 0); assert.equal(f.calls.open.length, 0)
   assert.equal(f.calls.automation.length, 1)
+})
+
+test('unknown cloud games cannot fall through to Minecraft or claim an order', async () => {
+  for (const planGame of ['future-game', '', 'NVMP']) {
+    const f = provisionerFixture({ existing: false, planGame })
+    await f.tick()
+    assert.equal(f.calls.claim, 0)
+    await assert.rejects(f.provision(), /does not support/)
+    assert.equal(f.calls.created.length, 0)
+    assert.equal(f.calls.shared.length, 0)
+  }
+})
+
+test('retry refuses to adopt a Minecraft instance for a paid NVMP order', async () => {
+  const f = provisionerFixture({ serverGame: null })
+  await assert.rejects(f.provision(), /Server game minecraft does not match plan nvmp/)
+  assert.equal(f.calls.created.length, 0)
+  assert.equal(f.calls.shared.length, 0)
+  assert.equal(f.calls.automation.length, 0)
+})
+
+test('reconciliation reports a mismatched game instead of advertising it as ready', async () => {
+  const f = provisionerFixture({ serverGame: 'minecraft', state: 'running' })
+  await f.tick()
+  assert.match(f.order.note, /does not match plan nvmp/)
+  assert.doesNotMatch(f.order.note, /Ready/)
+  assert.equal(f.calls.open.length, 0)
+  assert.equal(f.calls.shared.length, 0)
 })
 
 test('unfinished customer uploads remain waiting during order reconciliation', async () => {
@@ -392,4 +420,34 @@ test('official archive installs only the allowlisted server files', { skip: !pro
   assert.match(readFileSync(join(dir, 'server.cfg'), 'utf8'), /Port=27018/)
   assert.equal(JSON.parse(readFileSync(join(dir, 'elauncher-nvmp.json'), 'utf8')).version, '9.43')
   assert.equal(f.calls.spawn.length, 0)
+})
+
+
+function protonRelease(arch, names) {
+  return load('src/main/services/proton.ts', {
+    electron: { app: {} }, './mods': { downloadToFile: noCall('runtime download') }
+  }, {
+    process: { arch },
+    fetch: async () => ({ ok: true, json: async () => ({ tag_name: 'GE-Proton11-11', assets: names.map((name) => ({ name, browser_download_url: `https://example.test/${name}` })) }) })
+  }, '\nexport { latestRelease };').latestRelease()
+}
+
+test('Proton selects the explicit x86_64 archive even when ARM assets come first', async () => {
+  const result = await protonRelease('x64', ['GE-Proton11-11-aarch64.tar.gz', 'GE-Proton11-11-x86_64.sha512sum', 'GE-Proton11-11-x86_64.tar.gz'])
+  assert.match(result.url, /GE-Proton11-11-x86_64\.tar\.gz$/)
+})
+
+test('Proton still accepts legacy x86_64 archive names without a suffix', async () => {
+  const result = await protonRelease('x64', ['GE-Proton10-20-aarch64.tar.gz', 'GE-Proton10-20.tar.gz'])
+  assert.match(result.url, /GE-Proton10-20\.tar\.gz$/)
+})
+
+test('Proton ARM hosts select only the ARM archive', async () => {
+  const result = await protonRelease('arm64', ['GE-Proton11-11-x86_64.tar.gz', 'GE-Proton11-11-aarch64.tar.gz'])
+  assert.match(result.url, /-aarch64\.tar\.gz$/)
+})
+
+test('Proton refuses an incompatible archive instead of guessing', async () => {
+  await assert.rejects(protonRelease('x64', ['GE-Proton11-11-aarch64.tar.gz', 'GE-Proton11-11-x86_64.sha512sum']), /no x64 build/)
+  await assert.rejects(protonRelease('arm64', ['GE-Proton11-11-x86_64.tar.gz']), /no arm64 build/)
 })

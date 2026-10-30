@@ -285,7 +285,20 @@ async function hostingCfAccess(): Promise<CfAccess> {
   return { mode: 'proxy', token }
 }
 
+/** Cloud plan values can be newer than this host's installed game providers. */
+function supportsPlanGame(game: string): boolean {
+  return game === 'minecraft' || game === 'palworld' || isSteamGame(game)
+}
+
+function assertServerGame(server: LocalServer, plan: PlanRow): void {
+  const actual = server.game ?? 'minecraft'
+  if (actual !== plan.game) {
+    throw new Error(`Server game ${actual} does not match plan ${plan.game}; repair the order before continuing.`)
+  }
+}
+
 async function provision(order: OrderRow, plan: PlanRow, me: string): Promise<void> {
+  if (!supportsPlanGame(plan.game)) throw new Error(`This host does not support ${plan.game}; update the host before provisioning.`)
   const supabase = getClient()
   const note = async (text: string): Promise<void> => {
     await supabase.from('hosting_orders').update({ note: text, updated_at: new Date().toISOString() }).eq('id', order.id)
@@ -296,6 +309,7 @@ async function provision(order: OrderRow, plan: PlanRow, me: string): Promise<vo
   // with this order. Adopt it; building a second one is the bug we're fixing.
   const name = order.server_name.trim() || plan.name
   let server = listLocalServers().find((s) => s.orderId === order.id) ?? null
+  if (server) assertServerGame(server, plan)
   if (!server) {
     // tell the customer it's happening before the (possibly long) download starts
     await note(plan.game === 'nvmp' ? 'Installing NV:MP — you can upload your game files once setup finishes…' : plan.game === 'minecraft' ? 'Setting up your server…' : 'Setting up your server — downloading the game (this can take a few minutes)…')
@@ -303,7 +317,7 @@ async function provision(order: OrderRow, plan: PlanRow, me: string): Promise<vo
       server = await createServer({ name, acceptEula: true, orderId: order.id, source: { type: 'palworld', maxPlayers: plan.max_players } })
     } else if (isSteamGame(plan.game)) {
       server = await createServer({ name, acceptEula: true, orderId: order.id, source: { type: 'steamgame', game: plan.game, maxPlayers: plan.max_players, nvmpCustomerFiles: plan.game === 'nvmp' } })
-    } else {
+    } else if (plan.game === 'minecraft') {
       const source = await minecraftSource(order.config)
       // a paid CurseForge pack resolves through cf-proxy so the buyer needs no key
       const cfAccess = source.type === 'curseforgePack' ? await hostingCfAccess() : undefined
@@ -311,6 +325,7 @@ async function provision(order: OrderRow, plan: PlanRow, me: string): Promise<vo
     }
   }
   if (!server) throw new Error('server creation was cancelled')
+  assertServerGame(server, plan)
 
   if (plan.game === 'minecraft') {
     setServerProperties(server.id, { 'max-players': String(plan.max_players) })
@@ -421,7 +436,7 @@ async function tick(): Promise<void> {
 
     for (const order of orders) {
       const plan = plans.get(order.plan_id)
-      if (!plan) continue
+      if (!plan || !supportsPlanGame(plan.game)) continue
       // Paid instances receive customer files later; no shared retail-game template is needed.
       if (!order.server_id && plan.game === 'nvmp' && nvmpNodeProblem()) continue
       try {
@@ -466,6 +481,7 @@ async function tick(): Promise<void> {
           // keep the record's plan caps honest (plan changes, upgrades, old servers
           // provisioned before limits existed) — applied on the next start
           const record = localById.get(order.server_id)!
+          assertServerGame(record, plan)
           const wanted = planLimits(plan)
           // compare against the plan baseline, not the caps in force — an admin
           // override sits on top of these and must not read as a plan change

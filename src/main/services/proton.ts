@@ -72,10 +72,11 @@ function hasPython3(): boolean {
  * aarch64 on an ordinary server — 400 MB of binaries that cannot execute, which
  * only surfaces as a launch failure much later.
  *
- * The x86_64 asset carries no architecture suffix; ARM is spelled out.
+ * New x86_64 assets carry an explicit suffix; older builds omitted it.
+ * ARM is always spelled out and must never match the x86_64 selection.
  */
 function assetPattern(): RegExp {
-  return process.arch === 'arm64' ? /^GE-Proton[\d.-]+-aarch64\.tar\.gz$/ : /^GE-Proton[\d.-]+\.tar\.gz$/
+  return process.arch === 'arm64' ? /^GE-Proton[\d.-]+-aarch64\.tar\.gz$/ : /^GE-Proton[\d.-]+(?:-x86_64)?\.tar\.gz$/
 }
 
 /** The newest GE-Proton release, and the tarball to fetch for it. */
