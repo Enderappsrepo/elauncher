@@ -45,6 +45,7 @@ export async function queueCommand(
 }
 
 export type RequestAction =
+  | 'nvmpStatus' | 'nvmpBegin' | 'nvmpChunk' | 'nvmpFinish' | 'nvmpDiscard'
   | 'info'
   | 'files' | 'readFile' | 'writeFile' | 'deleteFile' | 'deleteFiles' | 'mkdir' | 'movePath'
   | 'downloadChunk' | 'uploadChunk'
@@ -69,6 +70,10 @@ const REQUEST_TIMEOUT_MS = 22_000
  * lives in one place, and a tab cannot get it wrong by omission.
  */
 const SLOW_ACTIONS: Partial<Record<RequestAction, number>> = {
+  nvmpBegin: 60_000,
+  nvmpChunk: 60_000,
+  nvmpFinish: 60_000,
+  nvmpDiscard: 60_000,
   installMod: 40_000,
   rebuild: 120_000,
   // swap runs the loader installer just like rebuild, so it needs the same room;

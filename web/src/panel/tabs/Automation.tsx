@@ -350,13 +350,14 @@ export function Automation({ row, userId, ask }: TabProps): React.JSX.Element {
   return (
     <motion.div className="stack autopane" variants={staggerParent} initial="hidden" animate="show">
       <Group title="Keeping the world safe">
-        <Picker
+        {info.game === 'nvmp' && <Note>Players save progress on their own computers. Backups here contain host data and settings. Scheduled restarts cannot warn players in game; arrange them with your group.</Note>}
+        {info.game !== 'nvmp' && <Picker
           id="auto-save"
           label="Save the world"
           value={auto.saveIntervalMin ?? 0}
           options={SAVE_MINUTES}
           onChange={(v) => patch({ saveIntervalMin: v })}
-        />
+        />}
         {info.game === 'valheim' && (
           <Note tone="warn">
             Valheim ships no console, so there is no save command to send — this setting has no effect for it. The
@@ -365,7 +366,7 @@ export function Automation({ row, userId, ask }: TabProps): React.JSX.Element {
         )}
         <Picker
           id="auto-backup"
-          label="Back up the world"
+          label={info.game === 'nvmp' ? 'Back up host data and settings' : 'Back up the world'}
           value={auto.backupIntervalHours ?? 0}
           options={BACKUP_HOURS}
           onChange={(v) => patch({ backupIntervalHours: v })}
@@ -440,7 +441,7 @@ export function Automation({ row, userId, ask }: TabProps): React.JSX.Element {
           <div className="stack">
             <Stepper
               id="auto-warn"
-              label="Warn players … minutes first"
+              label={info.game === 'nvmp' ? 'Delay restart … minutes' : 'Warn players … minutes first'}
               value={warnMin}
               min={1}
               max={60}
@@ -451,7 +452,7 @@ export function Automation({ row, userId, ask }: TabProps): React.JSX.Element {
             {when && (
               <Note>
                 <b>Next restart {when.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</b>
-                {running ? ` · in ${inWords(when.getTime() - Date.now())}` : ''} · players warned {warnMin} min before
+                {running ? ` · in ${inWords(when.getTime() - Date.now())}` : ''}{info.game === 'nvmp' ? ` · ${warnMin} min restart delay; no in-game warning` : ` · players warned ${warnMin} min before`}
                 {running ? '' : ' · timers only run while the server is running, so this starts counting once it is up'}
               </Note>
             )}
@@ -465,7 +466,7 @@ export function Automation({ row, userId, ask }: TabProps): React.JSX.Element {
           label="Restart if memory goes above"
           value={auto.restartAboveMemoryMB ?? 0}
           options={MEMORY_LIMITS}
-          hint="Players get the usual restart warning first, then the server comes back fresh — the net that catches slow memory leaks."
+          hint={info.game === 'nvmp' ? 'Restarts after the configured delay. NV:MP cannot show an in-game restart warning.' : 'Players get the usual restart warning first, then the server comes back fresh — the net that catches slow memory leaks.'}
           onChange={(v) => patch({ restartAboveMemoryMB: v })}
         />
         {memoryPinned > 0 && (

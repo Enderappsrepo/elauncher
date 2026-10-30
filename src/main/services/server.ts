@@ -1,5 +1,7 @@
+import { prepareNvmpStart, readNvmpPlugins } from './nvmp'
+import { beginNvmpUpload, discardNvmpUpload, finishNvmpUpload, nvmpSetupStatus, nvmpUploadPending, uploadNvmpChunk, NVMP_UPLOAD_DIR } from './nvmpUpload'
 import { spawn, type ChildProcess } from 'child_process'
-import { chmodSync, closeSync, copyFileSync, cpSync, existsSync, mkdirSync, openSync, readdirSync, readFileSync, readSync, renameSync, rmSync, statSync, writeFileSync, writeSync } from 'fs'
+import { chmodSync, closeSync, copyFileSync, cpSync, existsSync, lstatSync, mkdirSync, openSync, readdirSync, readFileSync, readSync, renameSync, rmSync, statSync, writeFileSync, writeSync } from 'fs'
 import { cp, readdir, readFile } from 'fs/promises'
 import { basename, dirname, join, relative, resolve, sep } from 'path'
 import { cpus, tmpdir } from 'os'
@@ -437,7 +439,8 @@ function nextFreePort(servers: LocalServer[], game: ServerGame = 'minecraft'): n
         ? [STEAM_GAMES[game].basePort, STEAM_GAMES[game].portStep]
         : [BASE_PORT, 1]
   let port = base
-  while (Array.from({ length: step }, (_, i) => port + i).some((p) => used.has(p))) port += step
+  while (Array.from({ length: step }, (_, i) => port + i).some((p) => used.has(p)) || (game === 'nvmp' && blockedPortReason(port))) port += step
+  if (port + step - 1 > 65535) throw new Error('No available ports for another server.')
   return port
 }
 
@@ -1159,7 +1162,7 @@ async function createSteamGameServer(
     await installSteamGame(
       source.game,
       dir,
-      { serverName: name, serverPassword: source.serverPassword, maxPlayers: source.maxPlayers, port: server.port },
+      { serverName: name, serverPassword: source.serverPassword, maxPlayers: source.maxPlayers, port: server.port, nvmpCustomerFiles: source.nvmpCustomerFiles },
       (phase, progress) => emitTask(phase, progress)
     )
     saveServers([...servers, server])
@@ -1351,6 +1354,7 @@ function saveCommandFor(server: LocalServer): string {
   const game = gameOf(server)
   if (game === 'palworld') return 'save'
   if (game === 'sdtd') return 'saveworld'
+  if (game === 'nvmp') return '' // saves are client-side; no server admin console
   if (game === 'valheim') return '' // no console — valheim autosaves on its own schedule
   if (game === 'zomboid') return 'save' // over RCON
   if (game === 'tmodloader') return 'save' // terraria's console, over stdin
@@ -1449,6 +1453,7 @@ function backupSources(server: LocalServer): string[] {
   const dir = serverDir(server.id)
   const rel: string[] = []
   if (gameOf(server) === 'palworld') rel.push(join('Pal', 'Saved', 'SaveGames'))
+  else if (gameOf(server) === 'nvmp') rel.push('Data', 'plugins_override.txt', 'server.cfg', 'elauncher-nvmp.json')
   else if (gameOf(server) === 'valheim') rel.push('save')
   else if (gameOf(server) === 'sdtd') rel.push('UserData')
   // zomboid's cachedir holds the saves and the .ini both; tModLoader keeps worlds of its own
@@ -1525,7 +1530,7 @@ function startAutomation(id: string): void {
   if (!server || !auto) return
   const timers: NodeJS.Timeout[] = []
 
-  if (auto.saveIntervalMin && auto.saveIntervalMin > 0) {
+  if (auto.saveIntervalMin && auto.saveIntervalMin > 0 && saveCommandFor(server)) {
     timers.push(
       setInterval(() => {
         if ((states.get(id) ?? 'stopped') !== 'running') return
@@ -2081,6 +2086,7 @@ process.on('exit', () => flushTimelines())
 export function autoStartConfiguredServers(): void {
   setTimeout(() => {
     for (const server of loadServers()) {
+      if (gameOf(server) === 'nvmp' && nvmpUploadPending(serverDir(server.id))) continue
       if (server.automation?.autoStart && (states.get(server.id) ?? 'stopped') === 'stopped') {
         pushLog(server.id, '[ELauncher] Auto-starting with the launcher')
         void startServer(server.id).catch(() => {
@@ -2263,6 +2269,7 @@ export function setServerLimitsOverride(id: string, override: PlanLimits | undef
 export function playerCapKey(game: ServerGame): string | null {
   if (game === 'palworld') return 'ServerPlayerMaxNum'
   if (game === 'sdtd') return 'ServerMaxPlayerCount'
+  if (game === 'nvmp') return null // fixed ten-player public co-op server
   if (game === 'valheim') return null // valheim is hard-capped at 10 by the game itself
   if (game === 'zomboid') return 'MaxPlayers'
   if (game === 'tmodloader') return 'maxplayers'
@@ -2280,6 +2287,9 @@ export function playerCapKey(game: ServerGame): string | null {
 function enforcePlanLimits(server: LocalServer): void {
   const limits = server.limits
   if (!limits) return
+  if (gameOf(server) === 'nvmp' && limits.maxPlayers !== undefined && limits.maxPlayers !== 10) {
+    throw new Error('NV:MP requires a fixed 10-slot plan.')
+  }
   if (limits.maxPlayers && limits.maxPlayers > 0 && playerCapKey(gameOf(server))) {
     const key = playerCapKey(gameOf(server))!
     try {
@@ -2448,14 +2458,18 @@ async function runSteamGameServer(server: LocalServer): Promise<void> {
   const spec = STEAM_GAMES[game]
   const info = STEAM_GAME_INFO[game]
   const dir = serverDir(id)
-  logs.set(id, [])
+  const attemptLogs: string[] = []
+  logs.set(id, attemptLogs)
   players.set(id, new Set())
   setState(id, 'starting')
   pushLog(id, `[ELauncher] Starting ${info.label} server on ${spec.protocol} port ${server.port} — first boot can take a few minutes`)
   try {
+    if (game === 'nvmp') await prepareNvmpStart(dir, server.port, (line) => pushLog(id, line))
+    if (states.get(id) !== 'starting' || logs.get(id) !== attemptLogs) return
     const handle = startSteamGame(game, dir, server.port, planCoreList(server), {
       onLog: (line) => pushLog(id, line),
       onReady: () => {
+        if (states.get(id) !== 'starting') return
         setState(id, 'running')
         startAutomation(id)
         notifyPhones(server.name, `${info.label} server is online`, `${id}:state`)
@@ -2488,6 +2502,7 @@ async function runSteamGameServer(server: LocalServer): Promise<void> {
     lastStartAt.set(id, Date.now())
     ensureGamePortsFirewall(server)
   } catch (e) {
+    if (logs.get(id) !== attemptLogs) return
     setState(id, 'stopped', e instanceof Error ? e.message : String(e))
     throw e
   }
@@ -3179,7 +3194,7 @@ export async function exportServerPack(id: string): Promise<{ ok: boolean; error
 const folderDownloads = new FolderDownloads()
 
 export function prepareServerFolderDownload(id: string, requesterId: string, rel: string) {
-  return folderDownloads.prepare(id, requesterId, serverDir(id), rel)
+  return folderDownloads.prepare(id, requesterId, serverDir(id), rel, [NVMP_UPLOAD_DIR])
 }
 
 export function readServerArchiveChunk(id: string, requesterId: string, downloadId: string, offset: number, length: number) {
@@ -3207,11 +3222,31 @@ const UPLOAD_TEMP_TTL_MS = 6 * 60 * 60_000
 
 const fileExt = (path: string): string => (path.includes('.') ? path.split('.').pop()!.toLowerCase() : '')
 
-/** Resolve a relative path inside the server folder; anything escaping it is rejected. */
+/** Manage customer game files only while the instance is stopped. */
+export function runNvmpSetupRequest(id: string, action: string, params: Record<string, unknown>): unknown {
+  if (gameOf(getServer(id)) !== 'nvmp') throw new Error('Game setup is only available for NV:MP servers.')
+  const dir = serverDir(id)
+  if (action === 'nvmpStatus') return params.phaseOnly ? { phase: nvmpUploadPending(dir) ? 'waiting' : 'ready' } : nvmpSetupStatus(dir, Boolean(params.detail))
+  if ((states.get(id) ?? 'stopped') !== 'stopped') throw new Error('Stop the server before uploading or replacing its game files.')
+  if (action === 'nvmpBegin') return beginNvmpUpload(dir, params.files)
+  if (action === 'nvmpChunk') return uploadNvmpChunk(dir, String(params.session ?? ''), Number(params.index), Number(params.offset), String(params.data ?? ''), String(params.checksum ?? ''))
+  if (action === 'nvmpFinish') return finishNvmpUpload(dir, String(params.session ?? ''), String(params.loadOrder ?? ''), readNvmpPlugins)
+  if (action === 'nvmpDiscard') return discardNvmpUpload(dir, String(params.session ?? ''))
+  throw new Error('Unknown NV:MP setup action.')
+}
+
 function safePath(id: string, rel: string): string {
   const root = resolve(serverDir(id))
   const target = resolve(root, rel || '.')
   if (target !== root && !target.startsWith(root + sep)) throw new Error('Path escapes the server folder')
+  // In particular, Wine's dosdevices links must never expose another instance through Files.
+  for (let p = target; ; p = dirname(p)) {
+    try { if (lstatSync(p).isSymbolicLink()) throw new Error('Linked paths cannot be accessed through the file manager.') }
+    catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error }
+    if (p === root) break
+  }
+  const upload = resolve(root, NVMP_UPLOAD_DIR)
+  if (target.toLowerCase() === upload.toLowerCase() || target.toLowerCase().startsWith(upload.toLowerCase() + sep)) throw new Error('Upload progress is managed in Game setup.')
   return target
 }
 
@@ -3220,6 +3255,7 @@ export function listServerFiles(id: string, rel: string): ServerFileEntry[] {
   if (!existsSync(dir)) return []
   const entries: ServerFileEntry[] = []
   for (const e of readdirSync(dir, { withFileTypes: true })) {
+    if (e.name === NVMP_UPLOAD_DIR || e.isSymbolicLink()) continue
     try {
       const st = statSync(join(dir, e.name))
       entries.push({

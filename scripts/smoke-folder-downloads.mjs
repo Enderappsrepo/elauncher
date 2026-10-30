@@ -119,6 +119,21 @@ try {
     assert.deepEqual(readFileSync(join(root, 'save', 'nested', 'world.bin')), binary, 'source save remains intact')
   })
 
+  test('root ZIPs omit upload bookkeeping and direct upload-directory ZIPs are refused', async () => {
+    const ownRoot = join(fixtures, 'upload-server')
+    mkdirSync(join(ownRoot, '.nvmp-upload'), { recursive: true })
+    writeFileSync(join(ownRoot, '.nvmp-upload', 'state.json'), 'private upload state')
+    writeFileSync(join(ownRoot, 'visible.txt'), 'visible')
+    for (const path of ['.nvmp-upload', '.NVMP-UPLOAD', '.nvmp-upload/child']) {
+      await assert.rejects(downloads.prepare(SERVER, USER, ownRoot, path, ['.nvmp-upload']), /Game setup/)
+    }
+    const archive = await downloads.prepare(SERVER, USER, ownRoot, '.', ['.nvmp-upload'])
+    try {
+      const chunk = await downloads.read(SERVER, USER, archive.downloadId, 0, CHUNK)
+      assert.deepEqual([...unzip(Buffer.from(chunk.data, 'base64')).keys()].sort(), ['upload-server/', 'upload-server/visible.txt'])
+    } finally { release(archive) }
+  })
+
   test('archive tokens cannot be read or released by a different server or customer', async () => {
     const archive = await prepare()
     for (const [server, user] of [['other-server', USER], [SERVER, 'other-customer']]) {

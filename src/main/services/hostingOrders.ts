@@ -5,6 +5,7 @@ import { getAccessToken, getClient } from './cloud'
 import { deviceId } from './device'
 import type { CfAccess } from './mods'
 import { isSteamGame } from './steamgames'
+import { nvmpNodeProblem } from './nvmp'
 import { getShareInfo, startTunnel, stopTunnel } from './hosting'
 import { assignHost, hostPool, listAssignedHosts, updateDuckDns } from './hostNames'
 import { notifyPhones } from './notifications'
@@ -17,6 +18,8 @@ import {
   createServer,
   deleteServer,
   getServerPublicAddress,
+  getServerStates,
+  runNvmpSetupRequest,
   listLocalServers,
   setServerAutomation,
   setServerLimits,
@@ -295,11 +298,11 @@ async function provision(order: OrderRow, plan: PlanRow, me: string): Promise<vo
   let server = listLocalServers().find((s) => s.orderId === order.id) ?? null
   if (!server) {
     // tell the customer it's happening before the (possibly long) download starts
-    await note(plan.game === 'minecraft' ? 'Setting up your server…' : 'Setting up your server — downloading the game (this can take a few minutes)…')
+    await note(plan.game === 'nvmp' ? 'Installing NV:MP — you can upload your game files once setup finishes…' : plan.game === 'minecraft' ? 'Setting up your server…' : 'Setting up your server — downloading the game (this can take a few minutes)…')
     if (plan.game === 'palworld') {
       server = await createServer({ name, acceptEula: true, orderId: order.id, source: { type: 'palworld', maxPlayers: plan.max_players } })
     } else if (isSteamGame(plan.game)) {
-      server = await createServer({ name, acceptEula: true, orderId: order.id, source: { type: 'steamgame', game: plan.game, maxPlayers: plan.max_players } })
+      server = await createServer({ name, acceptEula: true, orderId: order.id, source: { type: 'steamgame', game: plan.game, maxPlayers: plan.max_players, nvmpCustomerFiles: plan.game === 'nvmp' } })
     } else {
       const source = await minecraftSource(order.config)
       // a paid CurseForge pack resolves through cf-proxy so the buyer needs no key
@@ -345,6 +348,10 @@ async function provision(order: OrderRow, plan: PlanRow, me: string): Promise<vo
       { owner_id: me, server_id: server.id, server_name: server.name, grantee_id: order.user_id },
       { onConflict: 'server_id,grantee_id' }
     )
+  if (plan.game === 'nvmp') {
+    await note('Waiting for your game files — open your server → Game setup to upload your Fallout: New Vegas Data folder.')
+    return
+  }
   await startServer(server.id).catch(() => {
     // surfaced through the server's own state events
   })
@@ -415,6 +422,8 @@ async function tick(): Promise<void> {
     for (const order of orders) {
       const plan = plans.get(order.plan_id)
       if (!plan) continue
+      // Paid instances receive customer files later; no shared retail-game template is needed.
+      if (!order.server_id && plan.game === 'nvmp' && nvmpNodeProblem()) continue
       try {
         if (!order.server_id) {
           if (provisioning.has(order.id)) continue // a slow download from a prior tick is still running
@@ -472,13 +481,20 @@ async function tick(): Promise<void> {
             )
           // keep the public path alive (launcher restarts, crash restarts, lease expiry,
           // reactivations) and the customer-visible address current
+          if (record.game === 'nvmp' && getServerStates()[record.id]?.state !== 'running') {
+            const state = getServerStates()[record.id]?.state ?? 'stopped'
+            const pending = (runNvmpSetupRequest(record.id, 'nvmpStatus', { phaseOnly: true }) as { phase: string }).phase !== 'ready'
+            const note = pending ? 'Waiting for your game files — open your server → Game setup to finish the upload.' : `NV:MP is ${state} — check the server console for progress.`
+            if (order.note !== note) await supabase.from('hosting_orders').update({ note, updated_at: new Date().toISOString() }).eq('id', order.id)
+            continue
+          }
           try {
             const address = await ensureExposed(localById.get(order.server_id)!)
             exposureAlerts.delete(order.id)
-            if (!order.note.includes(address)) {
+            if (!order.note.includes(address) || (record.game === 'nvmp' && !order.note.startsWith('Ready'))) {
               await supabase
                 .from('hosting_orders')
-                .update({ note: `Ready — join at ${address}`, updated_at: new Date().toISOString() })
+                .update({ note: record.game === 'nvmp' ? `Ready — NV:MP launcher → Connect via IP → ${address}. Match the host DLCs, mods and load order.` : `Ready — join at ${address}`, updated_at: new Date().toISOString() })
                 .eq('id', order.id)
             }
           } catch (e) {

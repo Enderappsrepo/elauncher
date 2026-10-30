@@ -19,6 +19,7 @@ import {
   getServerPorts,
   getServerProperties,
   getServerStates,
+  runNvmpSetupRequest,
   installServerMod,
   listArchivedServers,
   listLocalServers,
@@ -504,7 +505,7 @@ async function hostTick(): Promise<void> {
         if (unclaimedTooLong(req.id)) {
           await supabase
             .from('server_requests')
-            .update({ done: true, response: null, error: 'the host for this server is offline' })
+            .update({ done: true, response: null, error: 'the host for this server is offline', ...(req.action === 'nvmpChunk' ? { params: {} } : {}) })
             .eq('id', req.id)
           unclaimed.delete(req.id)
         }
@@ -541,7 +542,7 @@ async function hostTick(): Promise<void> {
       }
       await supabase
         .from('server_requests')
-        .update({ done: true, response: response ?? null, error })
+        .update({ done: true, response: response ?? null, error, ...(req.action === 'nvmpChunk' ? { params: {} } : {}) })
         .eq('id', req.id)
     }
 
@@ -862,7 +863,7 @@ function guardCustomerLimits(serverId: string, action: string, params: Record<st
 }
 
 /** Config files whose contents carry plan-capped settings, so the Settings tab owns them. */
-const GUARDED_SETTINGS_FILES = ['palworldsettings.ini', 'server.properties', 'serverconfig.xml', 'elauncher-valheim.json']
+const GUARDED_SETTINGS_FILES = ['palworldsettings.ini', 'server.properties', 'serverconfig.xml', 'elauncher-valheim.json', 'server.cfg']
 
 function guardSettingsFile(path: unknown): void {
   const target = String(path ?? '').replace(/\\/g, '/').toLowerCase()
@@ -880,6 +881,10 @@ async function runPanelRequest(
   privileged = true,
   canShare = privileged
 ): Promise<unknown> {
+  if (action.startsWith('nvmp')) {
+    if (action !== 'nvmpStatus' && !canShare) throw new Error('Only the host, an admin, or the renting customer can upload game files.')
+    return runNvmpSetupRequest(serverId, action, params)
+  }
   if (!privileged) guardCustomerLimits(serverId, action, params)
   switch (action) {
     case 'info': {

@@ -7,9 +7,10 @@
 
 /** Games a server can be. Published by the host; older clouds send nothing. */
 export type Game =
-  | 'minecraft' | 'palworld' | 'valheim' | 'sdtd' | 'zomboid' | 'tmodloader' | 'ark' | 'arksa'
+  | 'minecraft' | 'palworld' | 'valheim' | 'sdtd' | 'zomboid' | 'tmodloader' | 'ark' | 'arksa' | 'nvmp'
 
 export const GAME_LABEL: Record<Game, string> = {
+  nvmp: 'Fallout: New Vegas (NV:MP)',
   minecraft: 'Minecraft',
   palworld: 'Palworld',
   valheim: 'Valheim',
@@ -26,6 +27,7 @@ export const GAME_LABEL: Record<Game, string> = {
  * light one would be unreadable.
  */
 export const GAME_HUE: Record<Game, number> = {
+  nvmp: 45,
   minecraft: 140,
   palworld: 202,
   valheim: 28,
@@ -46,6 +48,7 @@ export function gameLabel(game: string | null): string {
 
 /** The lineup as the landing and shop present it — display order, one line each. */
 export const GAME_LINEUP: ReadonlyArray<{ id: Game; label: string; blurb: string }> = [
+  { id: 'nvmp', label: 'Fallout: New Vegas (NV:MP)', blurb: '10-player co-op with matching mods and load order' },
   { id: 'minecraft', label: 'Minecraft', blurb: 'Vanilla, Paper, Fabric, Forge & NeoForge' },
   { id: 'palworld', label: 'Palworld', blurb: 'Dedicated server with live REST controls' },
   { id: 'ark', label: 'ARK: Survival Evolved', blurb: 'Full RCON moderation built in' },

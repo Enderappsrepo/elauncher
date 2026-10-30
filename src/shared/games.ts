@@ -17,6 +17,7 @@ export interface SteamGameInfo {
 }
 
 export const STEAM_GAME_INFO: Record<SteamServerGame, SteamGameInfo> = {
+  nvmp: { label: 'Fallout: New Vegas (NV:MP)', blurb: '10-player co-op. Requires a prepared Linux host and matching game data.', ramHintGb: 4 },
   valheim: { label: 'Valheim', blurb: 'Co-op Viking survival and building.', ramHintGb: 4 },
   sdtd: { label: '7 Days to Die', blurb: 'Open-world zombie survival crafting.', ramHintGb: 8 },
   zomboid: { label: 'Project Zomboid', blurb: 'Isometric zombie survival sandbox.', ramHintGb: 4 },

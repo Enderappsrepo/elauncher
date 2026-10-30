@@ -54,6 +54,7 @@ const SOURCE_LABELS: Record<Source, string> = { modrinth: 'Modrinth', curseforge
 
 /** One line per game, so a group of plans says what you would be renting. */
 const GAME_BLURB: Record<Game, string> = {
+  nvmp: 'NV:MP co-op for up to 10 players. After your order is set up, upload your Fallout: New Vegas Data folder in Game setup. Everyone needs matching DLCs, mods and load order. Game files are not included.',
   minecraft: 'Vanilla, Paper plugins, or a full modpack.',
   palworld: 'Survival and creature collecting with friends.',
   valheim: 'Co-op Viking survival and building.',

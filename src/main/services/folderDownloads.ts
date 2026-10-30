@@ -68,7 +68,7 @@ export class FolderDownloads {
     return download
   }
 
-  async prepare(serverId: string, requesterId: string, root: string, requested: string): Promise<FolderDownload> {
+  async prepare(serverId: string, requesterId: string, root: string, requested: string, excludedRoots: readonly string[] = []): Promise<FolderDownload> {
     mkdirSync(this.tempRoot, { recursive: true })
     this.sweep()
     if (!this.sweepTimer) {
@@ -91,6 +91,8 @@ export class FolderDownloads {
       const target = resolve(rootPath, clean || '.')
       const inside = (base: string, path: string): boolean => path === base || path.startsWith(base + sep)
       if (!inside(rootPath, target)) throw new Error('Path escapes the server folder.')
+      const excluded = new Set(excludedRoots.map((name) => name.toLowerCase()))
+      if (excluded.has(relative(rootPath, target).split(sep)[0].toLowerCase())) throw new Error('This folder is managed by Game setup.')
       const realRoot = await realpath(rootPath)
       // Reject links in the selected path as well as in its descendants.
       let ancestor = rootPath
@@ -117,6 +119,7 @@ export class FolderDownloads {
         entries.push({ path, name, size: info.size, directory: info.isDirectory(), modified: info.mtime })
         if (info.isDirectory()) {
           for (const child of await readdir(path)) {
+            if (path === rootPath && excluded.has(child.toLowerCase())) continue
             if (!validName(child)) throw new Error('A filename in this folder cannot be stored safely in a ZIP.')
             await walk(join(path, child), `${name}/${child}`)
           }

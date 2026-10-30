@@ -59,6 +59,18 @@ const arkFields = (game: 'ark' | 'arksa'): SteamField[] => [
 ]
 
 export const STEAM_SETTINGS: Record<SteamServerGame, SteamGameSettingsSpec> = {
+  nvmp: {
+    configName: 'server.cfg',
+    fields: [
+      { key: 'EnableSaving', label: 'Allow players to save locally', type: 'bool', ...LOWER },
+      { key: 'EnableVATS', label: 'Allow VATS', type: 'bool', ...LOWER },
+      { key: 'EnableConsole', label: 'Allow in-game console cheats', type: 'bool', ...LOWER },
+      { key: 'StrictNVSE', label: 'Require matching NVSE revisions', type: 'bool', ...LOWER },
+      { key: 'EnablePartySystem', label: 'Party system', type: 'bool', ...LOWER },
+      { key: 'AllowNPCGhosts', label: 'Separate quest NPCs per player', type: 'bool', ...LOWER }
+    ],
+    locked: { Port: 'Assigned by the host; shared by TCP and UDP.', Hostname: 'Managed by the host.' }
+  },
   valheim: {
     configName: "Valheim's launch options",
     fields: [

@@ -68,6 +68,8 @@ export function companionPorts(game: string | undefined, port: number): ExtraPor
     case 'valheim':
       // 2457-equivalent: Steam's query channel — the server list and most joins
       return [{ port: port + 1, protocol: 'UDP', label: 'Steam query port' }]
+    case 'nvmp':
+      return [{ port, protocol: 'TCP', label: 'NV:MP connection port' }]
     case 'sdtd':
       // the wiki's "26900 TCP + 26900-26902 UDP"; +3 is telnet and stays shut
       return [
@@ -206,6 +208,7 @@ export function portPresets(game: string | undefined, port: number): PortPreset[
     case 'valheim':
     case 'zomboid':
     case 'tmodloader':
+    case 'nvmp':
       // their mods ride the game port; nothing here would be honest
       return []
     default:

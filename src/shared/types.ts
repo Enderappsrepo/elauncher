@@ -425,7 +425,7 @@ export type ServerKind = 'vanilla' | 'paper' | 'fabric' | 'neoforge' | 'forge'
  * to be spelled out in six places and missing one shipped a game that
  * typechecked but had no spec behind it.
  */
-export type SteamServerGame = 'valheim' | 'sdtd' | 'zomboid' | 'tmodloader' | 'ark' | 'arksa'
+export type SteamServerGame = 'valheim' | 'sdtd' | 'zomboid' | 'tmodloader' | 'ark' | 'arksa' | 'nvmp'
 
 export type ServerGame = 'minecraft' | 'palworld' | SteamServerGame
 
@@ -587,7 +587,7 @@ export type ServerSource =
   /** Palworld dedicated server, installed via SteamCMD */
   | { type: 'palworld'; serverPassword?: string; maxPlayers?: number; communityServer?: boolean }
   /** Any other SteamCMD dedicated server from the generic registry (valheim, 7 days to die, …) */
-  | { type: 'steamgame'; game: SteamServerGame; serverPassword?: string; maxPlayers?: number }
+  | { type: 'steamgame'; game: SteamServerGame; serverPassword?: string; maxPlayers?: number; nvmpCustomerFiles?: boolean }
   /** picks a local pack export via a file dialog — .mrpack (Modrinth) or .zip (CurseForge) */
   | { type: 'mrpack' }
   /** installs a pack from the cloud modpack library */

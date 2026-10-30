@@ -21,6 +21,7 @@ import './App.css'
 const Access = lazy(() => import('./tabs/Access').then((m) => ({ default: m.Access })))
 const Automation = lazy(() => import('./tabs/Automation').then((m) => ({ default: m.Automation })))
 const Files = lazy(() => import('./tabs/Files').then((m) => ({ default: m.Files })))
+const NvmpSetup = lazy(() => import('./tabs/NvmpSetup').then((m) => ({ default: m.NvmpSetup })))
 const Mods = lazy(() => import('./tabs/Mods').then((m) => ({ default: m.Mods })))
 const Network = lazy(() => import('./tabs/Network').then((m) => ({ default: m.Network })))
 const Players = lazy(() => import('./tabs/Players').then((m) => ({ default: m.Players })))
@@ -38,6 +39,7 @@ type Control = (row: ServerRow, action: 'start' | 'stop' | 'command', payload?: 
 type Phase = { kind: 'loading' } | { kind: 'signedOut' } | { kind: 'signedIn'; session: Session | null }
 
 const TABS = [
+  'setup',
   'overview',
   'console',
   'settings',
@@ -72,10 +74,11 @@ const MC_ONLY_TABS: readonly Tab[] = ['version', 'mods']
 const ADMIN_ONLY_TABS: readonly Tab[] = ['resources']
 
 const tabsFor = (game: string | null, isAdmin: boolean): readonly Tab[] => {
-  const base = hasModsTab(game) ? TABS : TABS.filter((t) => !MC_ONLY_TABS.includes(t))
+  const base = TABS.filter((t) => (t !== 'setup' || game === 'nvmp') && (hasModsTab(game) || !MC_ONLY_TABS.includes(t)))
   return isAdmin ? base : base.filter((t) => !ADMIN_ONLY_TABS.includes(t))
 }
 const TAB_LABELS: Record<Tab, string> = {
+  setup: 'Game setup',
   overview: 'Overview',
   console: 'Console',
   settings: 'Settings',
@@ -802,10 +805,11 @@ function ConsoleTab({ row, control }: { row: ServerRow; control: Control }): Rea
   const [at, setAt] = useState(-1)
   const [failed, setFailed] = useState('')
   const live = row.state === 'running'
+  const readOnly = row.game === 'nvmp'
 
   async function send(): Promise<void> {
     const text = draft.trim()
-    if (!text) return
+    if (!text || readOnly) return
     setDraft('')
     setHistory((h) => [text, ...h].slice(0, 50))
     setAt(-1)
@@ -840,10 +844,10 @@ function ConsoleTab({ row, control }: { row: ServerRow; control: Control }): Rea
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={onKey}
-          disabled={!live}
-          placeholder={live ? 'Type a command…  ↑ for history' : 'start the server to send commands'}
+          disabled={!live || readOnly}
+          placeholder={readOnly ? 'NV:MP has no admin console; use Settings.' : live ? 'Type a command…  ↑ for history' : 'start the server to send commands'}
         />
-        <Button size="sm" variant="primary" disabled={!live || !draft.trim()} onClick={send}>
+        <Button size="sm" variant="primary" disabled={!live || readOnly || !draft.trim()} onClick={send}>
           Send
         </Button>
       </Console>
@@ -866,7 +870,7 @@ function Detail({
   control: Control
   onBack: () => void
 }): React.JSX.Element {
-  const [tab, setTab] = useState<Tab>('console')
+  const [tab, setTab] = useState<Tab>(row.game === 'nvmp' ? 'setup' : 'console')
   const tabs = tabsFor(row.game, isAdmin)
   const known = row.game !== null && row.game in GAME_HUE
   const hue = known ? GAME_HUE[row.game as Game] : null
@@ -930,6 +934,7 @@ function Detail({
       <Tabs tabs={tabs} value={tab} onChange={setTab} labels={TAB_LABELS} />
       <div className="tabbody">
         <Suspense fallback={<Skeleton height={320} />}>
+        {tab === 'setup' && row.game === 'nvmp' && <NvmpSetup key={row.server_id} row={row} userId={userId} ask={ask} onStart={() => control(row, 'start')} />}
         {tab === 'console' && <ConsoleTab row={row} control={control} />}
         {tab === 'overview' && (
           <div className="surface pad">
@@ -943,7 +948,13 @@ function Detail({
         )}
         {tab === 'settings' && <Settings row={row} userId={userId} ask={ask} />}
         {tab === 'version' && hasModsTab(row.game) && <Version row={row} userId={userId} ask={ask} />}
-        {tab === 'players' && <Players row={row} userId={userId} ask={ask} />}
+        {tab === 'players' && (row.game === 'nvmp' ? (
+          <section className="surface pad stack">
+            <h2>Online players · {row.players.length}/10</h2>
+            <p>NV:MP co-op has no server whitelist, kick or ban controls.</p>
+            {row.players.length ? row.players.map((name) => <div key={name}>{name}</div>) : <p>No players connected.</p>}
+          </section>
+        ) : <Players row={row} userId={userId} ask={ask} />)}
         {tab === 'mods' && hasModsTab(row.game) && <Mods row={row} userId={userId} ask={ask} />}
         {tab === 'files' && <Files row={row} userId={userId} ask={ask} />}
         {tab === 'network' && <Network row={row} userId={userId} ask={ask} />}

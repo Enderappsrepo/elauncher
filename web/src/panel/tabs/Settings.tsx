@@ -20,7 +20,7 @@ import './Settings.css'
  * round trip per keystroke to change nothing anyone can see yet.
  */
 
-type Game = 'minecraft' | 'palworld' | 'valheim' | 'sdtd' | 'zomboid' | 'tmodloader' | 'ark' | 'arksa' | 'unknown'
+type Game = 'minecraft' | 'palworld' | 'valheim' | 'sdtd' | 'zomboid' | 'tmodloader' | 'ark' | 'arksa' | 'nvmp' | 'unknown'
 
 /**
  * Which game this is, read out of the keys themselves.
@@ -32,6 +32,7 @@ type Game = 'minecraft' | 'palworld' | 'valheim' | 'sdtd' | 'zomboid' | 'tmodloa
  */
 function detectGame(props: Record<string, string>): Game {
   const has = (key: string): boolean => key in props
+  if (has('StrictNVSE') && has('EnableSaving')) return 'nvmp'
   if (has('PalCaptureRate') || has('ServerPlayerMaxNum')) return 'palworld'
   if (has('ModifierCombat') || (has('world') && has('Crossplay'))) return 'valheim'
   if (has('ServerMaxPlayerCount') || has('DayNightLength')) return 'sdtd'
@@ -45,6 +46,7 @@ function detectGame(props: Record<string, string>): Game {
 }
 
 const GAME_LABEL: Record<Game, string> = {
+  nvmp: 'Fallout: New Vegas (NV:MP)',
   minecraft: 'Minecraft',
   palworld: 'Palworld',
   valheim: 'Valheim',
@@ -297,6 +299,7 @@ const ARK_MAPS: Record<'ark' | 'arksa', Option[]> = {
 type Essential = [key: string, label?: string]
 
 const ESSENTIALS: Record<Game, Essential[]> = {
+  nvmp: [['EnableSaving', 'Allow local saves'], ['EnableVATS', 'Allow VATS'], ['EnableConsole', 'Allow console cheats'], ['StrictNVSE', 'Require matching NVSE'], ['EnablePartySystem', 'Party system']],
   palworld: [
     ['ServerName', 'Server name'],
     ['ServerDescription', 'Description'],

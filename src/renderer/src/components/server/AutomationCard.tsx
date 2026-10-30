@@ -60,15 +60,16 @@ export default function AutomationCard({ server }: { server: LocalServer }): Rea
           <IconZap size={15} /> Automation
         </span>
       </div>
+      {server.game === 'nvmp' && <p className="hint">Players save progress on their own computers. Backups here contain host data and settings. Scheduled restarts cannot warn players in game; arrange them with your group.</p>}
       <div className="props-grid">
-        <div className="field">
+        {server.game !== 'nvmp' && <div className="field">
           <label>Auto-save world</label>
           <Select
             value={String(auto.saveIntervalMin ?? 0)}
             onChange={(v) => patch({ saveIntervalMin: Number(v) })}
             options={SAVE_MINUTES.map((m) => ({ value: String(m), label: m === 0 ? 'Off' : `Every ${m} min` }))}
           />
-        </div>
+        </div>}
         <div className="field">
           <label>Scheduled restart</label>
           <Select
@@ -97,7 +98,7 @@ export default function AutomationCard({ server }: { server: LocalServer }): Rea
         )}
         {restartOn && (
           <div className="field">
-            <label>Warn players (minutes)</label>
+            <label>{server.game === 'nvmp' ? 'Restart delay (minutes)' : 'Warn players (minutes)'}</label>
             <input
               type="number"
               min={1}
@@ -108,7 +109,7 @@ export default function AutomationCard({ server }: { server: LocalServer }): Rea
           </div>
         )}
         <div className="field">
-          <label>World backups</label>
+          <label>{server.game === 'nvmp' ? 'Host data and settings backups' : 'World backups'}</label>
           <Select
             value={String(auto.backupIntervalHours ?? 0)}
             onChange={(v) => patch({ backupIntervalHours: Number(v) })}

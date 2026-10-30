@@ -70,6 +70,7 @@ const LANE_TITLE: Record<OrderStatus, string> = {
 }
 
 const GAME_LABEL: Record<string, string> = {
+  nvmp: 'Fallout: New Vegas (NV:MP)',
   minecraft: 'Minecraft',
   palworld: 'Palworld',
   valheim: 'Valheim',

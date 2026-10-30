@@ -221,7 +221,7 @@ function CreateServerModal({
     game === 'palworld'
       ? { type: 'palworld', serverPassword: gamePassword || undefined, maxPlayers: gameMaxPlayers, communityServer: palCommunity }
       : isSteamGameId(game)
-        ? { type: 'steamgame', game, serverPassword: gamePassword || undefined, maxPlayers: gameMaxPlayers }
+        ? { type: 'steamgame', game, serverPassword: game === 'nvmp' ? undefined : gamePassword || undefined, maxPlayers: game === 'nvmp' ? 10 : gameMaxPlayers }
       : mode === 'fresh'
         ? version
           ? { type: 'fresh', kind, minecraftVersion: version }
@@ -338,16 +338,16 @@ function CreateServerModal({
         {isSteamGameId(game) && (
           <>
             <div className="props-grid">
-              <div className="field">
+              {game !== 'nvmp' && <div className="field">
                 <label>Join password (optional)</label>
                 <input
                   value={gamePassword}
                   placeholder="Empty = anyone with the address"
                   onChange={(e) => setGamePassword(e.target.value)}
                 />
-              </div>
-              {/* valheim's cap is fixed by the game, so asking for one would be a lie */}
-              {game !== 'valheim' && (
+              </div>}
+              {/* These games have a fixed player cap. */}
+              {game !== 'valheim' && game !== 'nvmp' && (
                 <div className="field">
                   <label>Max players</label>
                   <input
@@ -367,8 +367,10 @@ function CreateServerModal({
               </div>
             )}
             <div className="hint">
-              The dedicated server downloads from Steam (no Steam account needed) — the first install can take a while.
-              Plan for around {STEAM_GAME_INFO[game].ramHintGb} GB of RAM.
+              {game === 'nvmp'
+                ? 'NV:MP co-op supports 10 players. The Linux host needs its own Fallout: New Vegas data and matching mod load order. Players join through the NV:MP launcher. No join password or admin console is available.'
+                : 'The dedicated server downloads automatically — the first install can take a while.'}
+              {' '}Plan for around {STEAM_GAME_INFO[game].ramHintGb} GB of RAM.
             </div>
           </>
         )}
@@ -529,6 +531,11 @@ function CreateServerModal({
                   dedicated server terms
                 </a>
               </>
+            ) : game === 'nvmp' ? (
+              <>
+                I have a licensed Fallout: New Vegas installation for the host and have reviewed the{' '}
+                <a href="https://nuwiki.nv-mp.com/wiki/Hosting_CO:OP" target="_blank" rel="noreferrer">NV:MP hosting requirements</a>.
+              </>
             ) : isSteamGameId(game) ? (
               <>
                 I accept the {STEAM_GAME_INFO[game].label} dedicated server terms and the{' '}
@@ -577,11 +584,13 @@ function CreateServerModal({
 function Console({
   serverId,
   running,
-  palworld
+  palworld,
+  readOnly = false
 }: {
   serverId: string
   running: boolean
   palworld?: boolean
+  readOnly?: boolean
 }): React.JSX.Element {
   const toast = useToast()
   const [lines, setLines] = useState<string[]>([])
@@ -603,7 +612,7 @@ function Console({
 
   const send = async (): Promise<void> => {
     const command = cmd.trim()
-    if (!command) return
+    if (!command || readOnly) return
     setCmd('')
     const res = await window.elauncher.server.command(serverId, command)
     if (!res.ok) toast.error(res.error ?? 'Command failed')
@@ -642,20 +651,20 @@ function Console({
         <span className="prompt-glyph">›</span>
         <input
           placeholder={
-            running
+            readOnly ? 'NV:MP has no admin console; use Settings.' : running
               ? palworld
                 ? 'say hi · players · save · kick <steam id>…'
                 : 'whitelist add Steve · op Steve · say hi…'
               : 'Start the server to send commands'
           }
           value={cmd}
-          disabled={!running}
+          disabled={!running || readOnly}
           onChange={(e) => setCmd(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === 'Enter') void send()
           }}
         />
-        <button className="ghost small" disabled={!running || !cmd.trim()} onClick={() => void send()}>
+        <button className="ghost small" disabled={!running || readOnly || !cmd.trim()} onClick={() => void send()}>
           Send
         </button>
       </div>
@@ -1676,14 +1685,20 @@ export default function ServerPage(): React.JSX.Element {
                       </div>
                     )}
                   </div>
-                  <Console serverId={selected.id} running={selRunning} palworld={selected.game === 'palworld'} />
+                  <Console serverId={selected.id} running={selRunning} palworld={selected.game === 'palworld'} readOnly={selected.game === 'nvmp'} />
                   <ShareCard server={selected} status={selStatus} />
                 </>
               )}
               {tab === 'mods' && <ServerModsCard server={selected} running={selRunning} />}
               {tab === 'files' && <FilesTab server={selected} />}
               {tab === 'players' &&
-                (selected.game === 'palworld' ? (
+                (selected.game === 'nvmp' ? (
+                  <div className="card settings-section">
+                    <div className="section-title">Online players · {selStatus.players.length}/10</div>
+                    <p className="hint">NV:MP co-op has no server whitelist, kick or ban controls.</p>
+                    {selStatus.players.length ? selStatus.players.map((name) => <div key={name}>{name}</div>) : <p>No players connected.</p>}
+                  </div>
+                ) : selected.game === 'palworld' ? (
                   <PalworldPlayersTab server={selected} running={selStatus.state === 'running'} />
                 ) : (
                   <PlayersTab server={selected} online={selStatus.players} running={selStatus.state === 'running'} />

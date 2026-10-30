@@ -11,15 +11,15 @@ import { ensureProton, protonEnv, protonPrefixDir, readProton } from './proton'
 import { installSteamApp } from './steamcmd'
 import { downloadToFile } from './mods'
 import { killProcessTree } from './proctree'
+import { getNvmpSettings, setNvmpSettings, installNvmp, startNvmp } from './nvmp'
 
 /**
  * Generic Steam dedicated-server provider. Palworld came first and has its own
  * module (REST API, ini tuple format); every further Steam game rides this spec
  * table instead — adding one is a new entry plus, at most, a settings seed.
- * Currently Valheim, 7 Days to Die, Project Zomboid, tModLoader and both ARKs;
- * all but tModLoader install over SteamCMD anonymously, and all but ARK:
- * Survival Ascended have native Windows + Linux builds — ASA is Windows-only, so
- * on Linux it runs under GE-Proton (see needsProton and ./proton).
+ * Valheim, 7 Days to Die, Project Zomboid and both ARKs use SteamCMD;
+ * tModLoader and NV:MP use their official GitHub distributions. NV:MP delegates
+ * to its own Linux/Proton provider; ASA also uses Proton on Linux.
  */
 
 const IS_WIN = process.platform === 'win32'
@@ -38,6 +38,8 @@ export interface SteamGameSpec {
 
 /** Record, not a partial: a new SteamServerGame will not compile without an entry. */
 export const STEAM_GAMES: Record<SteamServerGame, SteamGameSpec> = {
+  // Retail app id is metadata only: NV:MP downloads from its official GitHub release.
+  nvmp: { appId: 22380, basePort: 27015, portStep: 1, protocol: 'UDP', memoryHintMb: 4096, hasConsole: false },
   valheim: { appId: 896660, basePort: 2456, portStep: 3, protocol: 'UDP', memoryHintMb: 4096, hasConsole: false },
   sdtd: { appId: 294420, basePort: 26900, portStep: 4, protocol: 'UDP', memoryHintMb: 8192, hasConsole: true },
   // port+1 is zomboid's second UDP channel, port+2 its RCON — bound to localhost,
@@ -357,6 +359,7 @@ export function valheimWorldExists(dir: string, world: string): boolean {
 }
 
 export function getSteamGameSettings(game: SteamGameId, dir: string): Record<string, string> {
+  if (game === 'nvmp') return getNvmpSettings(dir)
   if (game === 'valheim') {
     const file = join(dir, VALHEIM_FILE)
     if (!existsSync(file)) return { ...valheimOptionDefaults(), ...valheimDefaults('Valheim Server') }
@@ -383,6 +386,7 @@ export function getSteamGameSettings(game: SteamGameId, dir: string): Record<str
 }
 
 export function setSteamGameSettings(game: SteamGameId, dir: string, updates: Record<string, string>): Record<string, string> {
+  if (game === 'nvmp') return setNvmpSettings(dir, updates)
   if (game === 'valheim') {
     const merged = { ...getSteamGameSettings('valheim', dir), ...updates }
     // valheim hard rules: password ≥5 chars and not contained in the server name
@@ -434,6 +438,7 @@ export function setSteamGameSettings(game: SteamGameId, dir: string, updates: Re
  */
 function serverExe(game: SteamGameId, dir: string): string {
   const names: Record<SteamGameId, [win: string, unix: string]> = {
+    nvmp: ['nvmp_storyserver.exe', 'nvmp_storyserver.exe'],
     valheim: ['valheim_server.exe', 'valheim_server.x86_64'],
     sdtd: ['7DaysToDieServer.exe', '7DaysToDieServer.x86_64'],
     zomboid: ['StartServer64.bat', 'start-server.sh'],
@@ -540,6 +545,7 @@ export interface SteamGameCreateSettings {
   serverPassword?: string
   maxPlayers?: number
   port: number
+  nvmpCustomerFiles?: boolean
 }
 
 /**
@@ -576,6 +582,7 @@ export async function installSteamGame(
   settings: SteamGameCreateSettings,
   onProgress: (phase: string, progress: number) => void
 ): Promise<void> {
+  if (game === 'nvmp') return installNvmp(dir, settings, onProgress)
   // Fetched before the game, not after: ASA is a ~30 GB download and a host that
   // turns out to have no python3 should fail in the first few seconds, not once
   // the whole game is on disk. SteamCMD needs no coaxing for the Windows depot —
@@ -693,6 +700,7 @@ export function startSteamGame(
   cpuList: string | null,
   cb: SteamGameRunCallbacks
 ): SteamGameHandle {
+  if (game === 'nvmp') return startNvmp(dir, port, cpuList, cb)
   const settings = getSteamGameSettings(game, dir)
   let exe: string
   let args: string[]
