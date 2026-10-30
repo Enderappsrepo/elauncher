@@ -34,11 +34,14 @@ test('NVMP is visible beside existing plans even without an NVMP database row', 
   assert.match(html, /Minecraft plan/)
   assert.equal((html.match(/Choose plan/g) || []).length, 1)
 })
-test('preview has no price or checkout and clearly says ordering is unavailable', () => {
+test('preview shows the introductory price but keeps ordering unavailable', () => {
   const html = render([])
   assert.match(html, /disabled=""[^>]*>Not available yet/)
   assert.match(html, /Orders are not open yet/)
-  assert.doesNotMatch(html, /Choose plan|shop-price|\$0/)
+  assert.match(html, /\$6\.00/)
+  assert.match(html, /USD \/ month/)
+  assert.match(html, /4 GB RAM/)
+  assert.doesNotMatch(html, /Choose plan|\$0/)
 })
 test('an active NVMP plan replaces the preview instead of duplicating it', () => {
   const html = render([mc, nvmp])

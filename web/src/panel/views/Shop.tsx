@@ -497,11 +497,12 @@ function NvmpPreview(): React.JSX.Element {
         <GameBadge game="nvmp" />
         <div className="shop-group-who">
           <h2>{gameLabel('nvmp')}</h2>
-          <p className="dim shop-hint">10-player co-op · Bring your own game files</p>
+          <p className="dim shop-hint">10 players · 4 GB RAM · 2 shared CPU cores</p>
         </div>
         <span className="spacer" />
         <span className="shop-tag">Coming soon</span>
       </div>
+      <div className="shop-price"><b>$6.00</b><span className="dim">USD / month · introductory price</span></div>
       <p className="dim">Upload the Data folder from your own Fallout: New Vegas installation. Everyone in your group needs matching DLCs, mods and load order.</p>
       <p className="dim shop-hint">Hosting setup is being completed. Orders are not open yet.</p>
       <Button disabled>Not available yet</Button>
@@ -521,7 +522,7 @@ function Storefront({
   onChoose: (plan: PlanRow) => void
 }): React.JSX.Element {
   // Keep upcoming NV:MP hosting discoverable until the operator lists a real plan.
-  // This preview has no price or checkout path; an active plan replaces it.
+  // This preview cannot take orders; an active database plan replaces it.
   const nvmpPreview = plans.some((plan) => plan.game === 'nvmp') ? null : <NvmpPreview />
   if (!settings.shopOpen) {
     return (

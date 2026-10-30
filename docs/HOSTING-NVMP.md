@@ -10,6 +10,23 @@ The public server is a Windows program. Offline tests cover installation,
 transfer, validation, permissions and lifecycle handling, but a live Linux boot
 and external client join are still required before selling an active plan.
 
+## Introductory plan and database update
+
+The chosen introductory plan is **$6 USD/month**, with **10 players, 4 GB RAM
+and 2 shared CPU cores**. It fits the existing $4–$7 small-server catalog. Capacity
+and support costs still need measuring with real NV:MP workloads.
+
+For an existing database, run `supabase/migrations/2026-10-30-nvmp-plan.sql` in
+Supabase SQL Editor after updating the Linux host. It adds the allowed game and
+fixed-slot constraints, inserts active plan `nvmp-10`, and refreshes the API schema.
+This makes the plan orderable and replaces the Coming soon preview automatically.
+Re-running it preserves an existing plan's price, visibility and payment settings.
+It uses the existing manual-payment flow; it does not create a Stripe product.
+
+Fresh installs receive the same seed through `supabase/schema.sql`. All earlier
+game constraints in that file also allow NV:MP, so rerunning the full schema no
+longer fails when an NV:MP plan already exists.
+
 ## Customer flow in the web panel
 
 1. Once the host approves/provisions the order, open the server in `/manage/`.
@@ -97,8 +114,9 @@ Before enabling sales:
 
 1. Deploy the reviewed host and web builds during the normal maintenance window.
    The upload feature adds relay actions but requires no new database migration
-   beyond the existing `2026-10-30-nvmp-hosting.sql` game/10-slot constraint.
-2. Create an inactive 10-slot plan using the existing admin/database process.
+   beyond the NV:MP game/10-slot constraints. The `2026-10-30-nvmp-plan.sql`
+   migration combines those constraints with the chosen introductory plan.
+2. Use a private/inactive 10-slot test plan while validating the host.
    Test one approved order: it should become manageable while stopped and waiting
    for customer files, without `ELAUNCHER_NVMP_ROOT` configured.
 3. Upload real customer-provided files through the browser. Test pause/resume,
@@ -108,8 +126,8 @@ Before enabling sales:
    external network with matching DLCs, mods, load order and NV:MP version.
    Check movement, combat, saving/rejoining, player counts, stop/restart, and two
    simultaneous instances. Monitor disk/RAM and verify backup/restore while stopped.
-5. Activate the plan only after those checks succeed. No price, paid plan, live
-   host configuration or database is changed merely by applying these source files.
+5. Run `2026-10-30-nvmp-plan.sql` to list the $6 introductory plan after those
+   checks succeed. Merely deploying source files does not execute this SQL.
 
 ### Optional operator template for manually created servers
 

@@ -353,7 +353,7 @@ create policy "requesters read their requests"
 create table if not exists public.hosting_plans (
   id text primary key,
   name text not null,
-  game text not null check (game in ('minecraft', 'palworld')),
+  game text not null check (game in ('minecraft', 'palworld', 'valheim', 'sdtd', 'zomboid', 'tmodloader', 'ark', 'arksa', 'nvmp')),
   max_players integer not null default 10,
   memory_mb integer not null default 4096,
   price_monthly numeric(8,2) not null,
@@ -367,7 +367,7 @@ alter table public.hosting_plans add column if not exists cpu_cores integer;
 -- widen the game list as new dedicated servers land (valheim, 7 days to die)
 alter table public.hosting_plans drop constraint if exists hosting_plans_game_check;
 alter table public.hosting_plans add constraint hosting_plans_game_check
-  check (game in ('minecraft', 'palworld', 'valheim', 'sdtd', 'zomboid', 'tmodloader'));
+  check (game in ('minecraft', 'palworld', 'valheim', 'sdtd', 'zomboid', 'tmodloader', 'ark', 'arksa', 'nvmp'));
 
 create table if not exists public.hosting_settings (
   id integer primary key default 1 check (id = 1),
@@ -674,7 +674,7 @@ alter table public.host_health add primary key (owner_id, device_id);
 -- widen the game list again for both ARKs
 alter table public.hosting_plans drop constraint if exists hosting_plans_game_check;
 alter table public.hosting_plans add constraint hosting_plans_game_check
-  check (game in ('minecraft', 'palworld', 'valheim', 'sdtd', 'zomboid', 'tmodloader', 'ark', 'arksa'));
+  check (game in ('minecraft', 'palworld', 'valheim', 'sdtd', 'zomboid', 'tmodloader', 'ark', 'arksa', 'nvmp'));
 
 -- ARK is the heaviest pair here: ASE wants ~8 GB steady state and ASA ~16 GB,
 -- and both download tens of gigabytes before they first boot.
@@ -804,11 +804,19 @@ end $$;
 -- make PostgREST pick the new tables up immediately
 notify pgrst, 'reload schema';
 
--- NV:MP co-op hosting. Run only when the configured Linux host has passed a real join test.
--- Pricing and activation remain explicit admin choices; no public plan is inserted.
+-- NV:MP co-op hosting and introductory plan. Deploy the Linux host before taking orders.
 alter table public.hosting_plans drop constraint if exists hosting_plans_game_check;
 alter table public.hosting_plans add constraint hosting_plans_game_check
   check (game in ('minecraft', 'palworld', 'valheim', 'sdtd', 'zomboid', 'tmodloader', 'ark', 'arksa', 'nvmp'));
 alter table public.hosting_plans drop constraint if exists hosting_plans_nvmp_slots_check;
 alter table public.hosting_plans add constraint hosting_plans_nvmp_slots_check
   check (game <> 'nvmp' or max_players = 10);
+
+-- $6/month introductory plan; reruns preserve operator edits and existing orders.
+insert into public.hosting_plans
+  (id, name, game, max_players, memory_mb, cpu_cores, price_monthly, currency, active, sort)
+values
+  ('nvmp-10', 'Fallout: New Vegas Co-op', 'nvmp', 10, 4096, 2, 6.00, 'USD', true, 12)
+on conflict (id) do nothing;
+
+notify pgrst, 'reload schema';
