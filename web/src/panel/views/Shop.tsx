@@ -485,9 +485,28 @@ function headline(plans: PlanRow[], settings: Settings, loading: boolean, error:
   // an answer rather than as a missing one
   if (error && plans.length === 0) return 'Could not load the plans'
   if (!settings.shopOpen) return 'Closed right now'
-  if (plans.length === 0) return 'Nothing listed yet'
+  if (plans.length === 0) return 'No plans available to order'
   const cheapest = plans.reduce((a, b) => (b.price_monthly < a.price_monthly ? b : a))
   return `${plans.length} ${plans.length === 1 ? 'plan' : 'plans'} · from ${money(cheapest.price_monthly, cheapest.currency)}/mo`
+}
+
+function NvmpPreview(): React.JSX.Element {
+  return (
+    <section className="surface pad stack" aria-label="Upcoming NV:MP hosting">
+      <div className="row">
+        <GameBadge game="nvmp" />
+        <div className="shop-group-who">
+          <h2>{gameLabel('nvmp')}</h2>
+          <p className="dim shop-hint">10-player co-op · Bring your own game files</p>
+        </div>
+        <span className="spacer" />
+        <span className="shop-tag">Coming soon</span>
+      </div>
+      <p className="dim">Upload the Data folder from your own Fallout: New Vegas installation. Everyone in your group needs matching DLCs, mods and load order.</p>
+      <p className="dim shop-hint">Hosting setup is being completed. Orders are not open yet.</p>
+      <Button disabled>Not available yet</Button>
+    </section>
+  )
 }
 
 function Storefront({
@@ -501,8 +520,12 @@ function Storefront({
   owing: number
   onChoose: (plan: PlanRow) => void
 }): React.JSX.Element {
+  // Keep upcoming NV:MP hosting discoverable until the operator lists a real plan.
+  // This preview has no price or checkout path; an active plan replaces it.
+  const nvmpPreview = plans.some((plan) => plan.game === 'nvmp') ? null : <NvmpPreview />
   if (!settings.shopOpen) {
     return (
+      <div className="stack">
       <section className="surface pad rise stack">
         <h2>The shop is closed right now</h2>
         <p className="dim">
@@ -511,18 +534,23 @@ function Storefront({
           under Billing.
         </p>
       </section>
+      {nvmpPreview}
+      </div>
     )
   }
 
   if (plans.length === 0) {
     return (
+      <div className="stack">
+      {nvmpPreview}
       <section className="surface pad rise stack">
-        <h2>No plans are listed</h2>
+        <h2>No plans are available to order</h2>
         <p className="dim">
           The shop is open but nothing is for sale yet. Plans are set up by the host — if you were
           expecting to see one here, ask them to list it.
         </p>
       </section>
+      </div>
     )
   }
 
@@ -536,6 +564,7 @@ function Storefront({
 
   return (
     <div className="stack">
+      {nvmpPreview}
       {owing > 0 && (
         <p className="formnote">
           {owing === 1 ? 'One of your orders is' : `${owing} of your orders are`} still waiting to be
