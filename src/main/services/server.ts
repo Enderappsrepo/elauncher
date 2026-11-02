@@ -35,6 +35,7 @@ import type {
 import { archivedServersFile, instanceDir, javaDir, serverArchivesDir, serverDir, serversFile } from '../paths'
 import { readJson, writeJson } from '../store'
 import { killProcessTree } from './proctree'
+import { BACKUP_MANIFEST, withBackupRoom } from './backupGuard'
 import { startSleeper, type SleeperHandle } from './sleeper'
 import { addEvent, addSample, flushTimelines, forgetTimeline, readTimeline } from './timeline'
 import { downloadAgent, withRetries } from '../net'
@@ -1440,7 +1441,6 @@ async function runScheduledRestart(id: string, reason: string): Promise<void> {
 }
 
 /** Manifest written beside every backup so a restore knows where each folder came from. */
-const BACKUP_MANIFEST = '.elauncher-backup.json'
 type BackupManifest = { game: ServerGame; createdAt: string; sources: string[] }
 
 /**
@@ -1481,25 +1481,27 @@ export async function makeServerBackup(id: string): Promise<{ stamp: string }> {
   if (sources.length === 0) throw new Error('Nothing to back up yet — the world is created on first start.')
 
   const running = (states.get(id) ?? 'stopped') === 'running'
-  if (running) {
-    // flush and pause writes so the copy isn't torn mid-write
-    if (gameOf(server) === 'minecraft') {
-      tryCommand(id, 'save-off')
-      tryCommand(id, 'save-all')
-    } else if (saveCommandFor(server)) {
-      tryCommand(id, saveCommandFor(server))
-    }
-    await sleep(3_000)
-  }
   const stamp = new Date().toISOString().slice(0, 16).replace(/[T:]/g, '-')
   const destRoot = join(dir, 'backups')
-  try {
-    for (const rel of sources) await cp(join(dir, rel), join(destRoot, stamp, basename(rel)), { recursive: true })
-    const manifest: BackupManifest = { game: gameOf(server), createdAt: new Date().toISOString(), sources }
-    writeJson(join(destRoot, stamp, BACKUP_MANIFEST), manifest)
-  } finally {
-    if (running && gameOf(server) === 'minecraft') tryCommand(id, 'save-on')
-  }
+  await withBackupRoom(dir, destRoot, stamp, sources.map((rel) => join(dir, rel)), (line) => pushLog(id, line), async () => {
+    if (running) {
+      // flush and pause writes so the copy isn't torn mid-write
+      if (gameOf(server) === 'minecraft') {
+        tryCommand(id, 'save-off')
+        tryCommand(id, 'save-all')
+      } else if (saveCommandFor(server)) {
+        tryCommand(id, saveCommandFor(server))
+      }
+      await sleep(3_000)
+    }
+    try {
+      for (const rel of sources) await cp(join(dir, rel), join(destRoot, stamp, basename(rel)), { recursive: true })
+      const manifest: BackupManifest = { game: gameOf(server), createdAt: new Date().toISOString(), sources }
+      writeJson(join(destRoot, stamp, BACKUP_MANIFEST), manifest)
+    } finally {
+      if (running && gameOf(server) === 'minecraft') tryCommand(id, 'save-on')
+    }
+  })
   pushLog(id, `[ELauncher] World backed up to backups/${stamp}`)
 
   const keep = Math.max(1, server.automation?.backupKeep ?? 5)
