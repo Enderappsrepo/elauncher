@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { ArrowDownToLine } from 'lucide-react'
 import { Button, Spinner } from '@web/ui'
 import type { NvmpSetupStatus } from '@shared/nvmpUpload'
+import { COMPANION_ASSET, RELEASES_PAGE, useCompanionDownload } from '@web/lib/companion'
 import type { TabProps } from './types'
 import { selectNvmpFiles, transferNvmpFiles, type NvmpSelection } from '../nvmpTransfer'
 
@@ -21,6 +23,9 @@ export function NvmpSetup({ row, ask, onStart }: TabProps & { onStart: () => Pro
   const folder = useRef<HTMLInputElement>(null)
   const active = useRef(true)
   const stopped = row.state === 'stopped'
+  // null until the latest release is seen to carry the companion, so the card never links to a 404;
+  // 'releases' (GitHub's list of releases) when that lookup fails
+  const companion = useCompanionDownload()
   const refresh = useCallback(async (): Promise<NvmpSetupStatus> => {
     const next = await ask<NvmpSetupStatus>('nvmpStatus')
     if (active.current) { setStatus(next); setSent(next.receivedBytes) }
@@ -84,6 +89,17 @@ export function NvmpSetup({ row, ask, onStart }: TabProps & { onStart: () => Pro
     {!stopped && <p className="formnote">Stop the server before changing its game files.</p>}
     {!canEdit && status && <p className="formnote">The renting customer or host can upload and replace game files.</p>}
     {canEdit && <>
+      {companion && <div className="companion-offer stack" role="region" aria-labelledby="nvmp-companion-title">
+        <h3 id="nvmp-companion-title">Easiest: the ELauncher NVMP Companion</h3>
+        <p>A Windows app that finds your Fallout: New Vegas install (Steam, GOG or Mod Organizer 2), reads your load order and uploads your game files to this server for you. Run it, sign in with your ELauncher account and choose <b>{row.name}</b>.</p>
+        <div className="row">
+          {companion === 'releases'
+            ? <a className="btn primary" href={RELEASES_PAGE} target="_blank" rel="noreferrer"><ArrowDownToLine size={17} aria-hidden /> Download from GitHub releases</a>
+            : <a className="btn primary" href={companion.url} target="_blank" rel="noreferrer"><ArrowDownToLine size={17} aria-hidden /> Download for Windows</a>}
+        </div>
+        <p className="dim">{companion === 'releases' ? `Take ${COMPANION_ASSET} from the newest release that lists it. ` : `${companion.size} · `}Windows only and nothing to install. Windows may show a SmartScreen warning on first run: choose More info, then Run anyway.</p>
+      </div>}
+      {companion && <p><b>Or upload from this browser</b> with the steps below.</p>}
       <h3>1. Choose your Data folder</h3>
       <p className="dim">Use a desktop browser with folder selection, such as Chrome or Edge. Keep this page open during transfer. If interrupted, choose the same folder again and resume. Up to 64 GB total, 16 GB per file.</p>
       <input ref={folder} type="file" multiple {...{ webkitdirectory: '' }} hidden onChange={(e) => { const files = [...(e.target.files ?? [])]; e.target.value = ''; void choose(files) }} />

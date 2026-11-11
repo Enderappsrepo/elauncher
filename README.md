@@ -34,6 +34,29 @@ hosts prepare the ZIP on the host before transferring it.
 Build only the live hosting dashboard with `npm run web:build:dashboard`. This
 updates `docs/manage/` and its assets while preserving the landing page and guides.
 
+## NVMP Companion
+
+`companion/` is a separate portable Windows app for NV:MP hosting customers. It
+signs in with their ELauncher account, finds their Fallout: New Vegas install and
+load order, and uploads the Data folder to their server through the same relay
+protocol as the panel's **Game setup** tab. See
+[docs/HOSTING-NVMP.md](docs/HOSTING-NVMP.md#companion-app).
+
+```bash
+npm run companion:dev    # run it with hot reload
+npm run companion:dist   # build release-companion/ELauncher-NVMP-Companion.exe
+npm run test:companion   # offline tests: host upload handlers, Release workflow, download links
+```
+
+It has its own appId and no update feed. The Release workflow builds it in a job of
+its own that both launcher platform jobs wait for, so a broken companion stops the
+whole release before anything is published. The Windows job attaches the exe to the
+launcher's release after publishing, only when the release tag is the checked-out
+commit; it never touches `latest.yml`. The landing page and the panel link to the exe
+only once the latest release carries it; when GitHub's API cannot be reached, both
+link to the releases list instead. Publish the landing page alone with
+`npm run web:build:landing`, as `web:build:dashboard` does for `docs/manage/`.
+
 ## Cloud setup (accounts + modpack library)
 
 The cloud features (ELauncher accounts, admin-published modpacks, one-click install/update) are powered by a free [Supabase](https://supabase.com) project. One person (you) sets this up once; friends just sign up inside the app.

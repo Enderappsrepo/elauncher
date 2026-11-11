@@ -14,7 +14,7 @@
   "scripts": {
     "dev": "electron-vite dev --watch",
     "build": "electron-vite build",
-    "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json && tsc --noEmit -p tsconfig.pages.json",
+    "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json && tsc --noEmit -p tsconfig.pages.json && tsc --noEmit -p tsconfig.companion.json",
     "test:folder-downloads": "node scripts/smoke-folder-downloads.mjs",
     "start": "electron-vite preview",
     "icon": "node scripts/make-ico.mjs",
@@ -22,11 +22,16 @@
     "web:dev": "vite --config vite.web.config.ts",
     "web:build": "vite build --config vite.web.config.ts",
     "web:build:dashboard": "node scripts/build-dashboard.mjs",
+    "web:build:landing": "node scripts/build-landing.mjs",
     "sync:tokens": "node scripts/sync-tokens.mjs",
     "dist": "electron-vite build && electron-builder --win",
     "dist:mac": "electron-vite build && electron-builder --mac",
     "release": "electron-vite build && electron-builder --win --publish always",
     "release:mac": "electron-vite build && electron-builder --mac --publish always",
+    "companion:build": "electron-vite build -c electron.vite.companion.config.ts && node scripts/companion-package.mjs",
+    "companion:dev": "node scripts/companion-package.mjs && electron-vite dev -c electron.vite.companion.config.ts --entry out-companion",
+    "companion:dist": "npm run companion:build && electron-builder --config electron-builder.companion.yml --win --publish never",
+    "test:companion": "node --test scripts/test-nvmp-companion.mjs scripts/test-nvmp-companion-app.mjs scripts/test-release-workflow.mjs && node --import ./scripts/companion-links/hooks.mjs --test scripts/companion-links/test-companion-link.mjs",
     "version": "node scripts/sync-tokens.mjs && git add docs/"
   },
   "devDependencies": {

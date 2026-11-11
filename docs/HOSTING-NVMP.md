@@ -58,6 +58,55 @@ Existing Data is kept until the replacement has uploaded and validated. Discardi
 an unfinished replacement restores availability of the previous installation.
 Setup does not launch a game automatically.
 
+## Companion app
+
+The **ELauncher NVMP Companion** is a small portable Windows app that runs the
+same customer flow without a browser folder picker. It is offered as
+`ELauncher-NVMP-Companion.exe` on the latest launcher release, and only once
+that release carries it: the landing page asks GitHub first and says "coming
+soon" until then, and the panel's **Game setup** tab shows its download card,
+above the browser upload, only after the same check. Neither ever links to the
+asset blind, which would be a GitHub 404 on a release without it. When GitHub's
+API cannot be reached or is rate-limited (and, on the landing page, when it has
+not answered within a few seconds), both link to the
+[GitHub releases list](https://github.com/Enderappsrepo/elauncher/releases)
+instead: take the exe from the newest release that lists it.
+
+1. Run the exe; nothing is installed. It unpacks itself to a temporary folder on
+   every start, so the window takes a few seconds to appear. Windows may show a
+   SmartScreen warning on first run: choose **More info → Run anyway**.
+2. Sign in with the ELauncher account that rents the server, then pick the NV:MP
+   server. As in the panel, only the host, an admin or the renting customer can
+   change its files, and the server must be stopped.
+3. The companion looks for the Fallout: New Vegas installation itself, or lets
+   you choose the game folder. Editions NV:MP does not support are flagged
+   before anything is sent.
+4. It lists what will be uploaded from Data and the load order it read, with
+   plugin names in their exact on-disk case. Executables and native plugins are
+   excluded and listed, exactly as in the panel. Edit the load order if it does
+   not match what your group plays.
+5. Upload, finish and start use the same relay actions, chunk protocol, limits
+   and validation as the panel. Pause and resume keep the host's saved chunks;
+   keep the companion open while it transfers.
+
+The companion is one extra asset on the launcher's GitHub release. The Release
+workflow builds it first, in a `companion` job of its own on a Windows runner
+with a read-only token and `--publish never`, and keeps the exe as a workflow
+artifact. The Windows and macOS launcher jobs wait for that job
+(`needs: companion`), so a broken companion stops the whole release before
+anything is published. After the launcher's Windows publish, that job downloads
+the artifact and uploads the exe to the release. It uploads only when the
+`v<version>` tag from package.json is the checked-out commit; a manual run from a branch that has moved past the tag skips
+the upload with a warning instead of replacing the published companion with
+untagged code. To attach it to an existing release again, run the workflow from
+that tag. The companion has no update feed of its own and never writes the
+launcher's `latest.yml`. It does not update itself, so customers should download
+it again when the host's upload protocol changes.
+
+Build it locally with `npm run companion:build` (bundles into `out-companion/`)
+and `npm run companion:dist` (writes `release-companion/ELauncher-NVMP-Companion.exe`).
+`npm run companion:dev` runs it with a hot-reloading window.
+
 ## Transfer limits and access
 
 - 64 GB total per setup, 16 GB per file, at most 10,000 files. Uploads stream in

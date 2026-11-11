@@ -21,6 +21,7 @@ import {
 import { Collapse, MotionRoot, Reveal, motion, staggerChild, staggerParent } from '@web/ui/motion'
 import { GAME_HUE, GAME_LINEUP } from '@web/lib/games'
 import type { Game } from '@web/lib/games'
+import { COMPANION_ASSET, RELEASES_PAGE } from '@web/lib/companion'
 import { useRelease } from './useRelease'
 import '@web/styles/ui.css'
 import './Landing.css'
@@ -83,6 +84,7 @@ const FAQ = [
 
 export function App(): React.JSX.Element {
   const release = useRelease()
+  const companion = release.companion
 
   return (
     <MotionRoot>
@@ -270,6 +272,47 @@ export function App(): React.JSX.Element {
               </div>
             </Reveal>
           </Section>
+
+          <section className="wrap" id="nvmp-companion">
+            <Reveal>
+              <div className="surface pad getit">
+                <p className="kicker">Fallout: New Vegas (NV:MP) hosting</p>
+                <h2>ELauncher NVMP Companion</h2>
+                <p className="dim meta">Finds your game and uploads your Data folder to your NV:MP server.</p>
+                {/* a direct download only once the latest release is seen to carry the exe, never a guessed
+                    asset link; GitHub's releases list when the lookup failed; nothing while it runs */}
+                {companion === 'missing' ? (
+                  <div className="row cta">
+                    <span className="pill">Coming soon with the next ELauncher release</span>
+                  </div>
+                ) : companion === 'unknown' ? (
+                  <div className="row cta">
+                    <a className="btn primary" href={RELEASES_PAGE}>
+                      <ArrowDownToLine size={17} aria-hidden />
+                      Download from GitHub releases
+                    </a>
+                  </div>
+                ) : companion ? (
+                  <div className="row cta">
+                    <a className="btn primary" href={companion.url}>
+                      <ArrowDownToLine size={17} aria-hidden />
+                      Download the companion
+                    </a>
+                  </div>
+                ) : null}
+                <p className="dim meta">
+                  {companion === 'unknown'
+                    ? `Take ${COMPANION_ASSET} from the newest release that lists it. `
+                    : companion && companion !== 'missing'
+                      ? `${companion.size} · `
+                      : ''}
+                  Windows only and nothing to install: run it and sign in with your ELauncher account.{' '}
+                  <strong>Windows</strong> may show a SmartScreen warning on first run — choose{' '}
+                  <strong>More info → Run anyway</strong>.
+                </p>
+              </div>
+            </Reveal>
+          </section>
 
           <section className="wrap" id="download">
             <Reveal>

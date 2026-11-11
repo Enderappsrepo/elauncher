@@ -6,6 +6,11 @@
 #
 # Windows and macOS build on their own native runners and upload to the same
 # release (keyed by the tag). The mac build is unsigned/ad-hoc — see electron-builder.yml.
+#
+# The ELauncher NVMP Companion is one extra asset on that release. It is built first, in its
+# own job, and both launcher legs wait for it (needs: companion), so a broken companion stops
+# the whole release before anything is published. The Windows leg attaches the built exe once
+# the launcher has published.
 name: Release
 
 on:
@@ -18,7 +23,46 @@ permissions:
   contents: write
 
 jobs:
+  # Builds the NVMP Companion and hands the exe to the release job as a workflow artifact. This job
+  # never publishes: its token is read-only, it has no GH_TOKEN, electron-builder runs with
+  # --publish never, and electron-builder.companion.yml has no publish block, so it can never touch
+  # latest.yml, the launcher's update feed.
+  companion:
+    runs-on: windows-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build NVMP Companion
+        run: npm run companion:build
+
+      - name: Package NVMP Companion
+        run: npx electron-builder --config electron-builder.companion.yml --win --publish never
+
+      # if-no-files-found: error, not upload-artifact's default warn, so a missing exe fails this
+      # job and with it the whole release.
+      - name: Keep the NVMP Companion for the release job
+        uses: actions/upload-artifact@v4
+        with:
+          name: nvmp-companion
+          path: release-companion/ELauncher-NVMP-Companion.exe
+          if-no-files-found: error
+          # long enough to re-run a failed release job from the same workflow run
+          retention-days: 7
+
   release:
+    # Nothing is published unless the companion built: if the companion job fails, neither the
+    # Windows nor the macOS leg starts.
+    needs: companion
     strategy:
       fail-fast: false
       # Publish the platforms SEQUENTIALLY. When both jobs publish at once,
@@ -50,6 +94,42 @@ jobs:
 
       - name: Package and publish
         run: npx electron-builder ${{ matrix.args }} --publish always
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # The exe the companion job built. Downloaded only now, after the launcher's publish, so a
+      # failed download can never keep the launcher's own Windows assets off the release.
+      - name: Download NVMP Companion
+        if: matrix.os == 'windows-latest'
+        uses: actions/download-artifact@v4
+        with:
+          name: nvmp-companion
+          path: release-companion
+
+      # The tag comes from package.json, as electron-builder's does. The workflow can also be
+      # run by hand from any branch, and electron-builder then leaves a release older than two
+      # hours alone, but --clobber would still replace its companion with untagged code. So the
+      # exe is attached only when that tag is the checked-out commit; to re-attach it to an
+      # existing release, run the workflow from the tag itself.
+      - name: Attach NVMP Companion to the release
+        if: matrix.os == 'windows-latest'
+        shell: bash
+        run: |
+          tag="v$(node -p "require('./package.json').version")"
+          # exit 2 = the tag is not on origin (warn and skip); any other failure is a real error
+          status=0
+          git ls-remote --exit-code --tags origin "refs/tags/$tag" > /dev/null || status=$?
+          if [ "$status" = 2 ]; then
+            echo "::warning::Tag $tag was not found on origin, so the NVMP Companion was not attached."
+            exit 0
+          fi
+          [ "$status" = 0 ] || { echo "::error::Could not check origin for tag $tag (git ls-remote exit $status)."; exit 1; }
+          git fetch --quiet --no-tags --depth=1 origin "+refs/tags/$tag:refs/tags/$tag"
+          if [ "$(git rev-list -n 1 "$tag")" != "$(git rev-parse HEAD)" ]; then
+            echo "::warning::$tag does not point at the checked-out commit $(git rev-parse --short HEAD), so the NVMP Companion was not attached. Run the workflow from the $tag tag to attach it."
+            exit 0
+          fi
+          gh release upload "$tag" release-companion/ELauncher-NVMP-Companion.exe --clobber --repo "$GITHUB_REPOSITORY"
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 

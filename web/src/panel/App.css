@@ -898,3 +898,16 @@ h2 {
 .detail-addr {
   padding: 0 19px 16px;
 }
+
+/* The NV:MP setup tab's download card for the ELauncher NVMP Companion: the easiest route, so it
+ * stands out from the browser-upload steps under it. */
+.companion-offer {
+  padding: 14px 16px;
+  border: 1px solid var(--accent-line);
+  border-radius: var(--radius-sm);
+  background: var(--accent-soft);
+}
+
+.companion-offer h3 {
+  margin: 0;
+}

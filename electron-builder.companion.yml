@@ -1,0 +1,38 @@
+# ELauncher NVMP Companion: a separate portable exe for NV:MP hosting customers.
+# Packages out-companion/ (bundled by electron.vite.companion.config.ts, package.json written by
+# scripts/companion-package.mjs), so none of the launcher's node_modules end up in it.
+#
+# No publish block, and always built with --publish never: the launcher's latest.yml update feed
+# lives on the same GitHub releases, and the companion must never write to it. The release
+# workflow attaches the exe to the launcher's release with `gh release upload`.
+appId: com.elauncher.nvmp-companion
+productName: ELauncher NVMP Companion
+directories:
+  app: out-companion
+  buildResources: build
+  output: release-companion
+files:
+  - '**/*'
+  # everything the companion runs is bundled into out-companion; electron-builder would otherwise fall
+  # back to the repo root and pack the launcher's whole node_modules
+  - '!node_modules{,/**/*}'
+win:
+  icon: build/icon.ico
+  target:
+    - portable
+# fixed name, without "Setup" or "Portable", so the landing page's launcher links never match it
+portable:
+  artifactName: ELauncher-NVMP-Companion.${ext}
+  # The portable exe unpacks the whole app (~300 MB) to %TEMP% on every launch and deletes it on
+  # exit (unpackDirName cannot reuse it: the stub clears that folder before unpacking). The default
+  # embeds a 7z archive that is LZMA-decoded and then copied, which took ~15 s before the window
+  # opened. useZip packs the files with NSIS's own zlib instead and writes them straight out: ~3 s,
+  # for a 133 MB exe instead of 83 MB. Measured with `--smoke` on the same build.
+  useZip: true
+electronLanguages:
+  - en-US
+# with useZip, any level but store means NSIS zlib; 7z's -mx=9 is the same for normal and maximum
+compression: normal
+electronDownload:
+  cache: .electron-cache
+npmRebuild: false
