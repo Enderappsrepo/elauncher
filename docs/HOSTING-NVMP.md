@@ -103,6 +103,12 @@ that tag. The companion has no update feed of its own and never writes the
 launcher's `latest.yml`. It does not update itself, so customers should download
 it again when the host's upload protocol changes.
 
+The first companion was attached to v0.1.4 by hand on 2026-11-11, because that
+tag predates the `companion` job. It was built with `npm run companion:dist` from
+commit 6613a15 (SHA-256
+`a75e061c86ad76b9a94f22e66430bbe260e214d419bfdc2b5a677eb15711d1b2`). From the
+next release on, the Release workflow builds and attaches it.
+
 Build it locally with `npm run companion:build` (bundles into `out-companion/`)
 and `npm run companion:dist` (writes `release-companion/ELauncher-NVMP-Companion.exe`).
 `npm run companion:dev` runs it with a hot-reloading window.
