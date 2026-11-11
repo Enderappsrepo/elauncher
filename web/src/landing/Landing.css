@@ -789,6 +789,12 @@ html {
   margin-inline: auto;
 }
 
+/* The NV:MP companion card sits between the rent section and the download card, neither of which
+ * pads that side, so it keeps its own distance from the download card. */
+#nvmp-companion {
+  padding-bottom: clamp(24px, 5vw, 48px);
+}
+
 .foot {
   padding-block: 28px calc(36px + env(safe-area-inset-bottom));
   border-top: 1px solid var(--border);
